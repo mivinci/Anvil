@@ -73,7 +73,12 @@ struct ServerDownload {
 /// List versions from Mojang's bounded, official version manifest.
 pub async fn list_versions(context: &Context) -> Result<Vec<GameVersion>> {
   let http = context.http.executor();
-  list_versions_from(&http, Url::parse(VERSION_MANIFEST).expect("constant URL")).await
+  list_versions_from(&http, version_manifest_url()?).await
+}
+
+fn version_manifest_url() -> Result<Url> {
+  Url::parse(VERSION_MANIFEST)
+    .map_err(|_| Error::Metadata("invalid Mojang version manifest URL".into()))
 }
 
 async fn list_versions_from(http: &Executor, manifest_url: Url) -> Result<Vec<GameVersion>> {
@@ -139,12 +144,7 @@ async fn list_versions_from(http: &Executor, manifest_url: Url) -> Result<Vec<Ga
 /// The version JSON is authenticated against the SHA-1 in the version manifest before
 /// it is parsed. All metadata reads use the caller's shared HTTP Executor.
 pub async fn resolve_server(http: &Executor, version_id: &str) -> Result<ServerArtifact> {
-  resolve_server_from(
-    http,
-    version_id,
-    Url::parse(VERSION_MANIFEST).expect("constant URL"),
-  )
-  .await
+  resolve_server_from(http, version_id, version_manifest_url()?).await
 }
 
 async fn resolve_server_from(
@@ -311,5 +311,5 @@ fn parse_json<T: for<'de> Deserialize<'de>>(bytes: &[u8]) -> Result<T> {
 }
 
 #[cfg(test)]
-#[path = "../tests/unit/server_metadata.rs"]
+#[path = "../tests/server_metadata.rs"]
 mod tests;

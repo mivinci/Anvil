@@ -106,5 +106,5 @@ pub(crate) fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T
 }
 
 #[cfg(test)]
-#[path = "../tests/unit/storage.rs"]
+#[path = "../tests/storage.rs"]
 mod tests;

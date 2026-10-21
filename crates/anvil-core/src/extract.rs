@@ -73,7 +73,10 @@ impl Extractor<'_> {
   }
   fn file(&self, path: &Path, size: u64, mode: u32, input: &mut impl Read) -> Result<()> {
     let dest = self.root.join(path);
-    fs::create_dir_all(dest.parent().unwrap())?;
+    let parent = dest
+      .parent()
+      .ok_or_else(|| Error::Archive("archive entry has no parent".into()))?;
+    fs::create_dir_all(parent)?;
     let mut output = OpenOptions::new()
       .write(true)
       .create_new(true)
@@ -216,7 +219,7 @@ pub(crate) fn unpack(
         let target = if kind.is_hard_link() {
           relative(&link)?
         } else {
-          let mut target = path.parent().unwrap().to_path_buf();
+          let mut target = path.parent().unwrap_or_else(|| Path::new("")).to_path_buf();
           for c in link.components() {
             match c {
               Component::CurDir => (),
@@ -261,5 +264,5 @@ pub(crate) fn java_home(root: &Path, mac: bool) -> Result<PathBuf> {
 }
 
 #[cfg(test)]
-#[path = "../tests/unit/extract.rs"]
+#[path = "../tests/extract.rs"]
 mod tests;

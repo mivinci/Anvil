@@ -215,7 +215,10 @@ impl JavaManager {
       resolved.checksum,
       if resolved.zip { "zip" } else { "tar.gz" }
     ));
-    let parent = archive.parent().unwrap().to_path_buf();
+    let parent = archive
+      .parent()
+      .ok_or_else(|| Error::Invalid("Java archive cache path has no parent".into()))?
+      .to_path_buf();
     let cached = archive.clone();
     let resume = self
       .blocking(cancel, move || {
@@ -319,10 +322,19 @@ impl JavaManager {
         // The stable runtime lock serializes cooperating Anvil processes.
         fs::rename(staging.path(), &directory)?;
         #[cfg(unix)]
-        fs::File::open(directory.parent().unwrap())?.sync_all()?;
+        {
+          let parent = directory
+            .parent()
+            .ok_or_else(|| Error::Invalid("Java runtime path has no parent".into()))?;
+          fs::File::open(parent)?.sync_all()?;
+        }
+        let executable_relative = runtime
+          .executable
+          .strip_prefix(staging.path())
+          .map_err(|_| Error::Java("Java executable escaped staging directory".into()))?;
         Ok(InstalledJava {
           java_home: directory.join(&manifest.home),
-          executable: directory.join(runtime.executable.strip_prefix(staging.path()).unwrap()),
+          executable: directory.join(executable_relative),
           ..runtime
         })
       })
@@ -449,9 +461,11 @@ impl JavaManager {
           return Err(Error::Conflict("runtime manifest ID mismatch".into()));
         }
         let runtime = manifest.installed(&target)?;
-        let trash = tempfile::Builder::new()
-          .prefix(".remove-")
-          .tempdir_in(target.parent().unwrap())?;
+        let trash = tempfile::Builder::new().prefix(".remove-").tempdir_in(
+          target
+            .parent()
+            .ok_or_else(|| Error::Invalid("Java runtime path has no parent".into()))?,
+        )?;
         fs::rename(&target, trash.path().join("runtime"))?;
         trash.close()?;
         Ok(runtime)
@@ -514,8 +528,14 @@ async fn validate(
   let mut child = command
     .spawn()
     .map_err(|e| Error::Java(format!("cannot execute Java: {e}")))?;
-  let stdout = child.stdout.take().unwrap();
-  let stderr = child.stderr.take().unwrap();
+  let stdout = child
+    .stdout
+    .take()
+    .ok_or_else(|| Error::Java("Java probe stdout pipe is unavailable".into()))?;
+  let stderr = child
+    .stderr
+    .take()
+    .ok_or_else(|| Error::Java("Java probe stderr pipe is unavailable".into()))?;
   let result = {
     let capture = async {
       let (stdout, stderr, status) =
@@ -569,5 +589,5 @@ async fn validate(
 }
 
 #[cfg(test)]
-#[path = "../tests/unit/java.rs"]
+#[path = "../tests/java.rs"]
 mod tests;

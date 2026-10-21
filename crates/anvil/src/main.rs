@@ -150,6 +150,7 @@ async fn main() -> ExitCode {
       error.exit();
     }
   };
+  init_tracing();
   match run(&cli).await {
     Ok(output) => {
       if cli.json_events {
@@ -187,6 +188,17 @@ async fn main() -> ExitCode {
       }
       ExitCode::from(error.exit_code())
     }
+  }
+}
+
+fn init_tracing() {
+  if let Err(error) = tracing_subscriber::fmt()
+    .with_max_level(tracing::Level::WARN)
+    .with_ansi(false)
+    .with_writer(std::io::stderr)
+    .try_init()
+  {
+    eprintln!("could not initialize diagnostic logging: {error}");
   }
 }
 
@@ -299,8 +311,10 @@ async fn run(cli: &Cli) -> Result<Output, Error> {
             signal = &mut interrupt, if !interrupted => {
                 interrupted = true;
                 cancel.cancel();
+                if let Err(error) = signal {
+                    tracing::warn!(%error, "cannot listen for Ctrl-C");
+                }
                 if !cli.quiet() {
-                    if let Err(error) = signal { eprintln!("cannot listen for Ctrl-C: {error}"); }
                     eprintln!("Cancelling; waiting for cleanup…");
                 }
             }
@@ -383,8 +397,10 @@ async fn run(cli: &Cli) -> Result<Output, Error> {
           signal = &mut interrupt, if !interrupted => {
             interrupted = true;
             cancel.cancel();
+            if let Err(error) = signal {
+              tracing::warn!(%error, "cannot listen for Ctrl-C");
+            }
             if !cli.quiet() {
-              if let Err(error) = signal { eprintln!("cannot listen for Ctrl-C: {error}"); }
               eprintln!("Cancelling; waiting for cleanup…");
             }
           }
@@ -486,8 +502,10 @@ async fn prepare_server_start(
       signal = interrupt.recv(), if !interrupted => {
         interrupted = true;
         cancel.cancel();
+        if let Err(error) = signal {
+          tracing::warn!(%error, "cannot listen for Ctrl-C");
+        }
         if !json {
-          if let Err(error) = signal { eprintln!("cannot listen for Ctrl-C: {error}"); }
           eprintln!("Cancelling server preparation; waiting for cleanup…");
         }
       }
@@ -564,11 +582,11 @@ async fn run_server(
   let stdout = child
     .stdout
     .take()
-    .expect("server stdout was configured as a pipe");
+    .ok_or_else(|| Error::ServerLaunch("server stdout pipe is unavailable".into()))?;
   let stderr = child
     .stderr
     .take()
-    .expect("server stderr was configured as a pipe");
+    .ok_or_else(|| Error::ServerLaunch("server stderr pipe is unavailable".into()))?;
   let output = Arc::new(Mutex::new(tokio::io::stderr()));
   let (ready_tx, mut ready_rx) = mpsc::channel(1);
   let stdout_task = tokio::spawn(forward_server_output(
@@ -583,9 +601,7 @@ async fn run_server(
   let mut record_error = match preparation.mark_running() {
     Ok(_) => None,
     Err(error) => {
-      if !quiet {
-        eprintln!("could not update server session record: {error}");
-      }
+      tracing::warn!(%error, "could not update server session record");
       Some(error.to_string())
     }
   };
@@ -615,14 +631,19 @@ async fn run_server(
         match signal {
           Ok(()) => {
             if let Some(stdin) = child_stdin.as_mut()
-              && stdin.write_all(b"stop\n").await.is_ok()
             {
-              let _ = stdin.flush().await;
-              if !quiet { eprintln!("Sent stop; waiting for world save and shutdown…"); }
+              match stdin.write_all(b"stop\n").await {
+                Ok(()) => match stdin.flush().await {
+                  Ok(()) => {
+                    if !quiet { eprintln!("Sent stop; waiting for world save and shutdown…"); }
+                  }
+                  Err(error) => tracing::warn!(%error, "could not flush stop command to server"),
+                },
+                Err(error) => tracing::warn!(%error, "could not send stop command to server"),
+              }
             }
           }
-          Err(error) if !quiet => eprintln!("cannot listen for Ctrl-C: {error}"),
-          Err(_) => {}
+          Err(error) => tracing::warn!(%error, "cannot listen for Ctrl-C"),
         }
       }
       signal = ready_rx.recv(), if ready_open && !ready => {
@@ -644,12 +665,12 @@ async fn run_server(
             if let Some(stdin) = child_stdin.as_mut()
               && let Err(error) = stdin.write_all(&bytes).await
             {
-              if !quiet { eprintln!("server console input closed: {error}"); }
+              tracing::warn!(%error, "server console input closed");
               child_stdin.take();
             }
           }
           Some(Err(error)) => {
-            if !quiet { eprintln!("cannot read server console input: {error}"); }
+            tracing::warn!(%error, "cannot read server console input");
             child_stdin.take();
           }
           None => { child_stdin.take(); }
@@ -671,6 +692,7 @@ async fn run_server(
     emit_state_event(json_events, "ready", serde_json::json!({}));
   }
   if let Err(error) = stdout_result.and(stderr_result) {
+    tracing::warn!(%error, "could not forward server output");
     record_error.get_or_insert_with(|| error.to_string());
   }
   let code = status.code();

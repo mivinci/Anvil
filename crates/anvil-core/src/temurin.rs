@@ -48,7 +48,7 @@ impl VersionRequest {
       return Err(invalid());
     }
     let mut upper = numbers.clone();
-    let last = upper.last_mut().unwrap();
+    let last = upper.last_mut().ok_or_else(invalid)?;
     *last = last.checked_add(1).ok_or_else(invalid)?;
     let upper = upper
       .iter()
@@ -126,7 +126,8 @@ pub(crate) async fn resolve(
     } else {
       format!("/v3/assets/latest/{}/hotspot", request.major)
     };
-    let mut url = Url::parse(&format!("https://api.adoptium.net{path}")).unwrap();
+    let mut url = Url::parse(&format!("https://api.adoptium.net{path}"))
+      .map_err(|_| Error::Metadata("invalid provider endpoint".into()))?;
     url.query_pairs_mut().extend_pairs([
       ("architecture", platform.arch),
       ("os", platform.os),
@@ -238,5 +239,5 @@ pub(crate) async fn resolve(
 }
 
 #[cfg(test)]
-#[path = "../tests/unit/temurin.rs"]
+#[path = "../tests/temurin.rs"]
 mod tests;

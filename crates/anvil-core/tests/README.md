@@ -1,19 +1,14 @@
-# anvil-core 测试
+# anvil-core tests
 
-测试代码统一放在 `tests/`：
+测试文件直接平铺在 `tests/`：
 
-- `unit/java.rs`：Java 安装事务、下载恢复、取消、清理及安装记录。
-- `unit/extract.rs`：tar/zip 解包、路径、链接、权限和资源边界。
-- `unit/storage.rs`：文件锁、JSON 存储边界与禁止覆盖。
-- `unit/temurin.rs`：版本输入与精确版本范围解析。
-- `unit/server.rs`：服务端安装计划、q2q-http 校验、缓存复用、实例原子发布与失败清理。
+- `java.rs`：Java 安装事务、下载恢复、取消、清理及安装记录。
+- `extract.rs`：tar/zip 解包、路径、链接、权限和资源边界。
+- `storage.rs`：文件锁、JSON 存储边界与禁止覆盖。
+- `temurin.rs`：版本输入与精确版本范围解析。
+- `server.rs`：服务端安装、缓存、实例发布与失败清理。
+- `server_metadata.rs`：Mojang 版本元数据校验与失败边界。
 
-这些用例需要访问模块私有实现，因此由对应源码模块的 `#[cfg(test)]` 和 `#[path]` 引入，仍按单元测试编译。`unit/` 子目录不会被 Cargo 当作独立集成测试入口，不需要为测试扩大公共 API。
+这些测试会被各自源码模块通过 `#[path = "../tests/<name>.rs"]` 引入，以便覆盖私有实现。Core crate 关闭 Cargo 对根目录 `.rs` 文件的自动集成测试发现，避免同一文件被作为独立集成测试再次编译；它们仍由 `cargo test -p anvil-core --locked` 编译和运行。
 
-CLI 的进程级契约位于 `crates/anvil/tests/cli.rs`；真实供应商安装验收脚本位于根目录 `scripts/java-smoke.py`。
-
-```bash
-cargo test -p anvil-core --locked
-```
-
-安装事务的本地 HTTP 夹具需要允许监听 loopback 端口；模拟 Java 可执行文件的流程测试仅在 Unix 运行。Windows 的真实安装由手动触发的三平台 live-java CI 验收。
+CLI 的进程级测试位于 `crates/anvil/tests/cli.rs`；Java 供应商验收脚本位于根目录 `scripts/java-smoke.py`。Core 测试仅使用本地 fixture，不下载真实 Java 或 Minecraft 文件；模拟 Java 子进程的用例仅在 Unix 运行。

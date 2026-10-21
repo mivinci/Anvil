@@ -160,7 +160,9 @@ impl ServerInstaller {
       .blocking(&cancel, {
         let cache_path = cache_path.clone();
         move || {
-          let parent = cache_path.parent().expect("cache path has parent");
+          let parent = cache_path
+            .parent()
+            .ok_or_else(|| Error::Invalid("server cache path has no parent".into()))?;
           fs::create_dir_all(parent)?;
           let part = sidecar(&cache_path, ".q2q-http.part");
           let journal = sidecar(&cache_path, ".q2q-http.resume");
@@ -955,5 +957,5 @@ fn sidecar(path: &Path, suffix: &str) -> PathBuf {
 }
 
 #[cfg(test)]
-#[path = "../tests/unit/server.rs"]
+#[path = "../tests/server.rs"]
 mod tests;
