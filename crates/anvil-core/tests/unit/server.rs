@@ -169,10 +169,10 @@ async fn checksum_failure_never_publishes_a_cache_artifact() {
   let result = installer
     .download(&artifact_plan, &CancellationToken::new(), &progress())
     .await;
-  assert!(matches!(
-    result,
-    Err(Error::Http(q2q_http::Error::Integrity))
-  ));
+  assert!(
+    matches!(&result, Err(Error::Http(q2q_http::Error::Integrity))),
+    "unexpected server download result: {result:?}"
+  );
   assert!(!expected_path.exists());
 }
 

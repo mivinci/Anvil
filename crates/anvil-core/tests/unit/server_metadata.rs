@@ -163,10 +163,11 @@ async fn rejects_missing_server_and_java_requirements() {
   ] {
     let document = serde_json::to_vec(&serde_json::json!({"id":"1.21.1", "javaVersion":java.get("javaVersion"), "downloads":downloads.get("downloads")})).unwrap();
     let fixture = Fixture::new(valid_fixture(&document), document);
-    assert!(matches!(
-      resolve_server_from(&executor(), "1.21.1", fixture.manifest_url.clone()).await,
-      Err(Error::Metadata(_))
-    ));
+    let result = resolve_server_from(&executor(), "1.21.1", fixture.manifest_url.clone()).await;
+    assert!(
+      matches!(&result, Err(Error::Metadata(_))),
+      "unexpected metadata result: {result:?}"
+    );
   }
 }
 
@@ -174,10 +175,11 @@ async fn rejects_missing_server_and_java_requirements() {
 async fn rejects_unknown_version_invalid_id_and_untrusted_metadata_origin() {
   let document = version_document("1.21.1");
   let fixture = Fixture::new(valid_fixture(&document), document);
-  assert!(matches!(
-    resolve_server_from(&executor(), "1.21.2", fixture.manifest_url.clone()).await,
-    Err(Error::NotFound(_))
-  ));
+  let result = resolve_server_from(&executor(), "1.21.2", fixture.manifest_url.clone()).await;
+  assert!(
+    matches!(&result, Err(Error::NotFound(_))),
+    "unexpected unknown-version result: {result:?}"
+  );
   assert!(matches!(
     resolve_server_from(&executor(), "../server", fixture.manifest_url.clone()).await,
     Err(Error::Invalid(_))

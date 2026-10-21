@@ -271,10 +271,11 @@ mod pipeline {
     let manager = manager(root.path());
     let data = archive(false);
     let server = Server::new(data.clone());
-    assert!(matches!(
-      install(&manager, &server, &data).await,
-      Err(Error::Java(_))
-    ));
+    match install(&manager, &server, &data).await {
+      Err(Error::Java(_)) => {}
+      Err(error) => panic!("unexpected Java installation error: {error:?}"),
+      Ok(_) => panic!("invalid Java runtime unexpectedly installed"),
+    }
     assert!(manager.list().await.unwrap().is_empty());
     assert_eq!(
       fs::read_dir(root.path().join("runtimes")).unwrap().count(),

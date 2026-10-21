@@ -14,8 +14,6 @@ jobs:
     name: Java and CLI (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
-    env:
-      NO_PROXY: 127.0.0.1,localhost
     strategy:
       fail-fast: false
       matrix:
@@ -28,6 +26,15 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all -- --check
       - run: cargo test --locked -p anvil -p anvil-core -- --test-threads=1
+        env:
+          HTTP_PROXY: ""
+          HTTPS_PROXY: ""
+          ALL_PROXY: ""
+          NO_PROXY: 127.0.0.1,localhost
+          http_proxy: ""
+          https_proxy: ""
+          all_proxy: ""
+          no_proxy: 127.0.0.1,localhost
       - run: cargo clippy --locked -p anvil -p anvil-core --all-targets -- -D warnings
       - run: cargo build --locked -p anvil
 
