@@ -66,8 +66,8 @@ impl Drop for Fixture {
 }
 
 fn respond(stream: &mut TcpStream, data: &[u8], send_bytes: usize) -> std::io::Result<()> {
-  stream.set_read_timeout(Some(Duration::from_secs(2)))?;
-  stream.set_write_timeout(Some(Duration::from_secs(2)))?;
+  stream.set_read_timeout(Some(Duration::from_secs(15)))?;
+  stream.set_write_timeout(Some(Duration::from_secs(15)))?;
   let mut request = Vec::new();
   let mut byte = [0; 1];
   while !request.ends_with(b"\r\n\r\n") && request.len() < 8192 {

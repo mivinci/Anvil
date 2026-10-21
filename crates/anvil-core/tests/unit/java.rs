@@ -297,10 +297,10 @@ mod pipeline {
         watch::channel(JavaProgress::default()).0,
       )
       .await;
-    assert!(matches!(
-      result,
-      Err(Error::Http(q2q_http::Error::Integrity))
-    ));
+    assert!(
+      matches!(&result, Err(Error::Http(q2q_http::Error::Integrity))),
+      "unexpected install result: {result:?}"
+    );
     assert!(manager.list().await.unwrap().is_empty());
   }
   #[tokio::test]

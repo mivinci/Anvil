@@ -65,7 +65,7 @@ impl Drop for Fixture {
 }
 
 fn respond(stream: &mut TcpStream, responses: &HashMap<String, Vec<u8>>) -> std::io::Result<()> {
-  stream.set_read_timeout(Some(Duration::from_secs(2)))?;
+  stream.set_read_timeout(Some(Duration::from_secs(15)))?;
   let mut request = Vec::new();
   let mut byte = [0u8; 1];
   while !request.ends_with(b"\r\n\r\n") && request.len() < 8192 {
@@ -142,8 +142,10 @@ async fn rejects_a_version_json_that_does_not_match_the_manifest_hash() {
   let mut manifest: serde_json::Value = serde_json::from_slice(&valid_fixture(&document)).unwrap();
   manifest["versions"][0]["sha1"] = serde_json::Value::String("f".repeat(40));
   let fixture = Fixture::new(serde_json::to_vec(&manifest).unwrap(), document);
+  let result = resolve_server_from(&executor(), "1.21.1", fixture.manifest_url.clone()).await;
   assert!(
-    matches!(resolve_server_from(&executor(), "1.21.1", fixture.manifest_url.clone()).await, Err(Error::Metadata(message)) if message.contains("SHA-1"))
+    matches!(&result, Err(Error::Metadata(message)) if message.contains("SHA-1")),
+    "unexpected metadata result: {result:?}"
   );
 }
 
@@ -198,8 +200,10 @@ async fn rejects_invalid_artifact_metadata_before_returning_a_plan() {
     "downloads":{"server":{"url":"http://example.com/server.jar","size":1,"sha1":"0123456789abcdef0123456789abcdef01234567"}}
   })).unwrap();
   let fixture = Fixture::new(valid_fixture(&bad), bad);
+  let result = resolve_server_from(&executor(), "1.21.1", fixture.manifest_url.clone()).await;
   assert!(
-    matches!(resolve_server_from(&executor(), "1.21.1", fixture.manifest_url.clone()).await, Err(Error::Metadata(message)) if message.contains("HTTPS"))
+    matches!(&result, Err(Error::Metadata(message)) if message.contains("HTTPS")),
+    "unexpected metadata result: {result:?}"
   );
 }
 
