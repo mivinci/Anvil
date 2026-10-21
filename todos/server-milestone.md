@@ -82,9 +82,9 @@ CLI 转发用户控制台输入并持续排空子进程 stdout/stderr 到 CLI st
 
 2026-10-21 再次运行新 smoke 脚本：Linux x86_64 上 1.21.1 通过控制台 stop 和 SIGINT 两种方式到 Ready、保存世界并以 0 退出；Mojang 当前正式版 26.3 也成功完成元数据解析、安装、Ready、存档和正常退出。两版均使用 `online-mode=true` 与 `server-ip=127.0.0.1`。本执行环境仍拒绝 `api.minecraftservices.com` / `discovery.minecraftservices.com` 外连，因此没有验证玩家登录；认证服务告警没有阻断启动与保存。脚本结束后临时实例及下载数据已自动删除。
 
-**跨平台实跑准备：** `.github/workflows/rust.yml` 增加了仅 `workflow_dispatch` 可触发的 `live-server` job，输入 `live-server` 默认关闭，因此普通 push/PR 不会下载服务端或 Java。任务在临时数据根创建并删除实例，明确接受临时测试 EULA，配置 `server-ip=127.0.0.1`、保持 `online-mode=true`，检查 Ready、干净退出及世界文件。`scripts/server-smoke.py` 在 Ubuntu 额外测 Ctrl-C，并解析 Mojang manifest 选取当前正式版做一次安装与最小启动。该工作流尚未触发；当前仓库没有 Git remote，Windows/macOS 与当前正式版结果仍待实际运行。
+**跨平台实跑准备：** `.github/workflows/rust.yml` 增加了仅 `workflow_dispatch` 可触发的 `live-server` job，输入 `live-server` 默认关闭，因此普通 push/PR 不会下载服务端或 Java。任务在临时数据根创建并删除实例，明确接受临时测试 EULA，配置 `server-ip=127.0.0.1`、保持 `online-mode=true`，检查 Ready、干净退出及世界文件。`scripts/server-smoke.py` 在 Ubuntu 额外测 SIGINT，并解析 Mojang manifest 选取当前正式版做一次安装与最小启动。该 GitHub Actions job 尚未实跑；Windows/macOS 的真实服务端结果仍待验证。
 
-**验收：** 只对实际通过的 OS/CPU/游戏版本组合宣称支持。Anvil 当前尚无 Git remote；配置远程 CI 前，本地 Linux 检查不能代替 Windows/macOS 结果。
+**验收：** 只对实际通过的 OS/CPU/游戏版本组合宣称支持。本地 Linux 检查不能代替 Windows/macOS 结果；只有相应 hosted CI 实跑完成后才更新其支持状态。
 
 ## 首轮不包含
 
