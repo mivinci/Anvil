@@ -1,12 +1,12 @@
 use serde_json::Value;
+#[cfg(not(unix))]
+use std::process::{Command, Output};
 #[cfg(unix)]
 use std::{
   io::{BufRead, Write},
   path::Path,
   process::{Command, Output, Stdio},
 };
-#[cfg(not(unix))]
-use std::process::{Command, Output};
 
 fn run(root: &std::path::Path, args: &[&str]) -> Output {
   Command::new(env!("CARGO_BIN_EXE_anvil"))
