@@ -126,8 +126,7 @@ fn executor() -> Executor {
 #[tokio::test]
 async fn lists_versions_from_the_official_manifest_shape() {
   let document = version_document("1.21.1");
-  let mut manifest: serde_json::Value =
-    serde_json::from_slice(&valid_fixture(&document)).unwrap();
+  let mut manifest: serde_json::Value = serde_json::from_slice(&valid_fixture(&document)).unwrap();
   let mut snapshot = manifest["versions"][0].clone();
   snapshot["id"] = serde_json::Value::String("24w33a".into());
   snapshot["type"] = serde_json::Value::String("snapshot".into());

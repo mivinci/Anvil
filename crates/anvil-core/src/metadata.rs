@@ -73,11 +73,7 @@ struct ServerDownload {
 /// List versions from Mojang's bounded, official version manifest.
 pub async fn list_versions(context: &Context) -> Result<Vec<GameVersion>> {
   let http = context.http.executor();
-  list_versions_from(
-    &http,
-    Url::parse(VERSION_MANIFEST).expect("constant URL"),
-  )
-  .await
+  list_versions_from(&http, Url::parse(VERSION_MANIFEST).expect("constant URL")).await
 }
 
 async fn list_versions_from(http: &Executor, manifest_url: Url) -> Result<Vec<GameVersion>> {
@@ -104,8 +100,8 @@ async fn list_versions_from(http: &Executor, manifest_url: Url) -> Result<Vec<Ga
       ));
     }
     validate_sha1(&entry.sha1)?;
-    let metadata_url = Url::parse(&entry.url)
-      .map_err(|_| Error::Metadata("invalid version metadata URL".into()))?;
+    let metadata_url =
+      Url::parse(&entry.url).map_err(|_| Error::Metadata("invalid version metadata URL".into()))?;
     validate_metadata_url(&metadata_url)?;
     if entry.version_type.is_empty()
       || entry.version_type.len() > 32
@@ -118,9 +114,14 @@ async fn list_versions_from(http: &Executor, manifest_url: Url) -> Result<Vec<Ga
     }
     if entry.release_time.is_empty()
       || entry.release_time.len() > 64
-      || !entry.release_time.bytes().all(|byte| byte.is_ascii_graphic())
+      || !entry
+        .release_time
+        .bytes()
+        .all(|byte| byte.is_ascii_graphic())
     {
-      return Err(Error::Metadata("invalid Minecraft version release time".into()));
+      return Err(Error::Metadata(
+        "invalid Minecraft version release time".into(),
+      ));
     }
     if !ids.insert(entry.id.clone()) {
       return Err(Error::Metadata("duplicate version ID in manifest".into()));
