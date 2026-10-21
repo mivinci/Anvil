@@ -297,10 +297,11 @@ mod pipeline {
         watch::channel(JavaProgress::default()).0,
       )
       .await;
-    assert!(
-      matches!(&result, Err(Error::Http(q2q_http::Error::Integrity))),
-      "unexpected install result: {result:?}"
-    );
+    match result {
+      Err(Error::Http(q2q_http::Error::Integrity)) => {}
+      Err(error) => panic!("unexpected install error: {error:?}"),
+      Ok(_) => panic!("checksum mismatch unexpectedly succeeded"),
+    }
     assert!(manager.list().await.unwrap().is_empty());
   }
   #[tokio::test]
