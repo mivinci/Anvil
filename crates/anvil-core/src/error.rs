@@ -32,6 +32,14 @@ pub enum Error {
   },
   #[error("server process exited before reaching Ready (exit code {process_exit_code})")]
   ServerNotReady { process_exit_code: i32 },
+  #[error("could not start Minecraft client process: {0}")]
+  ClientLaunch(String),
+  #[error("Minecraft client process exited unsuccessfully: {0}")]
+  ClientExit(String),
+  #[error("Minecraft account authorization is required")]
+  AccountRequired,
+  #[error("Minecraft account operation failed: {0}")]
+  Authentication(String),
   #[error("operation cancelled")]
   Cancelled,
   #[error(transparent)]
@@ -59,6 +67,10 @@ impl Error {
       Self::ServerLaunch(_) => "server_launch_failed",
       Self::ServerExit { .. } => "server_exit",
       Self::ServerNotReady { .. } => "server_not_ready",
+      Self::ClientLaunch(_) => "client_launch_failed",
+      Self::ClientExit(_) => "client_exit",
+      Self::AccountRequired => "account_required",
+      Self::Authentication(_) => "authentication_failed",
       Self::Cancelled | Self::Http(q2q_http::Error::Cancelled) => "cancelled",
       Self::Http(q2q_http::Error::Busy) => "busy",
       Self::Http(q2q_http::Error::Integrity) => "integrity",
@@ -72,9 +84,18 @@ impl Error {
   pub fn exit_code(&self) -> u8 {
     match self.code() {
       "invalid_argument" => 2,
-      "unsupported_platform" | "not_found" | "busy" | "conflict" | "eula_required" => 3,
+      "unsupported_platform"
+      | "not_found"
+      | "busy"
+      | "conflict"
+      | "eula_required"
+      | "account_required" => 3,
       "http" => 4,
-      "server_launch_failed" | "server_exit" | "server_not_ready" => 5,
+      "server_launch_failed"
+      | "server_exit"
+      | "server_not_ready"
+      | "client_launch_failed"
+      | "client_exit" => 5,
       "cancelled" => 130,
       _ => 6,
     }

@@ -1,4 +1,7 @@
+mod account_store;
+
 use std::{
+  future::Future,
   io::{BufRead, Write},
   path::PathBuf,
   process::{ExitCode, Stdio},
@@ -8,7 +11,14 @@ use std::{
 
 use anvil_core::{
   Context, Error, Paths,
+  account::{
+    AccountProfile, AccountService, AccountSession, AuthorizationEvent, CredentialStore,
+    MicrosoftAccountProvider, MicrosoftClientId, SystemCredentialStore,
+  },
+  client::{ClientInstallResult, ClientInstaller, ClientInstance, ClientListEntry, ClientProgress},
+  client_plan::ClientTarget,
   java::{InstallResult, JavaManager, JavaProgress},
+  launch::{LaunchOptions, build_launch_spec},
   metadata::{self, GameVersion},
   server::{
     ServerInstallStage, ServerInstaller, ServerInstance, ServerInstanceManager, ServerProgress,
@@ -69,6 +79,16 @@ enum Command {
     #[command(subcommand)]
     command: ServerCommand,
   },
+  /// Install and run original Minecraft client instances.
+  Client {
+    #[command(subcommand)]
+    command: ClientCommand,
+  },
+  /// Manage Microsoft-authenticated Minecraft accounts.
+  Account {
+    #[command(subcommand)]
+    command: AccountCommand,
+  },
 }
 #[derive(Subcommand)]
 enum VersionCommand {
@@ -109,6 +129,39 @@ enum ServerCommand {
   },
 }
 
+#[derive(Subcommand)]
+enum ClientCommand {
+  /// Install a released Minecraft client and its verified files.
+  Install {
+    name: String,
+    #[arg(long = "version", value_name = "ID")]
+    version_id: String,
+  },
+  /// List locally installed client instances.
+  List,
+  /// Refresh an account session and run the client in the foreground.
+  Launch {
+    name: String,
+    #[arg(long, value_name = "UUID")]
+    account: Option<String>,
+    #[arg(long, env = "ANVIL_MICROSOFT_CLIENT_ID", value_name = "GUID")]
+    client_id: String,
+  },
+}
+
+#[derive(Subcommand)]
+enum AccountCommand {
+  /// Sign in through Microsoft's device-code flow.
+  Login {
+    #[arg(long, env = "ANVIL_MICROSOFT_CLIENT_ID", value_name = "GUID")]
+    client_id: String,
+  },
+  /// List saved public Minecraft profile identities.
+  List,
+  /// Remove a saved profile and its refresh token from the system vault.
+  Logout { account_id: String },
+}
+
 #[derive(Serialize)]
 #[serde(untagged)]
 enum Output {
@@ -128,6 +181,30 @@ enum Output {
   },
   ServerRun {
     session: ServerSessionRecord,
+  },
+  ClientInstalled {
+    instance: ClientInstance,
+    version_id: String,
+    already_installed: bool,
+    downloaded_files: usize,
+    reused_files: usize,
+  },
+  ClientList {
+    clients: Vec<ClientListEntry>,
+  },
+  ClientRun {
+    instance: ClientInstance,
+    version_id: String,
+    exit_code: i32,
+  },
+  AccountLogin {
+    account: AccountProfile,
+  },
+  AccountList {
+    accounts: Vec<account_store::AccountEntry>,
+  },
+  AccountLogout {
+    account_id: String,
   },
 }
 
@@ -276,6 +353,7 @@ async fn run(cli: &Cli) -> Result<Output, Error> {
   let manager = JavaManager::new(context.clone());
   let server_installer = ServerInstaller::new(context.clone());
   let server_instances = ServerInstanceManager::new(context.clone());
+  let client_installer = ClientInstaller::new(context.clone());
   match &cli.command {
     Command::Version {
       command: VersionCommand::List,
@@ -424,7 +502,347 @@ async fn run(cli: &Cli) -> Result<Output, Error> {
         }
       }
     }
+    Command::Client {
+      command: ClientCommand::List,
+    } => Ok(Output::ClientList {
+      clients: client_installer.list_with_versions().await?,
+    }),
+    Command::Client {
+      command: ClientCommand::Install { name, version_id },
+    } => {
+      let result = install_client(cli, &client_installer, name, version_id).await?;
+      Ok(Output::ClientInstalled {
+        instance: result.instance,
+        version_id: result.installed.version_id,
+        already_installed: result.already_installed,
+        downloaded_files: result.downloaded_files,
+        reused_files: result.reused_files,
+      })
+    }
+    Command::Client {
+      command: ClientCommand::Launch {
+        name,
+        account,
+        client_id,
+      },
+    } => {
+      let (instance, version_id, exit_code) = launch_client(
+        cli,
+        &context,
+        &client_installer,
+        name,
+        account.as_deref(),
+        client_id,
+      )
+      .await?;
+      Ok(Output::ClientRun {
+        instance,
+        version_id,
+        exit_code,
+      })
+    }
+    Command::Account {
+      command: AccountCommand::List,
+    } => {
+      let accounts = account_store::load(&context.paths.data)?.entries();
+      Ok(Output::AccountList { accounts })
+    }
+    Command::Account {
+      command: AccountCommand::Login { client_id },
+    } => {
+      let profile = login_account(&context, client_id).await?;
+      Ok(Output::AccountLogin { account: profile })
+    }
+    Command::Account {
+      command: AccountCommand::Logout { account_id },
+    } => {
+      let accounts = account_store::load(&context.paths.data)?;
+      let profile = accounts
+        .find(account_id)
+        .ok_or_else(|| Error::NotFound("Minecraft account profile".into()))?;
+      let canonical_id = profile.id().to_owned();
+      let credentials = Arc::new(SystemCredentialStore);
+      let credential_id = canonical_id.clone();
+      tokio::task::spawn_blocking(move || credentials.delete_refresh_token(&credential_id))
+        .await??;
+      account_store::remove(&context.paths.data, &canonical_id)?;
+      Ok(Output::AccountLogout {
+        account_id: canonical_id,
+      })
+    }
   }
+}
+
+fn cancellation_watcher(cancel: CancellationToken) -> tokio::task::JoinHandle<()> {
+  tokio::spawn(async move {
+    if let Err(error) = tokio::signal::ctrl_c().await {
+      tracing::warn!(%error, "cannot listen for Ctrl-C");
+    }
+    eprintln!("Cancelling; waiting for cleanup…");
+    cancel.cancel();
+  })
+}
+
+struct AbortOnDrop(tokio::task::JoinHandle<()>);
+
+impl Drop for AbortOnDrop {
+  fn drop(&mut self) {
+    self.0.abort();
+  }
+}
+
+async fn install_client(
+  cli: &Cli,
+  installer: &ClientInstaller,
+  name: &str,
+  version_id: &str,
+) -> Result<ClientInstallResult, Error> {
+  ClientInstaller::validate_name(name)?;
+  let cancel = CancellationToken::new();
+  let _watcher = AbortOnDrop(cancellation_watcher(cancel.clone()));
+  let (sender, mut updates) = watch::channel(ClientProgress::default());
+  let operation = async {
+    let target = ClientTarget::current()?;
+    let plan = installer.plan(version_id, target, &cancel, &sender).await?;
+    installer.install(name, &plan, &cancel, &sender).await
+  };
+  tokio::pin!(operation);
+  let mut progress_open = true;
+  let mut last_progress = std::time::Instant::now();
+  let mut last_stage = None;
+  loop {
+    tokio::select! {
+      result = &mut operation => break result,
+      changed = updates.changed(), if progress_open => {
+        if changed.is_err() { progress_open = false; continue; }
+        if !cli.quiet() {
+          let progress = updates.borrow_and_update().clone();
+          if last_stage != Some(progress.stage)
+            || last_progress.elapsed() >= Duration::from_millis(250)
+          {
+            eprintln!("{:?}: {} / {} files", progress.stage, progress.completed_files,
+              progress.total_files.map_or_else(|| "?".into(), |total| total.to_string()));
+            last_stage = Some(progress.stage);
+            last_progress = std::time::Instant::now();
+          }
+        }
+      }
+    }
+  }
+}
+
+async fn login_account(context: &Context, client_id: &str) -> Result<AccountProfile, Error> {
+  let client_id = MicrosoftClientId::new(client_id.to_owned())?;
+  let service = AccountService::new(
+    client_id,
+    Arc::new(MicrosoftAccountProvider::new()?),
+    Arc::new(SystemCredentialStore),
+  );
+  let cancel = CancellationToken::new();
+  let _watcher = AbortOnDrop(cancellation_watcher(cancel.clone()));
+  let (event_sender, event_receiver) = mpsc::unbounded_channel();
+  let session = await_account_operation(
+    service.authorize(cancel.clone(), event_sender),
+    event_receiver,
+    cancel,
+  )
+  .await;
+  let session = session?;
+  let profile = session.profile().clone();
+  if let Err(error) = account_store::upsert(&context.paths.data, profile.clone()) {
+    if let Err(cleanup_error) = service.logout(profile.id()).await {
+      tracing::warn!(%cleanup_error, "could not remove refresh token after profile storage failed");
+    }
+    return Err(error);
+  }
+  Ok(profile)
+}
+
+async fn await_account_operation<F>(
+  operation: F,
+  mut events: mpsc::UnboundedReceiver<AuthorizationEvent>,
+  cancel: CancellationToken,
+) -> Result<AccountSession, Error>
+where
+  F: Future<Output = Result<AccountSession, Error>>,
+{
+  tokio::pin!(operation);
+  let mut events_open = true;
+  let mut cancellation_reported = false;
+  loop {
+    tokio::select! {
+      result = &mut operation => return result,
+      event = events.recv(), if events_open => match event {
+        Some(event) => show_authorization_event(event),
+        None => events_open = false,
+      },
+      _ = cancel.cancelled(), if !cancellation_reported => {
+        cancellation_reported = true;
+        eprintln!("Microsoft authorization cancelled; waiting for cleanup…");
+      }
+    }
+  }
+}
+
+fn show_authorization_event(event: AuthorizationEvent) {
+  match event {
+    AuthorizationEvent::DeviceCode {
+      verification_uri,
+      user_code,
+      expires_in_seconds,
+      ..
+    } => {
+      eprintln!("Open {verification_uri} and enter code {user_code}.");
+      eprintln!("The code expires in {expires_in_seconds} seconds.");
+    }
+    AuthorizationEvent::WaitingForApproval => {
+      eprintln!("Waiting for Microsoft account approval…");
+    }
+  }
+}
+
+async fn launch_client(
+  cli: &Cli,
+  context: &Context,
+  installer: &ClientInstaller,
+  name: &str,
+  account_id: Option<&str>,
+  client_id: &str,
+) -> Result<(ClientInstance, String, i32), Error> {
+  let client_id = MicrosoftClientId::new(client_id.to_owned())?;
+  let instance = installer
+    .list()
+    .await?
+    .into_iter()
+    .find(|instance| instance.name.eq_ignore_ascii_case(name))
+    .ok_or_else(|| Error::NotFound(format!("Minecraft client instance {name}")))?;
+  let installed = installer.load_install_record(&instance).await?;
+  let account_file = account_store::load(&context.paths.data)?;
+  let profile = match account_id {
+    Some(id) => account_file.find(id),
+    None => account_file.selected(),
+  }
+  .cloned()
+  .ok_or(Error::AccountRequired)?;
+
+  let cancel = CancellationToken::new();
+  let _watcher = AbortOnDrop(cancellation_watcher(cancel.clone()));
+  let service = AccountService::new(
+    client_id.clone(),
+    Arc::new(MicrosoftAccountProvider::new()?),
+    Arc::new(SystemCredentialStore),
+  );
+  let (event_sender, event_receiver) = mpsc::unbounded_channel();
+  let session = await_account_operation(
+    service.resume(&profile, cancel.clone(), event_sender),
+    event_receiver,
+    cancel.clone(),
+  )
+  .await?;
+
+  let (client_sender, mut client_updates) = watch::channel(ClientProgress::default());
+  let target = ClientTarget::current()?;
+  let planning = installer.plan(&installed.version_id, target, &cancel, &client_sender);
+  tokio::pin!(planning);
+  let mut client_progress_open = true;
+  let mut last_client_stage = None;
+  let mut last_client_progress = std::time::Instant::now();
+  let plan = loop {
+    tokio::select! {
+      result = &mut planning => break result?,
+      changed = client_updates.changed(), if client_progress_open => {
+        if changed.is_err() { client_progress_open = false; continue; }
+        if !cli.quiet() {
+          let progress = client_updates.borrow_and_update().clone();
+          if last_client_stage != Some(progress.stage)
+            || last_client_progress.elapsed() >= Duration::from_millis(250)
+          {
+            eprintln!("{:?}: {} / {} files", progress.stage, progress.completed_files,
+              progress.total_files.map_or_else(|| "?".into(), |total| total.to_string()));
+            last_client_stage = Some(progress.stage);
+            last_client_progress = std::time::Instant::now();
+          }
+        }
+      }
+    }
+  };
+
+  let (java_sender, mut java_updates) = watch::channel(JavaProgress::default());
+  let preparation = installer.prepare_runtime(&instance, &plan, &cancel, java_sender);
+  tokio::pin!(preparation);
+  let mut java_progress_open = true;
+  let mut last_java_stage = None;
+  let mut last_java_progress = std::time::Instant::now();
+  let runtime = loop {
+    tokio::select! {
+      result = &mut preparation => break result?,
+      changed = java_updates.changed(), if java_progress_open => {
+        if changed.is_err() { java_progress_open = false; continue; }
+        if !cli.quiet() {
+          let progress = java_updates.borrow_and_update().clone();
+          if last_java_stage != Some(progress.stage)
+            || last_java_progress.elapsed() >= Duration::from_millis(250)
+          {
+            eprintln!("Java {:?}: {} / {} bytes", progress.stage, progress.downloaded_bytes,
+              progress.total_bytes.map_or_else(|| "?".into(), |total| total.to_string()));
+            last_java_stage = Some(progress.stage);
+            last_java_progress = std::time::Instant::now();
+          }
+        }
+      }
+    }
+  };
+  if cancel.is_cancelled() {
+    return Err(Error::Cancelled);
+  }
+  let game_directory = context
+    .paths
+    .data
+    .join("instances")
+    .join(&instance.id)
+    .join("game");
+  let options = LaunchOptions {
+    microsoft_client_id: Some(client_id),
+    ..LaunchOptions::default()
+  };
+  let launch = build_launch_spec(&plan, runtime, &session, game_directory, &options)?;
+  let mut command = TokioCommand::new(launch.java_executable());
+  command
+    .args(launch.argv())
+    .current_dir(launch.working_directory())
+    .stdin(Stdio::inherit())
+    // Keep game logs off stdout so `--json` remains one parseable document.
+    .stdout(Stdio::piped())
+    .stderr(Stdio::inherit())
+    .kill_on_drop(true);
+  let mut child = command
+    .spawn()
+    .map_err(|error| Error::ClientLaunch(error.to_string()))?;
+  let mut child_stdout = child
+    .stdout
+    .take()
+    .ok_or_else(|| Error::ClientLaunch("client stdout pipe is unavailable".into()))?;
+  let stdout_task = tokio::spawn(async move {
+    let mut stderr = tokio::io::stderr();
+    tokio::io::copy(&mut child_stdout, &mut stderr).await
+  });
+  let status = tokio::select! {
+    result = child.wait() => result?,
+    _ = cancel.cancelled() => {
+      let _ = child.start_kill();
+      let _ = child.wait().await;
+      let _ = stdout_task.await;
+      return Err(Error::Cancelled);
+    }
+  };
+  stdout_task.await??;
+  let Some(exit_code) = status.code() else {
+    return Err(Error::ClientExit("terminated by a signal".into()));
+  };
+  if !status.success() {
+    return Err(Error::ClientExit(format!("exit code {exit_code}")));
+  }
+  Ok((instance.clone(), installed.version_id.clone(), exit_code))
 }
 
 struct InterruptListener {
@@ -845,5 +1263,61 @@ fn print_human(output: &Output) {
         )
       );
     }
+    Output::ClientInstalled {
+      instance,
+      version_id,
+      already_installed,
+      downloaded_files,
+      reused_files,
+    } => {
+      println!(
+        "{} client {} ({version_id}).",
+        if *already_installed {
+          "Already installed"
+        } else {
+          "Installed"
+        },
+        instance.name
+      );
+      println!("Downloaded {downloaded_files} files; reused {reused_files} cached files.");
+    }
+    Output::ClientList { clients } => {
+      if clients.is_empty() {
+        println!("No Minecraft client instances found.");
+      }
+      for client in clients {
+        println!(
+          "{}\t{}\t{}",
+          client.instance.name, client.version_id, client.instance.id
+        );
+      }
+    }
+    Output::ClientRun {
+      instance,
+      version_id,
+      exit_code,
+    } => println!(
+      "Minecraft client {} ({version_id}) exited with code {exit_code}.",
+      instance.name
+    ),
+    Output::AccountLogin { account } => println!(
+      "Signed in to Minecraft profile {} ({})",
+      account.username(),
+      account.id()
+    ),
+    Output::AccountList { accounts } => {
+      if accounts.is_empty() {
+        println!("No saved Minecraft accounts.");
+      }
+      for entry in accounts {
+        println!(
+          "{}\t{}{}",
+          entry.profile.username(),
+          entry.profile.id(),
+          if entry.selected { "\tselected" } else { "" }
+        );
+      }
+    }
+    Output::AccountLogout { account_id } => println!("Logged out: {account_id}"),
   }
 }

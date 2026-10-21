@@ -15,7 +15,7 @@ flowchart TD
     Java --> Probe["受限 Java 子进程\n版本与架构检查"]
 ```
 
-core 不依赖 clap 或 Slint，不自行创建异步运行时。Context 持有一个 Downloader 和两个阻塞任务的预算；CLI 使用 current-thread Tokio runtime。GUI 当前只有可选基础窗口，尚未接入 Java 交互；不建立未使用的实例、账户或进程模型。
+core 不依赖 clap 或 Slint，不自行创建异步运行时。Context 持有一个 Downloader 和两个阻塞任务的预算；CLI 使用 current-thread Tokio runtime。桌面版通过客户端启动流程调用同一 Core Java 管理逻辑；独立查看、安装、移除 Java 的 GUI 控件尚未接入。不建立未使用的实例、账户或进程模型。
 
 `q2q-http` 使用 Q2Q 的固定 Git revision `5e98cfc55b2712dfc6741d3f17c0cc14fcb57353`。后续升级应显式更新 revision 和 Cargo.lock；本阶段不依赖 crates.io 尚未发布的版本或开发者绝对路径。
 

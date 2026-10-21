@@ -14,6 +14,10 @@ pub(crate) fn server_instance_lock(data: &Path, id: &str) -> Result<Arc<File>> {
   lock_named(data, "instance", id)
 }
 
+pub(crate) fn client_cache_lock(data: &Path, sha1: &str) -> Result<Arc<File>> {
+  lock_named(data, "client-cache", sha1)
+}
+
 pub(crate) fn server_cache_lock(data: &Path, sha1: &str) -> Result<Arc<File>> {
   lock_named(data, "server-cache", sha1)
 }
@@ -94,12 +98,19 @@ pub(crate) fn replace_json(path: &Path, value: &impl serde::Serialize) -> Result
 }
 
 pub(crate) fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T> {
+  read_json_bounded(path, 64 * 1024)
+}
+
+pub(crate) fn read_json_bounded<T: serde::de::DeserializeOwned>(
+  path: &Path,
+  limit: usize,
+) -> Result<T> {
   use std::io::Read;
   let mut bytes = Vec::new();
   File::open(path)?
-    .take(64 * 1024 + 1)
+    .take(limit.saturating_add(1) as u64)
     .read_to_end(&mut bytes)?;
-  if bytes.len() > 64 * 1024 {
+  if bytes.len() > limit {
     return Err(Error::Metadata("managed record exceeds limit".into()));
   }
   Ok(serde_json::from_slice(&bytes)?)

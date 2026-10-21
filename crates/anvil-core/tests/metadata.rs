@@ -90,6 +90,9 @@ fn respond(stream: &mut TcpStream, responses: &HashMap<String, Vec<u8>>) -> std:
       "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
       body.len()
     )?;
+    if path == "/version.json" && body.len() > VERSION_JSON_LIMIT as usize {
+      return Ok(());
+    }
     stream.write_all(body)?;
   } else {
     stream
@@ -117,6 +120,41 @@ fn version_document(id: &str) -> Vec<u8> {
       "size": 61283782,
       "url":"https://piston-data.mojang.com/v1/objects/0123456789abcdef0123456789abcdef01234567/server.jar"
     }}
+  })).unwrap()
+}
+fn client_version_document(id: &str) -> Vec<u8> {
+  serde_json::to_vec(&serde_json::json!({
+    "id": id,
+    "type":"release",
+    "javaVersion": {"component":"java-runtime-delta", "majorVersion":21},
+    "downloads": {"client": {
+      "sha1":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "size": 123456789,
+      "url":"https://piston-data.mojang.com/v1/objects/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/client.jar"
+    }},
+    "assetIndex": {
+      "id":"17",
+      "sha1":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "size": 42,
+      "url":"https://piston-meta.mojang.com/v1/packages/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/17.json"
+    },
+    "mainClass":"net.minecraft.client.main.Main",
+    "logging":{"client":{
+      "argument":"-Dlog4j.configurationFile=${path}",
+      "file":{"id":"client-1.12.xml","sha1":"dddddddddddddddddddddddddddddddddddddddd","size":888,
+        "url":"https://piston-data.mojang.com/v1/objects/dddddddddddddddddddddddddddddddddddddddd/client-1.12.xml"},
+      "type":"log4j2-xml"
+    }},
+    "libraries":[{"name":"org.lwjgl:lwjgl:3.3.3","downloads":{"artifact":{
+      "path":"org/lwjgl/lwjgl/3.3.3/lwjgl-3.3.3.jar",
+      "url":"https://libraries.minecraft.net/org/lwjgl/lwjgl/3.3.3/lwjgl-3.3.3.jar",
+      "size": 100,
+      "sha1":"cccccccccccccccccccccccccccccccccccccccc"
+    }}}],
+    "arguments": {
+      "jvm":["-Xmx2G", {"rules":[{"action":"allow","os":{"name":"osx"}}],"value":["-XstartOnFirstThread"]}],
+      "game":["--username", {"rules":[{"action":"allow"}],"value":"${auth_player_name}"}]
+    }
   })).unwrap()
 }
 fn executor() -> Executor {
@@ -240,6 +278,157 @@ async fn rejects_invalid_artifact_metadata_before_returning_a_plan() {
     matches!(&result, Err(Error::Metadata(message)) if message.contains("HTTPS")),
     "unexpected metadata result: {result:?}"
   );
+}
+
+#[tokio::test]
+async fn resolves_client_metadata_after_manifest_hash_verification() {
+  let document = client_version_document("1.21.1");
+  let fixture = Fixture::new(valid_fixture(&document), document.clone());
+  let resolved = resolve_client_from(&executor(), "1.21.1", fixture.manifest_url.clone())
+    .await
+    .unwrap();
+
+  assert_eq!(resolved.version_id, "1.21.1");
+  assert_eq!(resolved.version_type, "release");
+  assert_eq!(resolved.metadata_sha1, super::sha1_hex(&document));
+  assert_eq!(resolved.java_component, "java-runtime-delta");
+  assert_eq!(resolved.java_major, 21);
+  assert_eq!(resolved.client_jar.size, 123456789);
+  assert_eq!(resolved.client_jar.sha1, "a".repeat(40));
+  assert_eq!(resolved.client_jar.url.scheme(), "https");
+  assert_eq!(resolved.asset_index.id, "17");
+  assert_eq!(resolved.asset_index.file.size, 42);
+  assert_eq!(resolved.main_class, "net.minecraft.client.main.Main");
+  let logging = resolved.logging.unwrap();
+  assert_eq!(logging.kind, "log4j2-xml");
+  assert_eq!(logging.file_id, "client-1.12.xml");
+  assert_eq!(logging.file.size, 888);
+  assert_eq!(resolved.libraries.len(), 1);
+  assert_eq!(resolved.arguments.jvm.len(), 2);
+  assert_eq!(resolved.arguments.game.len(), 2);
+}
+
+#[tokio::test]
+async fn rejects_client_metadata_with_missing_or_invalid_required_fields() {
+  let mut documents = Vec::new();
+
+  let mut missing_java: serde_json::Value =
+    serde_json::from_slice(&client_version_document("1.21.1")).unwrap();
+  missing_java.as_object_mut().unwrap().remove("javaVersion");
+  documents.push((
+    "Java requirement",
+    serde_json::to_vec(&missing_java).unwrap(),
+  ));
+
+  let mut missing_client: serde_json::Value =
+    serde_json::from_slice(&client_version_document("1.21.1")).unwrap();
+  missing_client["downloads"]
+    .as_object_mut()
+    .unwrap()
+    .remove("client");
+  documents.push(("client JAR", serde_json::to_vec(&missing_client).unwrap()));
+
+  for (label, update) in [
+    (
+      "HTTP client URL",
+      ("url", serde_json::json!("http://example.com/client.jar")),
+    ),
+    ("zero client size", ("size", serde_json::json!(0))),
+    (
+      "invalid client SHA-1",
+      ("sha1", serde_json::json!("not-a-sha1")),
+    ),
+    (
+      "oversized client JAR",
+      ("size", serde_json::json!(MAX_CLIENT_JAR + 1)),
+    ),
+  ] {
+    let mut document: serde_json::Value =
+      serde_json::from_slice(&client_version_document("1.21.1")).unwrap();
+    document["downloads"]["client"][update.0] = update.1;
+    documents.push((label, serde_json::to_vec(&document).unwrap()));
+  }
+
+  for (label, update) in [
+    (
+      "HTTP asset index URL",
+      ("url", serde_json::json!("http://example.com/assets.json")),
+    ),
+    (
+      "oversized asset index",
+      ("size", serde_json::json!(MAX_ASSET_INDEX + 1)),
+    ),
+    (
+      "invalid asset index SHA-1",
+      ("sha1", serde_json::json!("not-a-sha1")),
+    ),
+  ] {
+    let mut document: serde_json::Value =
+      serde_json::from_slice(&client_version_document("1.21.1")).unwrap();
+    document["assetIndex"][update.0] = update.1;
+    documents.push((label, serde_json::to_vec(&document).unwrap()));
+  }
+
+  let mut missing_index: serde_json::Value =
+    serde_json::from_slice(&client_version_document("1.21.1")).unwrap();
+  missing_index.as_object_mut().unwrap().remove("assetIndex");
+  documents.push(("asset index", serde_json::to_vec(&missing_index).unwrap()));
+
+  let mut missing_arguments: serde_json::Value =
+    serde_json::from_slice(&client_version_document("1.21.1")).unwrap();
+  missing_arguments
+    .as_object_mut()
+    .unwrap()
+    .remove("arguments");
+  documents.push(("arguments", serde_json::to_vec(&missing_arguments).unwrap()));
+
+  for (label, document) in documents {
+    let fixture = Fixture::new(valid_fixture(&document), document);
+    let result = resolve_client_from(&executor(), "1.21.1", fixture.manifest_url.clone()).await;
+    assert!(
+      matches!(result, Err(Error::Metadata(_))),
+      "{label} should be rejected, got {result:?}"
+    );
+  }
+}
+
+#[tokio::test]
+async fn rejects_client_version_hash_id_and_untrusted_metadata_source() {
+  let document = client_version_document("1.21.1");
+  let mut manifest: serde_json::Value = serde_json::from_slice(&valid_fixture(&document)).unwrap();
+  manifest["versions"][0]["sha1"] = serde_json::Value::String("f".repeat(40));
+  let fixture = Fixture::new(serde_json::to_vec(&manifest).unwrap(), document.clone());
+  let result = resolve_client_from(&executor(), "1.21.1", fixture.manifest_url.clone()).await;
+  assert!(
+    matches!(&result, Err(Error::Metadata(message)) if message.contains("SHA-1")),
+    "unexpected hash result: {result:?}"
+  );
+
+  let wrong_id_document = client_version_document("1.21.2");
+  let fixture = Fixture::new(valid_fixture(&wrong_id_document), wrong_id_document);
+  let result = resolve_client_from(&executor(), "1.21.1", fixture.manifest_url.clone()).await;
+  assert!(
+    matches!(&result, Err(Error::Metadata(message)) if message.contains("ID")),
+    "unexpected ID result: {result:?}"
+  );
+
+  assert!(matches!(
+    resolve_client_from(
+      &executor(),
+      "1.21.1",
+      Url::parse("https://example.com/manifest.json").unwrap()
+    )
+    .await,
+    Err(Error::Metadata(_))
+  ));
+}
+
+#[tokio::test]
+async fn rejects_oversized_client_version_json() {
+  let document = vec![b'x'; VERSION_JSON_LIMIT as usize + 1];
+  let fixture = Fixture::new(valid_fixture(&document), document);
+  let result = resolve_client_from(&executor(), "1.21.1", fixture.manifest_url.clone()).await;
+  assert!(result.is_err(), "oversized version JSON should fail");
 }
 
 #[tokio::test]

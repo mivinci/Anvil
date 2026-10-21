@@ -12,6 +12,11 @@ desktop = ["dep:slint"]
 [dependencies]
 anvil-core.workspace = true
 slint = { workspace = true, optional = true }
+tokio.workspace = true
+tokio-util.workspace = true
+
+[build-dependencies]
+slint-build = "1.14"
 
 [[bin]]
 name = "anvil-gui"

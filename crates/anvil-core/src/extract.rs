@@ -177,6 +177,23 @@ pub(crate) fn unpack(
   zip: bool,
   cancel: &CancellationToken,
 ) -> Result<()> {
+  unpack_excluding(archive, root, zip, &[], cancel)
+}
+
+pub(crate) fn unpack_excluding(
+  archive: &Path,
+  root: &Path,
+  zip: bool,
+  excludes: &[String],
+  cancel: &CancellationToken,
+) -> Result<()> {
+  let excludes = excludes
+    .iter()
+    .map(|exclude| {
+      relative(Path::new(exclude.trim_end_matches('/')))
+        .map_err(|_| Error::Archive("invalid extraction exclusion".into()))
+    })
+    .collect::<Result<Vec<_>>>()?;
   let mut extractor = Extractor {
     root,
     cancel,
@@ -191,7 +208,14 @@ pub(crate) fn unpack(
     }
     for i in 0..archive.len() {
       let mut entry = archive.by_index(i).map_err(zip_error)?;
-      let path = extractor.register(Path::new(entry.name()), entry.size())?;
+      let entry_path = relative(Path::new(entry.name()))?;
+      if excludes
+        .iter()
+        .any(|exclude| entry_path.starts_with(exclude))
+      {
+        continue;
+      }
+      let path = extractor.register(&entry_path, entry.size())?;
       let mode = entry.unix_mode().unwrap_or(0o644);
       if mode & 0o170000 == 0o120000 {
         return Err(Error::Archive("ZIP symlinks are unsupported".into()));

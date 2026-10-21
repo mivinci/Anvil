@@ -42,6 +42,68 @@ fn empty_list_is_one_clean_json_document() {
 }
 
 #[test]
+fn empty_client_and_account_lists_are_json_without_creating_state() {
+  let root = tempfile::tempdir().unwrap();
+  let clients = json(&run(root.path(), &["client", "list", "--json"]), 0);
+  assert_eq!(clients["ok"], true);
+  assert_eq!(clients["data"]["clients"], serde_json::json!([]));
+
+  let accounts = json(&run(root.path(), &["account", "list", "--json"]), 0);
+  assert_eq!(accounts["ok"], true);
+  assert_eq!(accounts["data"]["accounts"], serde_json::json!([]));
+  assert!(!root.path().join("instances").exists());
+  assert!(!root.path().join("accounts.json").exists());
+}
+
+#[test]
+fn client_and_account_errors_are_json_and_do_not_start_network_work() {
+  let root = tempfile::tempdir().unwrap();
+  let invalid_name = json(
+    &run(
+      root.path(),
+      &[
+        "--json",
+        "client",
+        "install",
+        "../outside",
+        "--version",
+        "1.21.1",
+      ],
+    ),
+    2,
+  );
+  assert_eq!(invalid_name["error"]["code"], "invalid_argument");
+  assert!(!root.path().join("instances").exists());
+
+  let invalid_client_id = json(
+    &run(
+      root.path(),
+      &["--json", "account", "login", "--client-id", "not-a-guid"],
+    ),
+    2,
+  );
+  assert_eq!(invalid_client_id["error"]["code"], "invalid_argument");
+  assert!(!root.path().join("accounts.json").exists());
+
+  let no_instance = json(
+    &run(
+      root.path(),
+      &[
+        "--json",
+        "client",
+        "launch",
+        "missing",
+        "--client-id",
+        "00000000-0000-0000-0000-000000000000",
+      ],
+    ),
+    3,
+  );
+  assert_eq!(no_instance["error"]["code"], "not_found");
+  assert!(!root.path().join("instances").exists());
+}
+
+#[test]
 fn empty_server_list_and_invalid_server_name_have_json_results() {
   let root = tempfile::tempdir().unwrap();
   let listed = json(&run(root.path(), &["server", "list", "--json"]), 0);

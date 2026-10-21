@@ -1,0 +1,157 @@
+import { Button, LineEdit } from "std-widgets.slint";
+
+export struct ClientRow {
+    name: string,
+    version: string,
+}
+
+export struct AccountRow {
+    id: string,
+    username: string,
+    selected: bool,
+}
+
+export component AnvilWindow inherits Window {
+    title: "Anvil";
+    width: 820px;
+    height: 660px;
+    background: #f4f5f7;
+
+    in-out property <string> status-text: "就绪";
+    in-out property <string> client_name: "vanilla";
+    in-out property <string> client_version: "1.21.1";
+    in-out property <string> device-code: "";
+    in-out property <string> verification-uri: "";
+    in-out property <bool> busy: false;
+    in-out property <[ClientRow]> clients: [];
+    in-out property <[AccountRow]> accounts: [];
+    in-out property <string> selected-account-id: "";
+
+    callback refresh-data();
+    callback install-client(string, string);
+    callback login();
+    callback cancel();
+    callback launch-client(string, string);
+    callback select-account(string);
+    callback logout-account(string);
+
+    VerticalLayout {
+        padding: 24px;
+        spacing: 14px;
+
+        HorizontalLayout {
+            spacing: 16px;
+            Text {
+                text: "Anvil";
+                font-size: 28px;
+                font-weight: 700;
+                vertical-alignment: center;
+            }
+            Rectangle { horizontal-stretch: 1; }
+            Button {
+                text: "刷新";
+                enabled: !root.busy;
+                clicked => root.refresh-data();
+            }
+        }
+
+        Text {
+            text: root.status-text;
+            color: #344054;
+            wrap: word-wrap;
+        }
+
+        Text {
+            text: "在浏览器中完成 Microsoft 登录";
+            visible: root.device-code != "";
+            font-weight: 600;
+        }
+        LineEdit {
+            visible: root.device-code != "";
+            text: root.verification-uri;
+            read-only: true;
+        }
+        Text {
+            text: "输入代码：" + root.device-code;
+            visible: root.device-code != "";
+            font-size: 20px;
+            font-weight: 700;
+        }
+
+        Rectangle { height: 1px; background: #d0d5dd; }
+
+        Text { text: "Microsoft 账号"; font-size: 18px; font-weight: 600; }
+        HorizontalLayout {
+            spacing: 8px;
+            Button {
+                text: "登录 Microsoft 账号";
+                enabled: !root.busy;
+                clicked => root.login();
+            }
+            Button {
+                text: "取消当前操作";
+                enabled: root.busy;
+                clicked => root.cancel();
+            }
+        }
+        for account in root.accounts: HorizontalLayout {
+            spacing: 8px;
+            Text {
+                text: account.username + (account.selected ? "（当前）" : "");
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+            }
+            Button {
+                text: account.selected ? "已选择" : "选择";
+                enabled: !root.busy && !account.selected;
+                clicked => root.select-account(account.id);
+            }
+            Button {
+                text: "移除";
+                enabled: !root.busy;
+                clicked => root.logout-account(account.id);
+            }
+        }
+
+        Rectangle { height: 1px; background: #d0d5dd; }
+
+        Text { text: "Minecraft 客户端"; font-size: 18px; font-weight: 600; }
+        HorizontalLayout {
+            spacing: 8px;
+            LineEdit {
+                placeholder-text: "实例名称";
+                text <=> root.client_name;
+            }
+            LineEdit {
+                placeholder-text: "版本，例如 1.21.1";
+                text <=> root.client_version;
+            }
+            Button {
+                text: "安装版本";
+                enabled: !root.busy;
+                clicked => root.install-client(root.client_name, root.client_version);
+            }
+        }
+        for client in root.clients: HorizontalLayout {
+            spacing: 8px;
+            Text {
+                text: client.name + " · Minecraft " + client.version;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+            }
+            Button {
+                text: "启动";
+                enabled: !root.busy && root.selected-account-id != "";
+                clicked => root.launch-client(client.name, root.selected-account-id);
+            }
+        }
+
+        Rectangle { vertical-stretch: 1; }
+        Text {
+            text: "Anvil 通过共享 Core 管理下载、登录和客户端运行。"
+                + (root.accounts.length == 0 ? "请先登录 Microsoft 账号。" : "");
+            color: #667085;
+            font-size: 12px;
+        }
+    }
+}

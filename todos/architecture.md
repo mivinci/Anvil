@@ -1,6 +1,6 @@
 # Anvil 架构方案
 
-状态：workspace、CLI、托管 Java 管理及原版服务端 `create` / `list` / `start` 首轮已实现；GUI 已有可选 Slint 基础入口，其余为目标结构。当前能力与验证边界见 [Java 管理](java-management.md) 和 [服务端实施项](server-milestone.md)。
+状态：workspace、CLI、托管 Java 管理、Core 客户端文件安装与原版服务端 `create` / `list` / `start` 首轮已实现；客户端 CLI 与 Slint 桌面流程已接入共享 Core。桌面代码尚未在当前环境编译；真实登录和游戏启动验收仍待完成。当前能力与验证边界见 [原版客户端首条可用流程](client-milestone.md)、[Java 管理](java-management.md) 和 [服务端实施项](server-milestone.md)。
 
 Minecraft 文件清单、元数据差异和参数生成依据见 [Minecraft 文件安装与启动设计依据](minecraft-installation.md)，其中区分已核对的官方数据与仍需实际运行验证的行为。
 
@@ -29,8 +29,8 @@ Anvil/
       src/                         # CLI，生成 anvil 可执行文件
     anvil-gui/
       Cargo.toml
-      src/                         # 桌面入口与 UI 桥接
-      # 当前使用内联 Slint 基础窗口，后续按需拆出 ui/
+      src/main.rs                  # 内联 Slint 客户端界面
+      src/backend.rs               # Slint 事件与 Core 操作桥接
   todos/
     architecture.md
   README.md
@@ -104,13 +104,13 @@ CLI 只负责参数、交互、输出格式和系统信号映射；GUI 只负责
 
 ## 命令行与 AI 调用契约
 
-CLI 按实施清单分阶段落地。当前可用 `version list` 查询 Mojang 版本目录、管理托管 Java，以及 `server create`、`server list` 和前台 `server start`。start 检查 EULA、准备匹配的托管 Java、持有实例锁、转发控制台和日志、观察 Ready、响应 Ctrl-C 并记录 `last-session.json`。JSONL 生命周期事件已提供；`server status` 与客户端安装命令仍待后续实现：
+CLI 按实施清单分阶段落地。当前可用 `version list` 查询 Mojang 版本目录、管理托管 Java，以及 `server create`、`server list` 和前台 `server start`。start 检查 EULA、准备匹配的托管 Java、持有实例锁、转发控制台和日志、观察 Ready、响应 Ctrl-C 并记录 `last-session.json`。JSONL 生命周期事件已提供。客户端命令暂为设计目标，首批只覆盖 1.21.1；数据布局、平台目标、安装重试和账户前置条件见[客户端执行方案](client-milestone.md)：
 
 ```bash
 anvil version list --json
-anvil instance list --json
-anvil instance create my-world --version 1.21.1
-anvil launch my-world
+anvil client install vanilla --version 1.21.1
+anvil --json client list
+anvil client launch vanilla
 
 anvil server create survival --version 1.21.1
 anvil server list --json
@@ -171,11 +171,15 @@ sequenceDiagram
 应用数据目录/
   config.json
   accounts.json                     # 非敏感账户信息，令牌在凭证库
-  instances/<id>/
-    instance.json                   # 类型为 Client 或 Server
-    installed.json
-    server.jar                      # 服务端官方 artifact，身份记录在 instance.json
-    game/                           # 客户端 saves/mods/config 或服务端 world/properties 等
+  instances/
+    client-<name>/
+      instance.json                 # type=client；稳定身份与显示名
+      installed.json                # 客户端版本、平台及已验证文件引用
+      game/                         # options、saves、screenshots 等可变数据
+    server-<name>/
+      instance.json                 # type=server；含 EULA 决定等服务端状态
+      server.jar                    # 服务端官方 artifact，身份记录在 instance.json
+      game/                         # world、properties 等服务端可变数据
   runtimes/<runtime-id>/
   locks/                            # 跨进程稳定锁
   sessions/                         # 运行身份与状态记录，不存令牌
@@ -193,7 +197,7 @@ sequenceDiagram
   sessions/<session-id>/
 ```
 
-实例隔离可变数据，共享不可变依赖。固定 Maven 路径等布局按上游规则保留并检查内容碰撞；natives 模板由平台和输入文件身份决定，实际可写提取目录位于对应运行会话下，避免多个实例共用写入路径。缓存可被系统清理，启动时检查必需文件并修复，主动检查执行完整校验；普通启动不全盘重哈希，因此不承诺检测所有同长度外部篡改。
+客户端和服务端共用实例根目录，但以 ID 前缀、manifest 类型和不同状态字段区分；共享 Java 与不可变下载文件，实例只隔离游戏写入的数据。客户端安装快照独立记录在 `installed.json`，成功安装后原子提交；换版本或修复缓存不能覆盖 `game/` 用户数据。固定 Maven 路径等布局按上游规则保留并检查内容碰撞；natives 模板由平台和输入文件身份决定，实际可写提取目录位于对应运行会话下，避免多个实例共用写入路径。缓存可被系统清理；安装操作负责检查必需文件并重新获取缺项，客户端启动发现文件缺失或损坏时要求重新安装，不在启动时隐式更新。主动校验可执行完整检查；普通启动不全盘重哈希，因此不承诺检测所有同长度外部篡改。
 
 ## 账户与 Java
 
@@ -253,7 +257,7 @@ CLI 将系统信号映射为 core 取消或服务端停止，保持清理语义�
 3. [ ] **版本与安装计划。** 已完成 Mojang 版本目录查询；仍需选定首批客户端版本和架构，解析并校验版本 JSON、Java 要求、Artifact 和修复计划，按客户端/服务端类型验证资源集合。
 4. [ ] **Minecraft 下载与安装。** 在 Java 安装已接入 q2q-http 的基础上扩展游戏文件计划、共享缓存、恢复、natives 解包与 installed.json 提交，不重复实现下载引擎。
 5. [ ] **服务端 CLI（分步实施中）。** 已完成版本元数据、q2q-http 服务端 JAR 下载、`create` / `list`、Java/EULA 预检、前台 `start` 生命周期和 JSONL 自动化事件；按 [服务端实施项](server-milestone.md) 完成 Ctrl-C 与跨平台验证。
-6. [ ] **客户端与桌面流程。** 按[客户端实施项](client-milestone.md)分步完成版本元数据、文件安装、授权、参数和真实启动，再接入 GUI。
+6. [ ] **客户端与桌面流程。** Core、CLI 与桌面入口已接入客户端元数据、文件安装、账户授权和启动参数；桌面编译及真实登录、游戏启动 smoke 尚待验收，详见[客户端实施项](client-milestone.md)。
 7. [ ] **后台托管与 AI 接口。** 评审并实现监督进程、本地 IPC、跨命令状态与 stop，再接入 MCP；在长期任务所有权明确后提供后台一键启动。
 8. [ ] **跨平台与资源收敛。** 按具体 OS/CPU/游戏版本验证，完成 CLI 与 GUI 分别打包、签名/更新方案及资源测量；之后再扩展模组与整合包。
 

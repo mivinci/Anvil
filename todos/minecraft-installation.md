@@ -1,6 +1,6 @@
 # Minecraft 文件安装与启动设计依据
 
-状态：资料核对与实现方案；Mojang 版本目录查询已实现，客户端版本 JSON 解析和文件安装尚未实现。核对日期：2026-10-21。
+状态：资料核对与实现方案；Mojang 版本目录查询、首版客户端版本 JSON 解析和平台安装计划已实现，游戏文件安装、账户授权与启动尚未实现。核对日期：2026-10-21。
 
 本文为 [整体架构](architecture.md) 中 metadata、install、java 和 launch 模块提供具体输入与边界。安装清单和 argv 必须从所选版本的元数据生成；示例版本用于说明格式差异，不表示 Anvil 已支持或已运行这些版本。
 
@@ -25,6 +25,10 @@
 ## 元数据依赖链
 
 当前 CLI 可用 `anvil version list` 读取大小受限的 Mojang 版本清单，并列出版本 ID、类型与发布时间；`--json` 使用 CLI 的 schema 1 envelope。清单中的 ID、类型、时间、SHA-1 和版本 JSON URL 会先校验。该命令不下载版本 JSON、游戏文件、资源或 Java，也不代表对应版本已可安装或运行。
+
+Core 的 `metadata::resolve_client` 已复用共享 HTTP Executor，按总清单中的 SHA-1 校验原始版本 JSON 字节后，解析 1.21.1 首条客户端流程所需的游戏 JAR、asset index、Java 要求、main class、libraries 与现代参数数组。版本 JSON 响应限制为 4 MiB；client JAR 和 asset index 元数据尺寸分别限制为 1 GiB 与 16 MiB。该解析器不下载文件、不筛选 libraries rules，也不展开启动参数；尚未实现文件安装的版本仍不表示可启动。
+
+Core 的 `client_plan::plan_client` 依据目标平台筛选 libraries，并要求调用方提供与版本 JSON 中长度和 SHA-1 一致的 asset index 字节。它按资产内容哈希去重，生成 libraries、client JAR、资源对象、asset index 和日志配置的计划；不会执行下载或解包。对官方 1.21.1 样本，Windows x86_64、macOS x86_64/aarch64 和 glibc Linux x86_64 可生成计划；Linux aarch64 缺少 LWJGL ARM native，返回 unsupported。以上是元数据计划结果，不等于真实文件已安装或游戏已启动。
 
 ```mermaid
 flowchart TD
@@ -64,7 +68,7 @@ downloads 中的 client_mappings、server_mappings 等调试映射不属于普�
 
 ## 平台规则与 natives
 
-1.12.2 样本同时包含 natives、downloads.classifiers 和 extract.exclude；1.21.1 样本没有这些 natives/classifiers 字段，但有 48 个名称含 natives- 的普通库 artifact，覆盖多个平台，不能全部下载，也不能因为缺少旧字段就漏掉它们。
+1.12.2 样本同时包含 natives、downloads.classifiers 和 extract.exclude；1.21.1 样本没有这些 natives/classifiers 字段，但有 48 个名称含 natives- 的普通库 artifact，覆盖多个平台，不能全部下载，也不能因为缺少旧字段就漏掉它们。Anvil 的计划器会将现代 native JAR 保留为 classpath artifact，将旧 classifier 归档放入独立的提取计划，并拒绝目标平台没有匹配 native 的计划。实际解包仍属后续工作。
 
 解析根据元数据结构与规则处理，不只匹配文件名。对现代 LWJGL 等库，native JAR 需要在 classpath，运行时提取行为按库和版本验证；对旧 classifier 路径，按原语义准备提取目录。
 
