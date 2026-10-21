@@ -65,6 +65,8 @@ impl Drop for Fixture {
 }
 
 fn respond(stream: &mut TcpStream, responses: &HashMap<String, Vec<u8>>) -> std::io::Result<()> {
+  // Accepted sockets may inherit the listener's nonblocking mode on some platforms.
+  stream.set_nonblocking(false)?;
   stream.set_read_timeout(Some(Duration::from_secs(15)))?;
   let mut request = Vec::new();
   let mut byte = [0u8; 1];

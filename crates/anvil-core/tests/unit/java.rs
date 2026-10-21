@@ -93,6 +93,8 @@ mod pipeline {
     }
   }
   fn serve(socket: &mut TcpStream, data: &[u8], ranges: &Mutex<Vec<u64>>) -> std::io::Result<()> {
+    // Accepted sockets may inherit the listener's nonblocking mode on some platforms.
+    socket.set_nonblocking(false)?;
     socket.set_read_timeout(Some(Duration::from_secs(15)))?;
     socket.set_write_timeout(Some(Duration::from_secs(15)))?;
     let mut request = Vec::new();
