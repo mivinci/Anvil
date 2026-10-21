@@ -1,10 +1,10 @@
 # 原版客户端首条可用流程
 
-状态：执行方案；第 1–6 项、第 7.1–7.2 项及第 8 项的 CLI 接入已实现。Core 已包含客户端文件安装、运行目录准备、Microsoft 设备码授权 provider、系统凭证库适配、公开账户资料存储与结构化启动参数。CLI 已提供客户端与账户流程。原 Slint GUI 已移除；Tauri + SvelteKit 桌面壳已建立，但尚未接入 Core 命令。真实 Microsoft 登录、OS 凭证库和 Minecraft 客户端运行尚无验收记录。
+状态：执行方案；第 1–6 项、第 7.1–7.2 项及第 8 项的 CLI 接入已实现。Core 已包含客户端文件安装、运行目录准备、Microsoft 设备码授权 provider、系统凭证库适配、公开账户资料存储与结构化启动参数。CLI 已提供客户端与账户流程。原 Slint GUI 已移除；Tauri Shell + SvelteKit 桌面 App 骨架已建立，但 App 业务尚未接入。Shell 目标是通用启动和版本管理，不负责 Core 业务命令。真实 Microsoft 登录、OS 凭证库和 Minecraft 客户端运行尚无验收记录。
 
 ## 目标
 
-逐步打通原版客户端的版本选择、文件安装、账户授权和启动。CLI 与 Tauri 宿主调用 `anvil-core` 的元数据、安装和启动逻辑；桌面壳当前只有 SvelteKit UI 基础结构。下载继续复用固定 revision 的 `q2q-http`，不另造下载与恢复机制。
+逐步打通原版客户端的版本选择、文件安装、账户授权和启动。CLI 当前调用 `anvil-core`；目标桌面 App 由自己的业务组件复用 Core。通用 Tauri Shell 只启动和维护 App 版本，不承载客户端领域命令。桌面 App 当前只有 SvelteKit UI 基础结构。下载继续复用固定 revision 的 `q2q-http`，不另造下载与恢复机制。
 
 首个端到端客户端版本定为 1.21.1。首批计划目标为 Windows x86_64、macOS x86_64/aarch64、glibc Linux x86_64。该矩阵是工作目标，不代表已验收或已支持：每个组合通过本地真实安装和启动 smoke 后，才能单独标记为已验证。官方 1.21.1 元数据缺少 Linux aarch64 所需的 LWJGL 原生库，计划生成器会拒绝该组合；Windows aarch64 与 musl Linux 暂不纳入。26.3 包含尚未实现的 `default-user-jvm`、`os.versionRange` 等规则，先不纳入首批范围。
 
@@ -108,7 +108,7 @@ anvil --data-dir ./anvil-data client install vanilla --version 1.21.1
 
 **CLI 本地验收：** 2026-10-21 `cargo test --locked --offline -p anvil -p anvil-core`：1 项 CLI 单测、20 项 CLI 集成测试、62 项 Core 测试通过，1 项真实 Mojang metadata smoke 忽略。CLI 测试验证账户 profile 的原子存储、空客户端/账户列表的 JSON stdout、无效客户端名/Client ID 和缺少客户端错误；Core 测试验证重复安装结果与 LaunchSpec 生命周期内实例锁保持。Loopback fixture 测试需本地网络权限，本次仅访问回环地址；没有进行真实 Microsoft 登录、系统凭证库写入、Mojang 下载或客户端启动。
 
-**桌面工程：** 已删除原 Slint `anvil-gui` crate 与桌面依赖。`apps/anvil-shell/src-tauri` 是 Cargo workspace 中的 Tauri 宿主；`apps/anvil-desktop` 是独立的 SvelteKit 静态前端 npm workspace，通过 Shell 加载。前端使用 shadcn-svelte 组件配置和 Lucide 图标，并继承根 `tsconfig.json`。当前界面是静态壳，按钮未执行客户端操作，Tauri 命令尚未连接 Core。
+**桌面工程：** 已删除原 Slint `anvil-gui` crate 与桌面依赖。`apps/anvil-shell/src-tauri` 是 Cargo workspace 中的通用 Tauri 宿主；`apps/anvil-desktop` 是独立的 SvelteKit App npm workspace，通过 Shell 加载。前端使用 shadcn-svelte 组件配置和 Lucide 图标，并继承根 `tsconfig.json`。当前界面是静态壳，按钮未执行客户端操作；App 自己的业务组件和 Shell 的通用 Runtime API 均待设计/接入。当前 Shell crate 仍声明 Core 依赖，是骨架阶段的过渡状态。
 
 **桌面验收：** 2026-10-22 拆分宿主与页面后，本地 `npm run desktop:check`（0 错误、0 警告）、`npm run desktop:build`、`cargo check --offline -p anvil-shell` 与 `cargo fmt --all -- --check` 通过；Tauri 生成 `target/release/anvil-shell`。尚未在 Tauri WebView 中运行；真实设备码登录、OS 凭证库、各 OS/CPU 的真实安装和游戏启动仍需维护者手动 smoke 逐一记录。Linux 桌面构建已加入 Live CI。
 
