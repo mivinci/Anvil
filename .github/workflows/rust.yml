@@ -1,0 +1,104 @@
+name: Rust
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      live-java:
+        description: Run live Temurin Java 17/21/exact installation acceptance
+        type: boolean
+        default: true
+      live-server:
+        description: Download and run real Minecraft servers on each platform
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  java:
+    name: Java and CLI (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all -- --check
+      - run: cargo test --locked -p anvil -p anvil-core
+      - run: cargo clippy --locked -p anvil -p anvil-core --all-targets -- -D warnings
+      - run: cargo build --locked -p anvil
+
+  desktop:
+    name: Slint entry (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev
+      - run: cargo check --locked -p anvil-gui --features desktop
+
+  live-java:
+    name: Live Java (${{ matrix.os }})
+    if: github.event_name == 'workflow_dispatch' && inputs['live-java']
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: cargo build --locked -p anvil
+      - name: Install, repeat, list, probe and uninstall real Java runtimes
+        shell: bash
+        run: |
+          binary=target/debug/anvil
+          if [[ "$RUNNER_OS" == "Windows" ]]; then binary=target/debug/anvil.exe; fi
+          python scripts/java-smoke.py --binary "$binary"
+
+  live-server:
+    name: Live Minecraft server (${{ matrix.os }})
+    if: github.event_name == 'workflow_dispatch' && inputs['live-server']
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            extra_args: --check-interrupt --include-current
+          - os: windows-latest
+            extra_args: ''
+          - os: macos-latest
+            extra_args: ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: cargo build --locked -p anvil
+      - name: Create, start, save and stop a real 1.21.1 server
+        shell: bash
+        run: |
+          binary=target/debug/anvil
+          if [[ "$RUNNER_OS" == "Windows" ]]; then binary=target/debug/anvil.exe; fi
+          python scripts/server-smoke.py --binary "$binary" --versions 1.21.1 ${{ matrix.extra_args }}
