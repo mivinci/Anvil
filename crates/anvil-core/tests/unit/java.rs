@@ -136,11 +136,16 @@ mod pipeline {
     } else {
       "#!/bin/sh\nexit 1\n".into()
     };
+    let java_root = if cfg!(target_os = "macos") {
+      "jdk/Contents/Home"
+    } else {
+      "jdk"
+    };
     let encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
     let mut tar = tar::Builder::new(encoder);
     for (name, bytes, mode) in [
-      ("jdk/bin/java", script.into_bytes(), 0o755),
-      ("jdk/lib/data", noise(), 0o644),
+      (format!("{java_root}/bin/java"), script.into_bytes(), 0o755),
+      (format!("{java_root}/lib/data"), noise(), 0o644),
     ] {
       let mut h = tar::Header::new_gnu();
       h.set_size(bytes.len() as u64);
