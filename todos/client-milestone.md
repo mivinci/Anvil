@@ -1,6 +1,6 @@
 # 原版客户端首条可用流程
 
-状态：执行方案；客户端文件安装、账户授权和启动尚未实现。`anvil version list` 已能读取并校验 Mojang 版本总清单中的条目，但不会获取版本 JSON 或下载游戏文件。
+状态：执行方案；第 1 项已完成。客户端文件安装、账户授权和启动尚未实现。`anvil version list` 已能读取并校验 Mojang 版本总清单中的条目，但不会获取版本 JSON 或下载游戏文件。
 
 ## 目标
 
@@ -10,11 +10,11 @@
 
 ## 执行项
 
-### 1. 收敛当前 PR 反馈与基础约定
+### 1. [x] 收敛当前 PR 反馈与基础约定
 
 **交付：** README 面向启动器用户描述用途和当前能力；Core 测试文件直接放在 `crates/anvil-core/tests/`，不再按 `unit/` 子目录分层；生产路径不以 `unwrap` 处理可恢复错误，按需接入 `tracing` 记录诊断，并避免记录令牌、完整启动参数等敏感信息。
 
-**验收：** 对应 PR 评审意见已处理；格式、测试、Clippy 与桌面入口 CI 通过；测试 fixture 的断言仍能给出具体失败原因。
+**验收：** 已按 PR 评审意见改写面向用户的 README，将 Core 测试平铺在 `crates/anvil-core/tests/` 并保留其私有实现测试方式；Core 与 CLI 生产代码不再使用 `unwrap` / `expect` 解可恢复错误，诊断通过 `tracing` 写到 stderr。2026-10-21 本地 18 项 CLI 与 36 项 Core 测试通过，1 项需真实 Mojang 网络的 smoke 按设计忽略；rustfmt、Clippy 和 CLI 构建通过。GitHub Actions run #13 的 Ubuntu、Windows、macOS 以及 Slint 桌面入口全部通过。CI 使用本地 fixture，不下载真实 Java 或 Minecraft 文件。此环境未安装 Fontconfig，因此桌面入口由 CI 的 Linux job（先安装 Fontconfig）完成验证。
 
 ### 2. 确定首批客户端支持矩阵与安装契约
 
