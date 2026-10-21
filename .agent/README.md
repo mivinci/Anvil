@@ -24,7 +24,7 @@
 - 遵守仓库根目录 `rustfmt.toml`；Rust 改动运行 `cargo fmt --all -- --check`。
 - Core 集成测试放在 `crates/anvil-core/tests/`，CLI 行为测试放在 `crates/anvil/tests/`。优先覆盖公开行为、错误边界、并发、取消、恢复和清理。
 - 运行与本次改动相称的验证；清楚报告测试是否使用本地 fixture、真实网络或真实 Minecraft。没运行的测试不能声称通过。
-- 普通 CI 使用隔离 fixture。会下载真实 Minecraft/Java 文件的验收任务保持手动触发并默认关闭，除非用户确认调整。
+- 普通 CI 使用隔离 fixture。真实 Java/Minecraft 文件验收由维护者在目标平台按需运行 smoke 脚本；CI 不加入真实下载任务，除非用户重新确认。
 - 不把令牌、私钥或临时环境绝对路径写入仓库。测试产生的临时目录在结束后清理。
 
 ## Git 与交付

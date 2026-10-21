@@ -76,15 +76,15 @@ CLI 转发用户控制台输入并持续排空子进程 stdout/stderr 到 CLI st
 
 ### 7. 扩展真实运行与平台覆盖
 
-**交付：** 完成 1.21.1 各目标平台完整安装/运行 smoke；添加一个当前正式版的元数据解析与最小启动用例，确认差异后更新支持边界。触发现有 Linux/Windows/macOS CI，并在各系统跑安装和基础运行验证；按结果修复文件锁、JRE 布局、进程信号与打包差异。
+**交付：** 完成 1.21.1 各目标平台完整安装/运行 smoke；添加一个当前正式版的元数据解析与最小启动用例，确认差异后更新支持边界。普通 Linux/Windows/macOS CI 运行本地 fixture；真实安装与运行由维护者在目标平台运行 smoke 脚本，按结果修复文件锁、JRE 布局、进程信号与打包差异。
 
 **当前实跑记录：** 2026-10-21 在 Linux x86_64 临时数据目录中下载并启动官方 1.21.1 服务端。使用托管 Temurin 21，服务端仅绑定 `127.0.0.1`；约 14 秒到达 `Done`，通过控制台 `stop` 后三个维度均报告保存完成，进程 exit code 为 0，生成了世界和 `last-session.json`。首次 smoke 关闭了在线认证，因此有 offline/insecure 警告。随后保持默认 `online-mode=true` 重跑，约 13 秒 Ready，正常保存退出且没有该警告；运行环境两次都拒绝了 Mojang 公钥外连并记录一条错误，但不影响 Ready 和保存退出。此次没有验证 Ctrl-C，也不代表 Windows/macOS 或其他游戏版本已通过。
 
 2026-10-21 再次运行新 smoke 脚本：Linux x86_64 上 1.21.1 通过控制台 stop 和 SIGINT 两种方式到 Ready、保存世界并以 0 退出；Mojang 当前正式版 26.3 也成功完成元数据解析、安装、Ready、存档和正常退出。两版均使用 `online-mode=true` 与 `server-ip=127.0.0.1`。本执行环境仍拒绝 `api.minecraftservices.com` / `discovery.minecraftservices.com` 外连，因此没有验证玩家登录；认证服务告警没有阻断启动与保存。脚本结束后临时实例及下载数据已自动删除。
 
-**跨平台实跑准备：** `.github/workflows/rust.yml` 增加了仅 `workflow_dispatch` 可触发的 `live-server` job，输入 `live-server` 默认关闭，因此普通 push/PR 不会下载服务端或 Java。任务在临时数据根创建并删除实例，明确接受临时测试 EULA，配置 `server-ip=127.0.0.1`、保持 `online-mode=true`，检查 Ready、干净退出及世界文件。`scripts/server-smoke.py` 在 Ubuntu 额外测 SIGINT，并解析 Mojang manifest 选取当前正式版做一次安装与最小启动。该 GitHub Actions job 尚未实跑；Windows/macOS 的真实服务端结果仍待验证。
+**跨平台实跑准备：** 按维护者决定，`.github/workflows/rust.yml` 不包含真实 Java/Minecraft 下载的 CI job。`scripts/server-smoke.py` 保留为各平台本地验收脚本：使用临时数据根，明确接受临时测试 EULA，配置 `server-ip=127.0.0.1`、保持 `online-mode=true`，检查 Ready、干净退出及世界文件；Linux 还可测 SIGINT，并解析 Mojang manifest 选择当前正式版。Linux x86_64 上的 1.21.1 和 26.3 实跑已记录；Windows/macOS 的真实服务端结果待维护者运行脚本后补录。
 
-**验收：** 只对实际通过的 OS/CPU/游戏版本组合宣称支持。本地 Linux 检查不能代替 Windows/macOS 结果；只有相应 hosted CI 实跑完成后才更新其支持状态。
+**验收：** 只对实际通过的 OS/CPU/游戏版本组合宣称支持。本地 Linux 检查不能代替 Windows/macOS 结果；只有相应平台的真实 smoke 结果取得后才更新其支持状态。
 
 ## 首轮不包含
 

@@ -101,6 +101,6 @@ Ctrl-C 请求取消并等待下载器清理、已开始的阻塞任务和探测�
 - 自动化：CLI 5 项、core 17 项通过。覆盖版本解析、跨进程文件锁、JSON/参数错误、tar/zip 解包、路径穿越、链接循环、哈希不匹配、Java 探测失败清理、重复安装/卸载、并发忙状态及取消后的分段续传。恢复用例确认已提交的第一个分段没有重下。
 - `cargo build -p anvil --locked --offline`、`cargo clippy -p anvil -p anvil-core --all-targets --locked --offline -- -D warnings` 和 `cargo fmt --all -- --check` 通过。
 - Slint 基础入口 `cargo check -p anvil-gui --features desktop --locked --offline` 通过。此环境缺少系统开发包；检查时从 Debian 官方包临时解压 Fontconfig/FreeType 等 pkg-config 元数据，并通过命令级 PKG_CONFIG_PATH 指定，未写入仓库。
-- 新增 Linux、Windows、macOS 自动测试与桌面构建 workflow；增加手动触发的真实供应商安装矩阵。当前 Anvil 本地仓库未设置 Git remote，因此远程 CI 尚未运行。Windows/macOS 本机或 CI 结果也未获得；不把 Linux 真实安装视为这些平台已经验收。
+- Linux、Windows、macOS 自动测试与 Linux 桌面构建由 GitHub Actions 运行。真实 Temurin 安装不加入 CI；`scripts/java-smoke.py` 可在目标平台本地运行。当前 Windows/macOS 的真实安装尚未验收，不把 Linux 结果视为其他平台已通过。
 
 真实安装检查使用隔离临时数据目录；测试和 smoke 脚本不写用户系统 Java 目录。可用 `python scripts/java-smoke.py --binary target/debug/anvil` 重复 Linux 真实验收，`--check-interrupt --versions 21` 会增加分段落盘后的取消/恢复检查。

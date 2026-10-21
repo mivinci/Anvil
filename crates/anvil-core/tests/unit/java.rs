@@ -93,8 +93,8 @@ mod pipeline {
     }
   }
   fn serve(socket: &mut TcpStream, data: &[u8], ranges: &Mutex<Vec<u64>>) -> std::io::Result<()> {
-    socket.set_read_timeout(Some(Duration::from_secs(2)))?;
-    socket.set_write_timeout(Some(Duration::from_secs(2)))?;
+    socket.set_read_timeout(Some(Duration::from_secs(15)))?;
+    socket.set_write_timeout(Some(Duration::from_secs(15)))?;
     let mut request = Vec::new();
     let mut byte = [0u8; 1];
     while !request.ends_with(b"\r\n\r\n") && request.len() < 8192 {

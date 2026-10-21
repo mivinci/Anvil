@@ -79,6 +79,18 @@ pub struct ServerInstallResult {
   pub reused_cache: bool,
 }
 
+fn same_regular_file_location(left: &Path, right: &Path) -> Result<bool> {
+  for path in [left, right] {
+    match fs::symlink_metadata(path) {
+      Ok(metadata) if metadata.is_file() && !metadata.file_type().is_symlink() => {}
+      Ok(_) => return Ok(false),
+      Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+      Err(error) => return Err(error.into()),
+    }
+  }
+  Ok(fs::canonicalize(left)? == fs::canonicalize(right)?)
+}
+
 /// Plans server artifacts and downloads them into the shared, verified cache.
 /// Instance records and server directories are owned by the later instance layer.
 #[derive(Clone)]
@@ -221,14 +233,14 @@ impl ServerInstaller {
       }
       Err(error) => return Err(error),
     };
-    if downloaded_path != cache_path {
+    if !same_regular_file_location(&downloaded_path, &cache_path)? {
       return Err(Error::Conflict(
         "server cache published to an unexpected path".into(),
       ));
     }
     progress.send_modify(|p| p.stage = ServerInstallStage::Completed);
     Ok(ServerInstallResult {
-      cached_jar: downloaded_path,
+      cached_jar: cache_path,
       reused_cache,
     })
   }
@@ -426,7 +438,7 @@ impl ServerInstanceManager {
       .join("servers")
       .join("sha1")
       .join(format!("{}.jar", plan.cache_key()));
-    if download.cached_jar != expected_cache_path {
+    if !same_regular_file_location(&download.cached_jar, &expected_cache_path)? {
       return Err(Error::Conflict(
         "server artifact did not come from the managed cache".into(),
       ));
