@@ -1,6 +1,6 @@
 # Minecraft 文件安装与启动设计依据
 
-状态：资料核对与实现方案，尚未实现。核对日期：2026-10-21。
+状态：资料核对与实现方案；Mojang 版本目录查询已实现，客户端版本 JSON 解析和文件安装尚未实现。核对日期：2026-10-21。
 
 本文为 [整体架构](architecture.md) 中 metadata、install、java 和 launch 模块提供具体输入与边界。安装清单和 argv 必须从所选版本的元数据生成；示例版本用于说明格式差异，不表示 Anvil 已支持或已运行这些版本。
 
@@ -21,6 +21,8 @@
 还获取并校验了 1.21.1 的 [资源索引 17](https://piston-meta.mojang.com/v1/packages/e61ea955de95de1f99d36616a8b46147e9f6f5d7/17.json)、官方 Java 21 Linux 运行时文件清单，以及通过少量 Range 读取了 1.21.1 官方服务端 JAR 的 ZIP 目录和 bundler 元数据。后者核对了 ZIP 条目 CRC，未下载整个 JAR，不能声称完成其整文件 SHA-1 校验。未执行游戏、登录或服务端运行验证。
 
 ## 元数据依赖链
+
+当前 CLI 可用 `anvil version list` 读取大小受限的 Mojang 版本清单，并列出版本 ID、类型与发布时间；`--json` 使用 CLI 的 schema 1 envelope。清单中的 ID、类型、时间、SHA-1 和版本 JSON URL 会先校验。该命令不下载版本 JSON、游戏文件、资源或 Java，也不代表对应版本已可安装或运行。
 
 ```mermaid
 flowchart TD

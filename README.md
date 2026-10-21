@@ -2,7 +2,7 @@
 
 面向 Windows、macOS 和 Linux 的轻量 Minecraft Java 版客户端与服务端管理工具。
 
-采用 Cargo workspace：`anvil` 提供 CLI，`anvil-core` 实现公共业务，`anvil-gui` 提供可选 Slint 桌面入口。当前 CLI 已实现托管 Java 的安装、列出和卸载，以及原版服务端实例的创建、列表和前台启动。服务端启动会准备 EULA 与匹配的托管 Java，支持控制台输入和 Ctrl-C 优雅停止；Linux x86_64 上已实跑 Minecraft 1.21.1 并验证世界保存退出，其他平台和 Ctrl-C 终端行为仍待验证。客户端安装与启动尚未实现，GUI 目前只有基础窗口。
+采用 Cargo workspace：`anvil` 提供 CLI，`anvil-core` 实现公共业务，`anvil-gui` 提供可选 Slint 桌面入口。当前 CLI 可列出 Mojang 版本目录、管理托管 Java，并创建、列出和前台启动原版服务端实例。服务端启动会准备 EULA 与匹配的托管 Java，支持控制台输入和 Ctrl-C 优雅停止；Linux x86_64 上已实跑 Minecraft 1.21.1 并验证世界保存退出，其他平台结果仍待维护者实测。客户端文件安装与启动尚未实现，GUI 目前只有基础窗口。
 
 ## 开发与使用
 
@@ -10,6 +10,9 @@
 
 ```bash
 cargo build -p anvil --locked
+
+# 查询官方版本目录
+cargo run -p anvil -- version list --json
 
 # 大版本：该版本最新稳定补丁；精确版本：含 build 号
 cargo run -p anvil -- java install --version 21

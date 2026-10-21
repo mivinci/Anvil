@@ -104,9 +104,10 @@ CLI 只负责参数、交互、输出格式和系统信号映射；GUI 只负责
 
 ## 命令行与 AI 调用契约
 
-CLI 正按服务端实施清单分阶段落地。当前可用 `server create`、`server list` 和前台 `server start`；start 检查 EULA、准备匹配的托管 Java、持有实例锁、转发控制台和日志、观察 Ready、响应 Ctrl-C 并记录 `last-session.json`。JSONL 生命周期事件已提供；`server status` 与客户端命令仍待后续实现：
+CLI 按实施清单分阶段落地。当前可用 `version list` 查询 Mojang 版本目录、管理托管 Java，以及 `server create`、`server list` 和前台 `server start`。start 检查 EULA、准备匹配的托管 Java、持有实例锁、转发控制台和日志、观察 Ready、响应 Ctrl-C 并记录 `last-session.json`。JSONL 生命周期事件已提供；`server status` 与客户端安装命令仍待后续实现：
 
 ```bash
+anvil version list --json
 anvil instance list --json
 anvil instance create my-world --version 1.21.1
 anvil launch my-world
@@ -249,7 +250,7 @@ CLI 将系统信号映射为 core 取消或服务端停止，保持清理语义�
 
 1. [ ] **Workspace 与核心接口（部分完成）。** 建立 anvil-core、anvil、anvil-gui，CLI 可独立构建；统一实例、数据根、配置、错误、任务及取消模型，GUI 接入最小 Slint 桥接。
 2. [x] **Java 管理首轮。** Temurin 大版本/精确版本解析、q2q-http 下载、受限解包、可执行性检查、安装记录、列表/卸载与 JSON 输出；Linux 真实安装及本地测试通过。Windows/macOS 结果待远端 CI，详见 Java 管理文档。
-3. [ ] **版本与安装计划。** 选定首批客户端/服务端版本和架构，完成元数据、Java 要求、Artifact 和修复计划；按类型验证资源集合。
+3. [ ] **版本与安装计划。** 已完成 Mojang 版本目录查询；仍需选定首批客户端版本和架构，解析并校验版本 JSON、Java 要求、Artifact 和修复计划，按客户端/服务端类型验证资源集合。
 4. [ ] **Minecraft 下载与安装。** 在 Java 安装已接入 q2q-http 的基础上扩展游戏文件计划、共享缓存、恢复、natives 解包与 installed.json 提交，不重复实现下载引擎。
 5. [ ] **服务端 CLI（分步实施中）。** 已完成版本元数据、q2q-http 服务端 JAR 下载、`create` / `list`、Java/EULA 预检、前台 `start` 生命周期和 JSONL 自动化事件；按 [服务端实施项](server-milestone.md) 完成 Ctrl-C 与跨平台验证。
 6. [ ] **客户端与桌面流程。** 完成授权、凭证库、参数、真实启动、GUI 实例与账户管理，验证日志、监控与客户端脱离方式。

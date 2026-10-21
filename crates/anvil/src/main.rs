@@ -9,6 +9,7 @@ use std::{
 use anvil_core::{
   Context, Error, Paths,
   java::{InstallResult, JavaManager, JavaProgress},
+  metadata::{self, GameVersion},
   server::{
     ServerInstallStage, ServerInstaller, ServerInstance, ServerInstanceManager, ServerProgress,
     ServerSessionRecord, ServerStartPreparation, server_instance_id,
@@ -53,6 +54,11 @@ impl Cli {
 
 #[derive(Subcommand)]
 enum Command {
+  /// Inspect Mojang's official Minecraft version catalog.
+  Version {
+    #[command(subcommand)]
+    command: VersionCommand,
+  },
   /// Manage Anvil-owned Java runtimes.
   Java {
     #[command(subcommand)]
@@ -63,6 +69,11 @@ enum Command {
     #[command(subcommand)]
     command: ServerCommand,
   },
+}
+#[derive(Subcommand)]
+enum VersionCommand {
+  /// List released, snapshot, and historical versions.
+  List,
 }
 #[derive(Subcommand)]
 enum JavaCommand {
@@ -101,6 +112,9 @@ enum ServerCommand {
 #[derive(Serialize)]
 #[serde(untagged)]
 enum Output {
+  VersionList {
+    versions: Vec<GameVersion>,
+  },
   Install(InstallResult),
   List {
     runtimes: Vec<anvil_core::java::InstalledJava>,
@@ -249,8 +263,13 @@ async fn run(cli: &Cli) -> Result<Output, Error> {
   let context = Context::new(Paths::discover(cli.data_dir.clone())?)?;
   let manager = JavaManager::new(context.clone());
   let server_installer = ServerInstaller::new(context.clone());
-  let server_instances = ServerInstanceManager::new(context);
+  let server_instances = ServerInstanceManager::new(context.clone());
   match &cli.command {
+    Command::Version {
+      command: VersionCommand::List,
+    } => Ok(Output::VersionList {
+      versions: metadata::list_versions(&context).await?,
+    }),
     Command::Java {
       command: JavaCommand::List,
     } => Ok(Output::List {
@@ -747,6 +766,17 @@ fn is_ready_line(line: &[u8]) -> bool {
 
 fn print_human(output: &Output) {
   match output {
+    Output::VersionList { versions } => {
+      if versions.is_empty() {
+        println!("No Minecraft versions found.");
+      }
+      for version in versions {
+        println!(
+          "{}\t{}\t{}",
+          version.id, version.version_type, version.release_time
+        );
+      }
+    }
     Output::Install(result) => {
       println!(
         "{} {}",

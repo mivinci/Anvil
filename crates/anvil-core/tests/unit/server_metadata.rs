@@ -124,6 +124,38 @@ fn executor() -> Executor {
 }
 
 #[tokio::test]
+async fn lists_versions_from_the_official_manifest_shape() {
+  let document = version_document("1.21.1");
+  let mut manifest: serde_json::Value =
+    serde_json::from_slice(&valid_fixture(&document)).unwrap();
+  let mut snapshot = manifest["versions"][0].clone();
+  snapshot["id"] = serde_json::Value::String("24w33a".into());
+  snapshot["type"] = serde_json::Value::String("snapshot".into());
+  snapshot["releaseTime"] = serde_json::Value::String("2024-08-14T12:00:00+00:00".into());
+  manifest["versions"].as_array_mut().unwrap().push(snapshot);
+  let fixture = Fixture::new(serde_json::to_vec(&manifest).unwrap(), document);
+
+  let versions = list_versions_from(&executor(), fixture.manifest_url.clone())
+    .await
+    .unwrap();
+  assert_eq!(
+    versions,
+    vec![
+      GameVersion {
+        id: "1.21.1".into(),
+        version_type: "release".into(),
+        release_time: "2024-08-08T00:00:00+00:00".into(),
+      },
+      GameVersion {
+        id: "24w33a".into(),
+        version_type: "snapshot".into(),
+        release_time: "2024-08-14T12:00:00+00:00".into(),
+      },
+    ]
+  );
+}
+
+#[tokio::test]
 async fn resolves_server_and_java_requirement_through_verified_metadata_chain() {
   let document = version_document("1.21.1");
   let fixture = Fixture::new(valid_fixture(&document), document);

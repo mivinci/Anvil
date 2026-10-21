@@ -118,6 +118,11 @@ fn version_and_help_are_available_without_business_work() {
       .status
       .success()
   );
+  assert!(
+    run(root.path(), &["version", "list", "--help"])
+      .status
+      .success()
+  );
 }
 
 #[test]

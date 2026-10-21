@@ -1,16 +1,26 @@
-//! Minimal Mojang metadata resolution for original game servers.
+//! Bounded Mojang version metadata for launcher and original-server workflows.
+use std::collections::HashSet;
+
 use q2q_http::Executor;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
 use url::Url;
 
-use crate::{Error, Result};
+use crate::{Context, Error, Result};
 
 const VERSION_MANIFEST: &str = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
 const VERSION_MANIFEST_LIMIT: u64 = 8 * 1024 * 1024;
 const VERSION_JSON_LIMIT: u64 = 4 * 1024 * 1024;
 const MAX_VERSION_ENTRIES: usize = 100_000;
 const MAX_SERVER_ARTIFACT: u64 = 1024 * 1024 * 1024;
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct GameVersion {
+  pub id: String,
+  #[serde(rename = "type")]
+  pub version_type: String,
+  pub release_time: String,
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ServerArtifact {
@@ -31,6 +41,10 @@ struct ManifestEntry {
   id: String,
   url: String,
   sha1: String,
+  #[serde(rename = "type")]
+  version_type: String,
+  #[serde(rename = "releaseTime")]
+  release_time: String,
 }
 #[derive(Deserialize)]
 struct VersionDocument {
@@ -56,6 +70,70 @@ struct ServerDownload {
   url: Option<String>,
 }
 
+/// List versions from Mojang's bounded, official version manifest.
+pub async fn list_versions(context: &Context) -> Result<Vec<GameVersion>> {
+  let http = context.http.executor();
+  list_versions_from(
+    &http,
+    Url::parse(VERSION_MANIFEST).expect("constant URL"),
+  )
+  .await
+}
+
+async fn list_versions_from(http: &Executor, manifest_url: Url) -> Result<Vec<GameVersion>> {
+  validate_metadata_url(&manifest_url)?;
+  let response = http
+    .get(manifest_url.as_str())
+    .max_body_size(VERSION_MANIFEST_LIMIT)
+    .send()
+    .await?;
+  let bytes = response
+    .collect_bounded(VERSION_MANIFEST_LIMIT as usize)
+    .await?;
+  let manifest: VersionManifest = parse_json(&bytes)?;
+  if manifest.versions.len() > MAX_VERSION_ENTRIES {
+    return Err(Error::Metadata("too many versions in manifest".into()));
+  }
+
+  let mut ids = HashSet::with_capacity(manifest.versions.len());
+  let mut versions = Vec::with_capacity(manifest.versions.len());
+  for entry in manifest.versions {
+    if !is_valid_version_id(&entry.id) {
+      return Err(Error::Metadata(
+        "invalid Minecraft version ID in manifest".into(),
+      ));
+    }
+    validate_sha1(&entry.sha1)?;
+    let metadata_url = Url::parse(&entry.url)
+      .map_err(|_| Error::Metadata("invalid version metadata URL".into()))?;
+    validate_metadata_url(&metadata_url)?;
+    if entry.version_type.is_empty()
+      || entry.version_type.len() > 32
+      || !entry
+        .version_type
+        .bytes()
+        .all(|byte| byte.is_ascii_lowercase() || byte == b'_')
+    {
+      return Err(Error::Metadata("invalid Minecraft version type".into()));
+    }
+    if entry.release_time.is_empty()
+      || entry.release_time.len() > 64
+      || !entry.release_time.bytes().all(|byte| byte.is_ascii_graphic())
+    {
+      return Err(Error::Metadata("invalid Minecraft version release time".into()));
+    }
+    if !ids.insert(entry.id.clone()) {
+      return Err(Error::Metadata("duplicate version ID in manifest".into()));
+    }
+    versions.push(GameVersion {
+      id: entry.id,
+      version_type: entry.version_type,
+      release_time: entry.release_time,
+    });
+  }
+  Ok(versions)
+}
+
 /// Resolve a released or snapshot version from Mojang's HTTPS metadata chain.
 /// The version JSON is authenticated against the SHA-1 in the version manifest before
 /// it is parsed. All metadata reads use the caller's shared HTTP Executor.
@@ -74,14 +152,7 @@ async fn resolve_server_from(
   manifest_url: Url,
 ) -> Result<ServerArtifact> {
   validate_metadata_url(&manifest_url)?;
-  if version_id.is_empty()
-    || version_id.len() > 64
-    || !version_id
-      .bytes()
-      .all(|b| b.is_ascii_alphanumeric() || b"._+-".contains(&b))
-  {
-    return Err(Error::Invalid("invalid Minecraft version ID".into()));
-  }
+  validate_version_id(version_id)?;
 
   let response = http
     .get(manifest_url.as_str())
@@ -203,6 +274,21 @@ fn validate_metadata_url(url: &Url) -> Result<()> {
     ));
   }
   Ok(())
+}
+
+fn validate_version_id(version_id: &str) -> Result<()> {
+  if !is_valid_version_id(version_id) {
+    return Err(Error::Invalid("invalid Minecraft version ID".into()));
+  }
+  Ok(())
+}
+
+fn is_valid_version_id(version_id: &str) -> bool {
+  !(version_id.is_empty()
+    || version_id.len() > 64
+    || !version_id
+      .bytes()
+      .all(|byte| byte.is_ascii_alphanumeric() || b"._+-".contains(&byte)))
 }
 
 fn validate_sha1(value: &str) -> Result<()> {
