@@ -7,7 +7,6 @@
 ```mermaid
 flowchart TD
     CLI["anvil\n命令、JSON、信号、进度"] --> Java["anvil-core::java\n安装 / 列表 / 卸载"]
-    GUI["anvil-gui\nSlint 基础入口"] -. 后续接入 .-> Java
     Java --> Provider["temurin\n版本与平台解析"]
     Java --> HTTP["q2q-http\n共享连接池、下载、校验、恢复"]
     Java --> Extract["extract\n有界解包与链接检查"]
@@ -15,7 +14,7 @@ flowchart TD
     Java --> Probe["受限 Java 子进程\n版本与架构检查"]
 ```
 
-core 不依赖 clap 或 Slint，不自行创建异步运行时。Context 持有一个 Downloader 和两个阻塞任务的预算；CLI 使用 current-thread Tokio runtime。桌面版通过客户端启动流程调用同一 Core Java 管理逻辑；独立查看、安装、移除 Java 的 GUI 控件尚未接入。不建立未使用的实例、账户或进程模型。
+core 不依赖 clap 或 UI 框架，不自行创建异步运行时。Context 持有一个 Downloader 和两个阻塞任务的预算；CLI 使用 current-thread Tokio runtime。Tauri/SvelteKit 桌面壳尚未接入 Java 管理命令，接入时应复用同一 Core Java 管理逻辑。不建立未使用的实例、账户或进程模型。
 
 `q2q-http` 使用 Q2Q 的固定 Git revision `5e98cfc55b2712dfc6741d3f17c0cc14fcb57353`。后续升级应显式更新 revision 和 Cargo.lock；本阶段不依赖 crates.io 尚未发布的版本或开发者绝对路径。
 
@@ -91,7 +90,7 @@ Ctrl-C 请求取消并等待下载器清理、已开始的阻塞任务和探测�
 - 从 Minecraft 元数据中的 javaVersion 解析主版本/官方运行时 component；供应商安装与官方文件树安装是不同来源策略。
 - 加入有限系统 Java 探测和显式用户路径，按版本、架构与游戏侧规则选择，而不是修改全局默认 Java。
 - 游戏运行时持有 Java 使用锁，卸载和修复不能影响活跃会话。
-- GUI 使用同一 Context 与 JavaManager，并复用进度和取消 API。
+- 将来新增其他入口时，使用同一 Context 与 JavaManager，并复用进度和取消 API。
 - 下载跨操作合并、完整的任务句柄和缓存维护在真正需要时加入；当前同目标并发返回 busy。
 
 ## 本轮验证
@@ -100,7 +99,6 @@ Ctrl-C 请求取消并等待下载器清理、已开始的阻塞任务和探测�
 - 真实 CLI SIGINT 验收：等一个 range 已写入恢复记录后发送 SIGINT，CLI 返回 JSON `cancelled` 与退出码 130；随后安装成功恢复，完整完成列表与卸载。
 - 自动化：CLI 5 项、core 17 项通过。覆盖版本解析、跨进程文件锁、JSON/参数错误、tar/zip 解包、路径穿越、链接循环、哈希不匹配、Java 探测失败清理、重复安装/卸载、并发忙状态及取消后的分段续传。恢复用例确认已提交的第一个分段没有重下。
 - `cargo build -p anvil --locked --offline`、`cargo clippy -p anvil -p anvil-core --all-targets --locked --offline -- -D warnings` 和 `cargo fmt --all -- --check` 通过。
-- Slint 基础入口 `cargo check -p anvil-gui --features desktop --locked --offline` 通过。此环境缺少系统开发包；检查时从 Debian 官方包临时解压 Fontconfig/FreeType 等 pkg-config 元数据，并通过命令级 PKG_CONFIG_PATH 指定，未写入仓库。
-- Linux、Windows、macOS 自动测试与 Linux 桌面构建由 GitHub Actions 运行。真实 Temurin 安装不加入 CI；`scripts/java-smoke.py` 可在目标平台本地运行。当前 Windows/macOS 的真实安装尚未验收，不把 Linux 结果视为其他平台已通过。
+- 旧 Slint 桌面入口曾通过 CI 构建，随后已移除。2026-10-21 Tauri/SvelteKit 桌面壳的前端类型检查、静态构建、Tauri Rust 离线检查和 rustfmt 检查通过；尚未在 Tauri WebView 中运行。真实 Temurin 安装不加入 CI；`scripts/java-smoke.py` 可在目标平台本地运行。当前 Windows/macOS 的真实安装尚未验收，不把 Linux 结果视为其他平台已通过。
 
 真实安装检查使用隔离临时数据目录；测试和 smoke 脚本不写用户系统 Java 目录。可用 `python scripts/java-smoke.py --binary target/debug/anvil` 重复 Linux 真实验收，`--check-interrupt --versions 21` 会增加分段落盘后的取消/恢复检查。

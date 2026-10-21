@@ -1,10 +1,10 @@
 # 原版客户端首条可用流程
 
-状态：执行方案；第 1–6 项、第 7.1–7.2 项及第 8 项的 CLI/桌面接入已实现。GUI 已调用共享 Core 完成客户端安装/列表、Microsoft 设备码登录、账号选择/移除和前台启动接线；GUI 编译验收与真实登录、系统凭证库和游戏启动 smoke 待做。Core 已包含客户端文件安装、运行目录准备、Microsoft 设备码授权 provider、系统凭证库适配、公开账户资料存储与结构化启动参数。CLI 已提供相同客户端与账户流程；尚无真实 Microsoft 凭证、OS 凭证库或 Minecraft 客户端运行验收记录。
+状态：执行方案；第 1–6 项、第 7.1–7.2 项及第 8 项的 CLI 接入已实现。Core 已包含客户端文件安装、运行目录准备、Microsoft 设备码授权 provider、系统凭证库适配、公开账户资料存储与结构化启动参数。CLI 已提供客户端与账户流程。原 Slint GUI 已移除；Tauri + SvelteKit 桌面壳已建立，但尚未接入 Core 命令。真实 Microsoft 登录、OS 凭证库和 Minecraft 客户端运行尚无验收记录。
 
 ## 目标
 
-逐步打通原版客户端的版本选择、文件安装、账户授权和启动。CLI 与 GUI 共用 `anvil-core` 的元数据、安装和启动逻辑；下载继续复用固定 revision 的 `q2q-http`，不另造下载与恢复机制。
+逐步打通原版客户端的版本选择、文件安装、账户授权和启动。CLI 与 Tauri 宿主调用 `anvil-core` 的元数据、安装和启动逻辑；桌面壳当前只有 SvelteKit UI 基础结构。下载继续复用固定 revision 的 `q2q-http`，不另造下载与恢复机制。
 
 首个端到端客户端版本定为 1.21.1。首批计划目标为 Windows x86_64、macOS x86_64/aarch64、glibc Linux x86_64。该矩阵是工作目标，不代表已验收或已支持：每个组合通过本地真实安装和启动 smoke 后，才能单独标记为已验证。官方 1.21.1 元数据缺少 Linux aarch64 所需的 LWJGL 原生库，计划生成器会拒绝该组合；Windows aarch64 与 musl Linux 暂不纳入。26.3 包含尚未实现的 `default-user-jvm`、`os.versionRange` 等规则，先不纳入首批范围。
 
@@ -24,7 +24,7 @@
 
 **交付：** README 面向启动器用户描述用途和当前能力；Core 测试文件直接放在 `crates/anvil-core/tests/`，不再按 `unit/` 子目录分层；生产路径不以 `unwrap` 处理可恢复错误，按需接入 `tracing` 记录诊断，并避免记录令牌、完整启动参数等敏感信息。
 
-**验收：** 已按 PR 评审意见改写面向用户的 README，将 Core 测试平铺在 `crates/anvil-core/tests/` 并保留其私有实现测试方式；Core 与 CLI 生产代码不再使用 `unwrap` / `expect` 解可恢复错误，诊断通过 `tracing` 写到 stderr。2026-10-21 本地 18 项 CLI 与 36 项 Core 测试通过，1 项需真实 Mojang 网络的 smoke 按设计忽略；rustfmt、Clippy 和 CLI 构建通过。GitHub Actions run #13 的 Ubuntu、Windows、macOS 以及 Slint 桌面入口全部通过。CI 使用本地 fixture，不下载真实 Java 或 Minecraft 文件。此环境未安装 Fontconfig，因此桌面入口由 CI 的 Linux job（先安装 Fontconfig）完成验证。
+**验收：** 已按 PR 评审意见改写面向用户的 README，将 Core 测试平铺在 `crates/anvil-core/tests/` 并保留其私有实现测试方式；Core 与 CLI 生产代码不再使用 `unwrap` / `expect` 解可恢复错误，诊断通过 `tracing` 写到 stderr。2026-10-21 本地 18 项 CLI 与 36 项 Core 测试通过，1 项需真实 Mojang 网络的 smoke 按设计忽略；rustfmt、Clippy 和 CLI 构建通过。GitHub Actions run #13 曾验证 Ubuntu、Windows、macOS 以及 Slint 桌面入口；该桌面 crate 后续已移出 workspace。CI 使用本地 fixture，不下载真实 Java 或 Minecraft 文件。
 
 ### 2. [x] 确定首批客户端支持矩阵与安装契约
 
@@ -92,25 +92,25 @@ anvil --data-dir ./anvil-data client install vanilla --version 1.21.1
 
 ### 7.1 [x] 定义账户服务边界并生成客户端 LaunchSpec
 
-**交付：** Core 定义 `AccountProvider` 与 `CredentialStore` 接口，设备码流程通过事件 channel 汇报给 CLI/GUI；`AccountService` 协调授权、刷新令牌轮换和登出。登出删除本地 refresh token，不声称撤销已签发的服务端 access token。账户资料可以序列化，Access/Refresh Token 和短期会话不可序列化且 Debug 脱敏。Microsoft `clientid` 必须来自注册的 Azure 应用 ID，不从启动器名称猜测。客户端安装快照保留版本类型与 Mojang 参数数组；`build_launch_spec` 根据平台/账户 rules 展开现代 JVM/game 参数，并将 Java、main class 和参数作为独立 argv 元素交给调用方。LaunchSpec 持有运行时准备句柄，确保进程启动前会话 natives 不会被清理。
+**交付：** Core 定义 `AccountProvider` 与 `CredentialStore` 接口，设备码流程通过事件 channel 汇报给入口；`AccountService` 协调授权、刷新令牌轮换和登出。登出删除本地 refresh token，不声称撤销已签发的服务端 access token。账户资料可以序列化，Access/Refresh Token 和短期会话不可序列化且 Debug 脱敏。Microsoft `clientid` 必须来自注册的 Azure 应用 ID，不从启动器名称猜测。客户端安装快照保留版本类型与 Mojang 参数数组；`build_launch_spec` 根据平台/账户 rules 展开现代 JVM/game 参数，并将 Java、main class 和参数作为独立 argv 元素交给调用方。LaunchSpec 持有运行时准备句柄，确保进程启动前会话 natives 不会被清理。
 
 **验收：** fake provider 与内存 credential store 覆盖设备码事件、令牌刷新/轮换、身份一致性、登出和敏感值脱敏；离线 Mojang fixture 覆盖 classpath、日志配置、平台 rules、账户占位符、分辨率、含空格路径、缺少 clientid 和 LaunchSpec 生命周期。真实凭证没有写入仓库；本项没有制造真实 Microsoft 凭证。
 
 ### 7.2 [x] 实现 Microsoft/Xbox/Minecraft 授权与系统凭证库适配
 
-**交付：** `MicrosoftAccountProvider` 实现 Microsoft OAuth 设备码与刷新流程、Xbox User/XSTS 交换、Minecraft Services 登录和 Java profile 查询；处理待批准、降速、拒绝、过期、取消、无游戏 profile 与令牌轮换。请求使用继承的系统 HTTP 代理、TLS、禁止重定向、每 host 单空闲连接、20 秒超时与 64 KiB 响应上限。`SystemCredentialStore` 使用 macOS Keychain、Windows Credential Manager 和 Unix Secret Service，只保存 Microsoft refresh token；系统凭证库不可用时明确报错，不回退到明文文件。设备码事件继续由 CLI/GUI 消费。
+**交付：** `MicrosoftAccountProvider` 实现 Microsoft OAuth 设备码与刷新流程、Xbox User/XSTS 交换、Minecraft Services 登录和 Java profile 查询；处理待批准、降速、拒绝、过期、取消、无游戏 profile 与令牌轮换。请求使用继承的系统 HTTP 代理、TLS、禁止重定向、每 host 单空闲连接、20 秒超时与 64 KiB 响应上限。`SystemCredentialStore` 使用 macOS Keychain、Windows Credential Manager 和 Unix Secret Service，只保存 Microsoft refresh token；系统凭证库不可用时明确报错，不回退到明文文件。设备码事件由当前 CLI 消费。
 
 **验收：** 本地 loopback HTTP fixture 覆盖设备码与轮询、拒绝、取消、Microsoft → Xbox/XSTS → Minecraft profile、刷新令牌轮换和账户资料；所有请求不访问 Microsoft、Xbox 或 Mojang。workspace Clippy、格式检查、Core 62 项通过、1 项需真实 Mojang 网络的 smoke 忽略，CLI 构建检查通过。Keychain/系统凭证库未在当前无桌面凭证服务的环境中写入测试；真实 Microsoft 交互登录与 Windows/macOS 实机验证待后续 CLI 集成和维护者手动 smoke。需要 Anvil 注册的 Microsoft Client ID，不需要 client secret。
 
-### 8. 接入 CLI 与可选桌面流程
+### 8. 接入 CLI 与桌面基础工程
 
 **CLI 交付：[x]** `client install/list/launch` 与 `account login/list/logout` 直接调用 Core API；profile 文件只保存公开身份并以原子替换更新，refresh token 使用系统凭证库。`--json` stdout 为单一 schema 版本化结果，进度和设备码写 stderr。安装和启动准备可由 Ctrl-C 取消；游戏在前台运行，stdout 日志转发至 stderr，退出前持有实例锁并清理 natives 会话目录。
 
 **CLI 本地验收：** 2026-10-21 `cargo test --locked --offline -p anvil -p anvil-core`：1 项 CLI 单测、20 项 CLI 集成测试、62 项 Core 测试通过，1 项真实 Mojang metadata smoke 忽略。CLI 测试验证账户 profile 的原子存储、空客户端/账户列表的 JSON stdout、无效客户端名/Client ID 和缺少客户端错误；Core 测试验证重复安装结果与 LaunchSpec 生命周期内实例锁保持。Loopback fixture 测试需本地网络权限，本次仅访问回环地址；没有进行真实 Microsoft 登录、系统凭证库写入、Mojang 下载或客户端启动。
 
-**桌面交付：[x]** Slint 界面调用共享 Core，提供客户端安装、已安装客户端列表、设备码登录、账号选择/移除和客户端前台启动。Slint UI 留在主线程；后台由单线程 Tokio runtime 处理操作，通过容量为 16 的命令队列交互，安装和 Java 准备进度按需更新。窗口关闭会取消当前工作并等待 Core 清理。账户 profile 存储抽入 Core，由 CLI 和 GUI 共用；GUI 使用 Anvil 注册的公共 Microsoft Client ID，不需要 client secret。
+**桌面工程：** 已删除原 Slint `anvil-gui` crate 与桌面依赖。`apps/anvil-shell/src-tauri` 是 Cargo workspace 中的 Tauri 宿主；`apps/anvil-desktop` 是独立的 SvelteKit 静态前端 npm workspace，通过 Shell 加载。前端使用 shadcn-svelte 组件配置和 Lucide 图标，并继承根 `tsconfig.json`。当前界面是静态壳，按钮未执行客户端操作，Tauri 命令尚未连接 Core。
 
-**桌面本地验收：** 当前执行环境未安装 Rust/Cargo，不能运行 rustfmt、编译或桌面检查；Linux Fontconfig 也不可用。真实设备码登录、OS 凭证库、各 OS/CPU 的真实安装和游戏启动仍需维护者手动 smoke 逐一记录，不加入 Live CI。桌面后台编译通过后再将本项标为本地验收完成。
+**桌面验收：** 2026-10-22 拆分宿主与页面后，本地 `npm run desktop:check`（0 错误、0 警告）、`npm run desktop:build`、`cargo check --offline -p anvil-shell` 与 `cargo fmt --all -- --check` 通过；Tauri 生成 `target/release/anvil-shell`。尚未在 Tauri WebView 中运行；真实设备码登录、OS 凭证库、各 OS/CPU 的真实安装和游戏启动仍需维护者手动 smoke 逐一记录。Linux 桌面构建已加入 Live CI。
 
 ## 首批不包含
 
@@ -121,5 +121,5 @@ Fabric、Forge、NeoForge、整合包、账号共享/云同步、后台启动、
 - [Minecraft 文件安装与启动设计依据](minecraft-installation.md)：官方元数据字段、平台规则、assets、natives 与参数差异。
 - [Microsoft OAuth 设备码流程](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-device-code)：设备码展示、轮询错误、令牌刷新。
 - [Xbox 服务登录流程](https://learn.microsoft.com/en-us/gaming/gdk/docs/services/fundamentals/s2s-auth-calls/service-authentication/live-website-authentication?view=gdk-2604)：Microsoft 令牌交换 Xbox User Token 与 XSTS 的字段和请求头。
-- [整体架构](architecture.md)：Core/CLI/GUI 边界、下载预算、缓存与进程生命周期。
+- [整体架构](architecture.md)：Core/CLI 边界、下载预算、缓存与进程生命周期。
 - [Java 管理](java-management.md)：托管运行时选择、安装和平台限制。

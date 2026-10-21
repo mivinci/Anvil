@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/*"]
+members = ["crates/*", "apps/anvil-shell/src-tauri"]
 default-members = ["crates/anvil", "crates/anvil-core"]
 resolver = "3"
 
@@ -21,14 +21,12 @@ reqwest = { version = "0.12.28", default-features = false, features = ["json", "
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha1 = "0.11"
-slint = { version = "1.14", default-features = false, features = ["std", "backend-winit", "renderer-software", "compat-1-2"] }
+tauri = { version = "2", features = [] }
+tauri-build = { version = "2", features = [] }
 tar = "0.4"
 tempfile = "3"
 thiserror = "2"
-tokio = {
-  version = "1",
-  features = ["rt", "macros", "process", "io-util", "io-std", "signal", "sync", "time", "net"],
-}
+tokio = { version = "1", features = ["rt", "macros", "process", "io-util", "io-std", "signal", "sync", "time", "net"] }
 tokio-util = "0.7"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt"] }

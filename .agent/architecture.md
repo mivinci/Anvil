@@ -5,10 +5,10 @@
 ## 产品方向
 
 - Anvil 是面向 Windows、macOS 和 Linux 的轻量 Minecraft Java Edition 启动与服务端管理工具。
-- `anvil` 是 CLI 入口，服务终端用户、脚本和后续 AI 工具；`anvil-gui` 是可选的 Slint 桌面入口。
-- CLI 与 GUI 共享 Rust 业务核心。CLI 的 JSON 接口也作为自动化能力的基础；以后接入 MCP 时复用同一核心，不重新实现安装和启动规则。
-- 资源目标是按需运行，不设无明确需要的全局常驻服务。下载、解包、日志和并发资源应有界；桌面与 CLI 不因空闲而轮询或长期占用高资源。
-- 当前已实现托管 Java 管理、原版服务端创建/列表/前台启动，以及原版客户端 Core、CLI 和 Slint 桌面安装/列表/Microsoft 设备码登录/账户管理/前台启动流程。真实账户登录、系统凭证库和客户端启动仍待维护者实测；模组加载器、服务端后台托管和 MCP 仍未实现。
+- `anvil` 是 CLI 入口，服务终端用户、脚本和后续 AI 工具；桌面由 `apps/anvil-shell` 的 Tauri Rust 宿主加载 `apps/anvil-desktop` 的 SvelteKit 前端，目前只有基础界面骨架，尚未接入业务命令。
+- 业务逻辑由 `anvil-core` 提供。CLI 的 JSON 接口也作为自动化能力的基础；以后接入其他入口或 MCP 时复用同一核心，不重新实现安装和启动规则。
+- 资源目标是按需运行，不设无明确需要的全局常驻服务。下载、解包、日志和并发资源应有界；各入口不因空闲而轮询或长期占用高资源。
+- 当前已实现托管 Java 管理、原版服务端创建/列表/前台启动，以及原版客户端 Core 与 CLI 安装/列表/Microsoft 设备码登录/账户管理/前台启动流程。真实账户登录、系统凭证库和客户端启动仍待维护者实测；模组加载器、服务端后台托管和 MCP 仍未实现。
 - 只对实际验证过的 OS、CPU 架构及 Minecraft 版本宣称支持。Linux 成功不能替代 Windows 或 macOS 的运行证据。
 
 ## Workspace 与 crate 边界
@@ -20,13 +20,16 @@ Anvil/
   crates/
     anvil-core/              # 公共业务、安装、存储、Java 与服务端生命周期
     anvil/                   # CLI 参数、终端交互、JSON/JSONL、退出码
-    anvil-gui/               # 可选 Slint 桌面入口和 UI 桥接
+  apps/
+    anvil-shell/             # Tauri 桌面宿主
+      src-tauri/             # Cargo workspace：Rust 宿主 crate
+    anvil-desktop/           # npm workspace：SvelteKit、shadcn-svelte、Lucide
   todos/                     # 方案、阶段任务及验证记录
 ```
 
-- `anvil-core` 不依赖 Slint、CLI 参数解析、终端交互或 MCP，也不自行创建 Tokio runtime。由每个入口拥有 runtime 和业务上下文。
-- `anvil` 与 `anvil-gui` 直接调用 core；GUI 的常规操作不通过启动 CLI 子进程实现。
-- Slint 通过 `anvil-gui` 的 `desktop` feature 引入；默认 workspace 构建不应强制编译桌面依赖。
+- Cargo workspace 管理 Rust crates 与 Tauri 宿主，npm workspace 管理前端包；两者分别维护 `Cargo.lock` 与根 `package-lock.json`。根 `tsconfig.json` 提供前端共享选项，应用配置通过 `extends` 继承。
+- `anvil-core` 不依赖 UI 框架、CLI 参数解析、终端交互或 MCP，也不自行创建 Tokio runtime。由每个入口拥有 runtime 和业务上下文。
+- CLI 与 Tauri 宿主直接调用 core，不通过启动 CLI 子进程实现常规操作。Tauri 前端使用 SvelteKit 静态输出，避免依赖 Node 服务端运行时。
 - 保持 crate 和模块按现有职责组织。新增 crate、公共 trait 或通用抽象前，先确认当前需求确实需要它。
 
 ## 下载与文件安全
