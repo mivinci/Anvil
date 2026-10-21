@@ -4,6 +4,8 @@
 
 本文为 [整体架构](architecture.md) 中 metadata、install、java 和 launch 模块提供具体输入与边界。安装清单和 argv 必须从所选版本的元数据生成；示例版本用于说明格式差异，不表示 Anvil 已支持或已运行这些版本。
 
+客户端从版本目录到安装、授权与启动的执行顺序见[原版客户端首条可用流程](client-milestone.md)。
+
 ## 资料来源与核对范围
 
 参考 Minecraft Wiki 的 [Game files](https://minecraft.wiki/w/Minecraft_Wiki:Projects/wiki.vg_merge/Game_files) 与 [Launching the game](https://minecraft.wiki/w/Minecraft_Wiki:Projects/wiki.vg_merge/Launching_the_game)。本次 Wiki 正文访问被 robots 限制，仅取得搜索索引中的相关内容；其中有历史格式说明及待完善信息，不能替代官方实际元数据。
