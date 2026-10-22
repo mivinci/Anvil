@@ -1,12 +1,12 @@
 # Anvil 架构方案
 
-状态：workspace、CLI、托管 Java 管理、Core 客户端文件安装与原版服务端 `create` / `list` / `start` 首轮已实现；客户端 CLI 流程已接入共享 Core。旧 Slint crate 已移除，桌面端现为 Tauri Shell + SvelteKit + shadcn-svelte + Lucide 基础骨架，尚未连接业务命令；真实登录和游戏启动验收仍待完成。Shell 职责与页面更新方案见 [Anvil Shell 设计草案](shell-design.md)，逐项实施顺序见 [Shell 执行清单](shell-milestone.md)。当前能力与验证边界见 [原版客户端首条可用流程](client-milestone.md)、[Java 管理](java-management.md) 和 [服务端实施项](server-milestone.md)。
+状态：workspace、CLI、托管 Java 管理、Core 客户端文件安装与原版服务端 `create` / `list` / `start` 首轮已实现；客户端 CLI 流程已接入共享 Core。旧 Slint crate 已移除；桌面端由通用 Tauri Shell 和 SvelteKit App 组成，Runtime 已提供客户端版本目录、安装/列表及账户 API；UI 重构后已接入窗口框架、账户菜单和登录弹窗，安装页面待重新接入，客户端启动和真实下载/登录验收仍待完成。Shell 职责与页面更新方案见 [Anvil Shell 设计草案](shell-design.md)，逐项实施顺序见 [Shell 执行清单](shell-milestone.md)。当前能力与验证边界见 [原版客户端首条可用流程](client-milestone.md)、[Java 管理](java-management.md) 和 [服务端实施项](server-milestone.md)。
 
 Minecraft 文件清单、元数据差异和参数生成依据见 [Minecraft 文件安装与启动设计依据](minecraft-installation.md)，其中区分已核对的官方数据与仍需实际运行验证的行为。
 
 ## 产品定位与范围
 
-Anvil 是面向 Windows、macOS 和 Linux 的轻量 Minecraft Java 版工具，统一提供客户端与服务端的实例创建、安装、Java 管理和启动能力。`anvil` CLI 服务终端用户、脚本和 AI 工具；通用 Tauri Shell 按构建时的默认 App ID 启动并维护 App 版本；桌面产品流程属于 npm workspace 包 `@anvil/desktop`，桌面 UI 骨架尚未接入业务能力。Core 可由 CLI 和 App 自己的业务组件复用，Shell 不承载 Minecraft 业务。
+Anvil 是面向 Windows、macOS 和 Linux 的轻量 Minecraft Java 版工具，统一提供客户端与服务端的实例创建、安装、Java 管理和启动能力。`anvil` CLI 服务终端用户、脚本和 AI 工具；通用 Tauri Shell 按构建时的默认 App ID 启动并维护 App 版本；桌面产品流程属于 npm workspace 包 `@anvil/desktop`，当前具备客户端安装/列表和账户管理 API，页面正在按[桌面账户登录清单](desktop-account-login.md)重接。客户端启动仍由 App 自己的业务组件接入 Core；Shell 不承载 Minecraft 业务。
 
 首版建议支持选定的一组现代原版版本，客户端提供微软正版账户登录，服务端提供显式 EULA 接受与前台运行。明确验证各系统和 CPU 架构组合后再扩大范围；不因启动器可编译就宣称对应游戏版本可运行。模组加载器、整合包、云同步及模组市场后续单独设计。
 
@@ -30,6 +30,9 @@ Anvil/
     anvil/
       Cargo.toml
       src/                         # CLI，生成 anvil 可执行文件
+    anvil-desktop-runtime/
+      Cargo.toml
+      src/                         # 桌面 App sidecar、Runtime API 与业务任务
   apps/
     shell/
       src-tauri/                   # Tauri 桌面宿主 Cargo crate
@@ -42,7 +45,7 @@ Anvil/
   README.md
 ```
 
-`anvil` 当前直接调用 `anvil-core`。目标架构由 CLI 与 App 自己的业务组件使用 Core；通用 Tauri Shell 只负责 App 生命周期和版本维护，不直接调用 Core。当前 Shell crate 仍声明了 Core 依赖，是骨架阶段的过渡状态，后续拆分时需要移除。Core 不依赖 UI 框架、命令行解析库、终端交互或 MCP 协议，也不自行创建 Tokio runtime。SvelteKit 使用 `adapter-static` 生成 WebView 需要的静态资源，不启动 Node SSR 服务。根 `tsconfig.json` 保存共享选项，应用 tsconfig 通过 `extends` 继承。
+`anvil` 当前直接调用 `anvil-core`；`anvil-desktop-runtime` 是桌面 App 的独立 sidecar，调用同一 Core 并通过本机 Axum API 提供业务操作。通用 Tauri Shell 只负责 App 生命周期和版本维护，不依赖或调用 Core。Core 不依赖 UI 框架、命令行解析库、终端交互或 MCP 协议，也不自行创建 Tokio runtime。SvelteKit 使用 `adapter-static` 生成 WebView 需要的静态资源，不启动 Node SSR 服务。根 `tsconfig.json` 保存共享选项，应用 tsconfig 通过 `extends` 继承。
 
 `q2q-http` 维护在 Q2Q 仓库，作为 core 的下载依赖。开发可使用本地覆盖或固定 Git revision，正式构建使用可复现的版本来源，不依赖开发者绝对路径。不复制其源码，也不自行再实现 Range worker、重试队列与下载恢复格式。
 
@@ -253,18 +256,18 @@ LaunchSpec 使用 `std::process::Command` 或平台封装直接传 argv，按平
 
 操作持有取消信号、状态与后台任务；同一实例的安装/修复与运行互斥，其他实例可在共享预算下并行。所有入口和后续 MCP 均需遵守同一跨进程锁。记录原子写入，终态在清理完成后公布，不以删除状态文件代替停止进程。
 
-CLI 将系统信号映射为 core 取消或服务端停止，保持清理语义。桌面 App 尚未接入业务操作；接入后应通过 App 自己的业务组件调用 Core，使用有界命令与可合并快照传递后台状态，并在关闭窗口后等待其拥有的操作完成清理。Shell 只管理 App 组件的通用生命周期。
+CLI 将系统信号映射为 core 取消或服务端停止，保持清理语义。桌面 App 通过自己的业务组件调用 Core，以有界命令和可查询快照传递安装与账户授权状态；sidecar 关闭时会取消这些操作并等待它们进入终态。客户端启动的进程清理行为仍需接入和验收。Shell 只管理 App 组件的通用生命周期。
 
 网络工作使用调用方 runtime，阻塞磁盘、解包、哈希和 Java 探测使用有界阻塞任务。慢终端、UI 或 AI 消费者不阻塞下载；可靠终态与合并进度分开处理。跨请求长期任务必须有明确所有者和可查询状态，不能由一个已经结束的调用隐式托管。
 
 ## 实施阶段与验收
 
-1. [x] **Workspace 与核心接口。** Cargo workspace 管理 anvil-core、anvil 与 Tauri 宿主；npm workspace 管理 SvelteKit App，根 TypeScript 配置由应用继承。CLI 已接入 Core；桌面 App 的业务组件和 Shell 通用 Runtime API 仍待设计与接入。
+1. [x] **Workspace 与核心接口。** Cargo workspace 管理 anvil-core、anvil、桌面 Runtime 与 Tauri 宿主；npm workspace 管理 SvelteKit App，根 TypeScript 配置由应用继承。CLI 与桌面 App 业务组件已接入 Core；Shell 通用 Runtime API 已接入，当前桌面业务范围与验收状态见客户端实施项。
 2. [x] **Java 管理首轮。** Temurin 大版本/精确版本解析、q2q-http 下载、受限解包、可执行性检查、安装记录、列表/卸载与 JSON 输出；Linux 真实安装及本地测试通过。Windows/macOS 结果待远端 CI，详见 Java 管理文档。
-3. [ ] **版本与安装计划。** 已完成 Mojang 版本目录查询；仍需选定首批客户端版本和架构，解析并校验版本 JSON、Java 要求、Artifact 和修复计划，按客户端/服务端类型验证资源集合。
-4. [ ] **Minecraft 下载与安装。** 在 Java 安装已接入 q2q-http 的基础上扩展游戏文件计划、共享缓存、恢复、natives 解包与 installed.json 提交，不重复实现下载引擎。
+3. [x] **版本与安装计划。** 已选定首批客户端版本和架构；版本 JSON、Java 要求、Artifact、平台计划与资源集合校验见[客户端实施项](client-milestone.md)。
+4. [x] **Minecraft 下载与安装。** Core 已使用 q2q-http 完成客户端游戏文件下载/校验、共享缓存、natives 准备与 `installed.json` 原子提交；桌面 Runtime 与页面的连接仍在第 6 阶段推进。
 5. [ ] **服务端 CLI（分步实施中）。** 已完成版本元数据、q2q-http 服务端 JAR 下载、`create` / `list`、Java/EULA 预检、前台 `start` 生命周期和 JSONL 自动化事件；按 [服务端实施项](server-milestone.md) 完成 Ctrl-C 与跨平台验证。
-6. [ ] **客户端与桌面流程。** Core 与 CLI 已接入客户端元数据、文件安装、账户授权和启动参数；Tauri Shell/SvelteKit App 基础骨架已建立，桌面 App 自己的业务组件尚待接入 Core。真实登录及游戏启动 smoke 尚待验收，详见[客户端实施项](client-milestone.md)。
+6. [ ] **客户端与桌面流程。** Core 与 CLI 已接入客户端元数据、文件安装、账户授权和启动参数；桌面 Runtime/SvelteKit App 已接入版本目录、安装/列表和账户管理。客户端启动尚待接入，WebView 真实安装、Microsoft 登录、系统凭证库和游戏启动 smoke 尚待验收，详见[客户端实施项](client-milestone.md)。
 7. [ ] **后台托管与 AI 接口。** 评审并实现监督进程、本地 IPC、跨命令状态与 stop，再接入 MCP；在长期任务所有权明确后提供后台一键启动。
 8. [ ] **跨平台与资源收敛。** 按具体 OS/CPU/游戏版本验证并完成 CLI 与 Tauri 桌面端打包和资源测量；之后再扩展模组与整合包。
 

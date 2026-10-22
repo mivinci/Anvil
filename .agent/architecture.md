@@ -5,7 +5,7 @@
 ## 产品方向
 
 - Anvil 是面向 Windows、macOS 和 Linux 的轻量 Minecraft Java Edition 启动与服务端管理工具。
-- `anvil` 是 CLI 入口，服务终端用户、脚本和后续 AI 工具；`apps/shell` 是通用 Tauri 启动器，按 App ID 启动和维护版本；`apps/desktop` 是独立 App，拥有桌面界面和产品流程。当前只有基础界面骨架，尚未接入业务能力。
+- `anvil` 是 CLI 入口，服务终端用户、脚本和后续 AI 工具；`apps/shell` 是通用 Tauri 启动器，按 App ID 启动和维护版本；`apps/desktop` 是独立 App，拥有桌面界面和产品流程。桌面 Runtime 已提供版本目录、客户端安装/列表及账户管理 API；UI 重构后已接入窗口框架、外观设置、账户菜单/登录弹窗，以及客户端列表、安装、进度、暂停/继续、取消和显式重试；完成后联动刷新实例列表。客户端启动和真实下载、登录验收仍待完成。
 - 业务逻辑由 CLI 与 App 自己的业务组件使用 `anvil-core`。Shell 不依赖 Core，不承载 Anvil/Minecraft 领域命令；其他入口或 MCP 仍可复用同一核心，不重复实现安装和启动规则。
 - 资源目标是按需运行，不设无明确需要的全局常驻服务。下载、解包、日志和并发资源应有界；各入口不因空闲而轮询或长期占用高资源。
 - 当前已实现托管 Java 管理、原版服务端创建/列表/前台启动，以及原版客户端 Core 与 CLI 安装/列表/Microsoft 设备码登录/账户管理/前台启动流程。真实账户登录、系统凭证库和客户端启动仍待维护者实测；模组加载器、服务端后台托管和 MCP 仍未实现。
@@ -20,6 +20,8 @@ Anvil/
   crates/
     anvil-core/              # 公共业务、安装、存储、Java 与服务端生命周期
     anvil/                   # CLI 参数、终端交互、JSON/JSONL、退出码
+    anvil-desktop-runtime/   # 桌面 App 专属 sidecar 可执行程序
+    anvil-logging/           # Shell/Runtime 共用日志配置与文件输出，不依赖 Core
   apps/
     shell/                    # 通用 Tauri App 启动器与版本管理器
       src-tauri/             # Cargo workspace：Rust 原生宿主
@@ -30,10 +32,14 @@ Anvil/
 
 - Cargo workspace 管理 Rust crates 与 Tauri 宿主，npm workspace 管理前端包；两者分别维护 `Cargo.lock` 与根 `package-lock.json`。根 `tsconfig.json` 提供前端共享选项，应用配置通过 `extends` 继承。
 - `apps/` 放可独立构建和运行的 App；`packages/` 只放被多个 App 实际复用的 npm 库。当前没有 `packages/` 目录；出现共享 API 合约或其他真实复用代码时再创建，不预先建立空包。
-- `anvil-core` 不依赖 UI 框架、CLI 参数解析、终端交互或 MCP，也不自行创建 Tokio runtime。由每个入口拥有 runtime 和业务上下文。
+- `anvil-core` 不依赖 UI 框架、CLI 参数解析、终端交互或 MCP，也不自行创建 Tokio runtime。由每个入口拥有 runtime 和业务上下文。`anvil-desktop-runtime` 是桌面 App 的独立进程入口，复用 Core；它留在 Cargo crates 树中，与 npm 前端包解耦。
 - `apps/mobile` 未来使用独立的 SvelteKit 页面、布局和交互，不复用 `apps/desktop` 的页面结构；可以共享 API schema 和无界面逻辑。
 - CLI 与 App 自己的业务组件可调用 core，不通过启动 CLI 子进程实现常规操作。Shell 只负责通用 App 生命周期和版本维护，不直接调用 core。前端使用 SvelteKit 静态输出，避免依赖 Node 服务端运行时。
 - 保持 crate 和模块按现有职责组织。新增 crate、公共 trait 或通用抽象前，先确认当前需求确实需要它。
+
+## 桌面日志
+
+Shell 与 Runtime 入口共用 `anvil-logging`，开发模式写终端和文件，发行模式写文件；Core 仅产生 tracing 事件，不持有日志输出。文件轮转、队列与历史数量有界，Runtime stdout 保留为握手协议，日志使用 stderr。不得记录认证凭据、验证码或请求体。实施状态与验收边界见[桌面日志执行项](../todos/desktop-logging.md)。
 
 ## 下载与文件安全
 

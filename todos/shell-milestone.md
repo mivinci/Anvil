@@ -1,6 +1,6 @@
 # Anvil Shell 执行清单
 
-状态：执行中。按顺序逐项实施；每项完成并通过验收后停下来，再开始下一项。当前下一项是第 3 项。设计决策见 [Anvil Shell 设计草案](shell-design.md)。
+状态：第 1–9 项已完成。第 10 项桌面发行与平台验收按当前工作安排暂缓，先完成客户端版本安装、账户和启动等产品功能；之后再恢复跨平台发行 smoke。设计决策见 [Anvil Shell 设计草案](shell-design.md)。
 
 ## 范围与既定约定
 
@@ -25,47 +25,47 @@
 
 **验收：** Shell 构建会解析并校验示例 manifest；临时配置验证了缺少必需字段、App ID 不匹配和目标平台不符都会以明确诊断失败。`cargo check --workspace --offline` 通过。构建参数使用 Cargo target triple、默认 App ID 和 Shell API 版本，不把 `desktop` 或 `mobile` 写成 Shell 内部的业务分支。
 
-### 3. [ ] 实现本地 App 存储与版本状态
+### 3. [x] 实现本地 App 存储与版本状态
 
-**交付：** 在系统应用数据目录中建立按 App ID 隔离的版本目录和状态文件，支持解析活动版本、待启用版本与上一个健康版本。状态更新使用临时文件加原子替换；包目录发布后不可变。
+**交付：** `anvil-shell::app_storage` 使用系统应用数据目录，并可按 App ID 隔离版本目录与 schema 2 状态文件；可读取并迁移 schema 1 状态。状态原子记录活动版本、待启用版本、上一个健康版本、启动确认标记和失败版本。版本先写入同一 App 目录下的 staging，再原子发布到版本目录；发布后的版本不可由存储 API 覆盖，并通过只读文件句柄解析包内文件。
 
-**验收：** 本地 fixture 覆盖初次无状态、活动版本解析、损坏状态拒绝、待启用状态保留和原子写入失败；路径穿越、符号链接及越界路径不能被当作 App 包内容访问。
+**验收：** 当前 `apps/shell/tests/app_storage.rs` 的 13 项本地集成测试覆盖初次无状态与 App 隔离、活动/待启用/上一个健康版本解析、schema 1 迁移、损坏和缺失版本状态拒绝、原子写入失败、版本不可覆盖、路径穿越/绝对路径拒绝，以及发布与读取期间的符号链接和越界路径拒绝。第 4 项的本地协议现已读取活动版本；首次安装内置包仍属于第 7 项。
 
-### 4. [ ] 实现本地页面加载与恢复入口
+### 4. [x] 实现本地页面加载与恢复入口
 
-**交付：** 将 Shell 自带的页面收敛为启动/恢复入口；通过受限的 Tauri 本地协议从活动 App 版本目录提供页面资源，前端页面不再嵌入 Shell 二进制。协议处理只映射到当前已校验的 App 目录，并安全处理 MIME、缺失文件和资源路径。
+**交付：** Shell 的 `frontendDist` 只包含轻量恢复页面；生产窗口从 `anvil-app://localhost/` 启动，并通过异步 Tauri 本地协议读取活动 App 版本中的 `web/` 页面资源。协议校验活动版本、manifest、目标平台、Shell API 兼容范围和页面入口，再处理 MIME、缺失文件和资源路径；没有有效活动版本时显示恢复入口。桌面 SvelteKit 页面不再嵌入 Shell 二进制。开发模式仍使用 Vite 页面。
 
-**验收：** Shell 能加载本地 fixture App；不存在、损坏或无法启动时显示恢复入口。路径穿越、绝对路径和符号链接不能读取 App 包外文件；生产页面资源不依赖公网 URL。
+**验收：** `apps/shell/tests/app_protocol.rs` 的 7 项本地集成测试调用 Shell 使用的协议处理器，覆盖 fixture 页面/脚本/CSS、本地 MIME、无活动版本、损坏 manifest、缺失入口、manifest 版本不匹配、缺失资源、GET/HEAD、错误方法、路径穿越/绝对路径/错误编码和符号链接拒绝。SvelteKit 生产构建成功，生成页面资源引用均为本地路径。2026-10-22 `cargo test --locked --offline -p anvil-shell`、`cargo check --workspace --locked --offline`、Clippy、`cargo fmt --all -- --check`、`npm run build --workspace @anvil/desktop` 和 `npm run check --workspace @anvil/desktop` 通过。跨平台 Tauri WebView smoke 留待第 10 项平台验收。
 
-### 5. [ ] 固化并实现 Shell 原生 IPC
+### 5. [x] 固化并实现 Shell 原生 IPC
 
-**交付：** 实现 App 身份与版本、Shell/App 更新状态、更新检查请求和 Runtime 状态等窄命令。用 Tauri capabilities 限定可调用的 WebView；不接受前端指定任意 App ID、路径、URL 或系统操作。更新进度通过 Tauri Channel 或明确的状态查询暴露。
+**交付：** 实现 `shell_get_app_info`、`shell_get_update_status`、`shell_check_for_updates` 和 `shell_get_runtime_status` 四个窄命令，并在 `apps/desktop/src/lib/shell.ts` 提供 typed client。App ID 固定为构建配置中的默认 App ID；身份结果包含构建 manifest 的基线版本和本地存储中的活动版本。Tauri build 仅为这四个命令生成权限；`default` capability 只授予 `main` 窗口，且不配置远程来源。命令另校验窗口 label 与 Shell/dev origin，不接受前端指定 App ID、路径、URL 或系统操作。更新进度通过状态查询暴露；更新器与 sidecar 尚未实现时明确返回 `not_configured`。
 
-**验收：** 桌面页面可获取绑定 App 的身份和状态；未授权 WebView 无法调用 Shell 命令。Shell IPC 中不出现账户、客户端、服务端等业务方法。
+**验收：** 第 5 项交付时，IPC 测试覆盖允许的 Shell/dev origin、错误窗口与来源拒绝，以及 capability 仅绑定 `main`、无远程 URL 且权限恰好对应四个 Shell 命令；Tauri build 实际生成四个命令 ACL。`apps/desktop/src/lib/shell.ts` 提供身份、更新和 Runtime 查询及更新检查请求的前端类型。第 6 项增加 Runtime 连接引导命令后，当前 capability 仅绑定 `main` 且恰好授予五个 Shell 命令。Shell IPC 中不出现账户、客户端、服务端等业务方法。2026-10-22 `cargo clippy --locked --offline --all-targets -p anvil-shell -- -D warnings`、`cargo check --locked --offline --workspace`、`cargo fmt --all -- --check`、`npm run check --workspace @anvil/desktop` 和 `npm run build --workspace @anvil/desktop` 通过。
 
-### 6. [ ] 实现 sidecar 监管与 HTTP 连接引导
+### 6. [x] 实现 sidecar 监管与 HTTP 连接引导
 
-**交付：** 将桌面 App 的 Rust sidecar 纳入 Cargo workspace，并让它自己依赖 `anvil-core`。Shell 负责启动、监管和停止 sidecar。sidecar 只监听 loopback 的动态端口；每次运行使用短期凭据。Shell 通过窄 IPC 将当前 Runtime 地址和凭据交给受信任页面，业务请求由页面直接发往 sidecar。
+**交付：** 将桌面 App 的 Rust sidecar crate `crates/anvil-desktop-runtime` 纳入 Cargo workspace，并让它自己依赖 `anvil-core`。Shell 从活动 App 包启动、监管和停止 sidecar。sidecar 只监听 loopback 的动态端口；每次运行使用短期凭据。Shell 通过窄 IPC 将当前 Runtime 地址和凭据交给受信任页面，页面直接请求 sidecar 的健康端点。生产与开发 CSP 只开放 Tauri IPC、当前 loopback API 和开发服务器所需连接。
 
-**验收：** Shell 能启动 sidecar、观察 ready、处理启动失败并在退出时有序停止；页面可用授权请求访问健康端点。非 loopback 监听、无效凭据和非允许来源请求被拒绝；凭据不出现在 URL、日志或持久化文件中。
+**验收：** `cargo test --locked --offline -p anvil-shell -p anvil-desktop-runtime` 通过。sidecar 单元与真实本地 HTTP 集成测试覆盖动态 loopback 端口、授权健康请求、无效凭据、错误 Origin、预检和关闭；Shell 测试 stub 覆盖 ready 握手、启动失败回收、连接状态和优雅停止。凭据经 stdin 一次性传入 sidecar，Shell 只在内存保留且不写入 URL、日志或持久化文件。桌面 typed client 通过 `shell_get_runtime_connection` 获取本次连接并直连 `/health`。当前 sidecar 仅实现健康端点；完整 App 包首次安装仍属于第 7 项，真实页面/sidecar 联动与各平台 WebView smoke 留待第 7、10 项验收。
 
-### 7. [ ] 打通内置桌面 App 的首次启动
+### 7. [x] 打通内置桌面 App 的首次启动
 
-**交付：** 构建产物内置一份完整的 `anvil.desktop` 基线包，首次运行时将其安全发布到本地 App 存储，再加载页面和对应 sidecar。前端在 `apps/desktop/src/lib` 提供 Shell IPC 与本机 HTTP 的 typed client，不创建尚无第二消费者的共享 npm 包。
+**交付：** `npm run desktop:package` 按 Tauri target triple 构建 SvelteKit 静态页面、对应平台的 `anvil-desktop` sidecar 和 manifest，生成完整的 `anvil.desktop` 基线包；Tauri `bundle.resources` 将它装入 Shell 安装包。首次运行安全发布到本地 App 存储，再从该版本加载页面并启动 sidecar。前端 typed client 位于 `apps/desktop/src/lib`，不创建尚无第二消费者的共享 npm 包。
 
-**验收：** 首次离线启动可从安装包基线打开桌面页面并连接 sidecar；页面调用 Shell 原生状态走 Tauri IPC，App 业务调用直达 HTTP API。页面、manifest 与 sidecar 的版本和 API 兼容信息一致。
+**验收：** `cargo test --locked --offline -p anvil-shell` 的 26 项测试通过，首次安装测试覆盖包校验、staging 原子发布、状态恢复、已安装版本保护、符号链接拒绝和 sidecar 执行权限。2026-10-22 `npm run desktop:package` 和 `npm run desktop:build -- --bundles app` 成功；生成的 `Anvil.app/Contents/Resources/baseline` 含 manifest、静态页面与 aarch64 sidecar。使用该 bundle 资源和隔离 HOME 完成离线安装、实际 sidecar ready、带凭据的 `/health` 200 响应及有序停止。桌面 typed client 将 Shell 状态请求发往 Tauri IPC，并直接连接 sidecar 健康端点；构建脚本从同一 manifest 生成页面包和 sidecar，Shell 启动时校验 App 版本与 API 兼容性。当前系统的 LaunchServices 无法打开测试 `.app`（`kLSNoExecutableErr`），完整 `desktop:build` 的 DMG 阶段也因环境中的 `hdiutil`“设备未配置”失败；WebView 与安装器 smoke 留待第 10 项平台验收。
 
-### 8. [ ] 实现 App 更新下载与验证
+### 8. [x] 实现 App 更新下载与验证
 
-**交付：** 按启动时及运行期间每 24 小时最多一次的频率检查已配置更新源；在后台将完整 App 包下载至 staging。复用仓库固定版本的 `q2q-http` 下载、校验和恢复能力。验证发行者签名、摘要、大小、目标平台、manifest、兼容范围和解包路径后，才发布不可变版本并标记待启用。
+**交付：** Shell 启动时检查更新，并每小时调度一次检查；持久时间戳保证每 24 小时最多访问一次。发行构建通过 `ANVIL_UPDATE_MANIFEST_URL` 和 `ANVIL_UPDATE_PUBLIC_KEY` 配置 HTTPS 更新源与 Ed25519 公钥，两者必须同时设置；未配置时如实返回 `not_configured`。签名发布 JSON 固定为 stable 通道，包含目标 triple、版本、tar.gz URL、大小与 SHA-256。后台通过锁定版本的 `q2q-http` 下载到按版本固定的 staging 路径，支持恢复与取消；检查发布签名、文件摘要、压缩/解包大小、tar 路径、manifest 与 API 兼容性后，发布不可变版本并原子标记待启用。页面能查看状态和进度并取消下载。
 
-**验收：** 更新下载不中断当前版本；中断、取消、磁盘不足、签名错误、哈希错误、manifest 不兼容或归档越界时，活动版本不变且 staging 可清理或安全恢复。页面不能自行指定更新 URL 或发行者密钥。
+**验收：** 2026-10-22 `cargo test --locked --offline -p anvil-shell -p anvil-desktop-runtime` 通过（Shell 39 项、Runtime 3 项）。更新测试覆盖 Ed25519 签名、错误密钥与篡改、App/target/channel/URL 拒绝、版本和归档路径校验、真实本机 HTTP 下载、SHA-256 错误不改变活动版本、取消不改变活动版本、兼容包发布并设置 pending，以及 staging 与 24 小时记录持久化。`cargo check --locked --offline --workspace`、Clippy `-D warnings`、Rust 格式检查、SvelteKit 生产构建和 `npm run check --workspace @anvil/desktop` 通过。页面不能指定更新 URL 或发行者密钥。正式更新源和公钥尚未配置，因此默认构建仍显示 `not_configured`；发布密钥轮换/撤销和 beta 通道不属于本项交付。
 
-### 9. [ ] 实现下次启动激活、健康确认与回滚
+### 9. [x] 实现下次启动激活、健康确认与回滚
 
-**交付：** Shell 在下次启动选择待启用版本，先确认旧 sidecar 已退出，再启动新 sidecar 和同版本页面。新版本须在 30 秒内通过 sidecar ready、页面加载、API 版本检查和页面 ready 确认；失败时恢复上一个健康版本。
+**交付：** Shell 在启动时把待启用版本原子提升为启动候选版，确保候选页面与 sidecar 都从同一 App 版本加载。sidecar ready、页面 `/health` 请求及 API 版本核对完成后，页面通过受限 Shell IPC 确认健康；确认总时限为 30 秒。Runtime 启动失败、页面报告健康检查失败、或 30 秒内没有确认时，Shell 结束候选 sidecar、恢复上一个健康版本并重新加载页面。状态 schema 2 持久记录未完成启动，进程崩溃后下一次启动回滚；旧 schema 1 状态可读取并在下次写入时升级。失败版本及原因写入状态并阻止同一发行版自动再次下载/启用。
 
-**验收：** 新版本启动成功后成为活动版本并保留一个回滚点；页面加载失败、sidecar 启动/握手失败、兼容性错误或超时都会自动回退，失败版本不会无限重试。旧版本在新版本健康确认前始终可用。
+**验收：** 2026-10-22 `cargo test --locked --offline -p anvil-shell -p anvil-desktop-runtime` 通过（Shell 46 项、Runtime 3 项）。新增验收覆盖候选版本待确认状态、健康确认、超时回滚、进程崩溃后的恢复、候选包缺失时的恢复、较新待启用版本保留、失败版本不重复下载，以及 schema 1 状态迁移。现有 Runtime 测试覆盖 ready 握手失败时回收 sidecar。`cargo check --locked --offline --workspace`、Clippy `-D warnings`、`cargo fmt --all -- --check`、SvelteKit 生产构建和 `npm run check --workspace @anvil/desktop` 通过。尚未在 Tauri WebView/发行安装器中执行页面握手和回滚 smoke；这属于第 10 项平台验收。
 
 ### 10. [ ] 完成桌面发行与平台验收
 

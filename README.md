@@ -9,11 +9,11 @@ Anvil 是面向 Windows、macOS 和 Linux 的轻量 Minecraft Java 版命令行�
 - 创建、查看和前台运行原版 Minecraft 服务端；启动时可由你明确接受 EULA，并支持控制台停止和 Ctrl-C 优雅退出。
 - 安装和列出原版客户端，使用 Microsoft 设备码登录，并在前台启动客户端。
 
-CLI 已提供以上功能。桌面端已建立 Tauri + SvelteKit + shadcn-svelte + Lucide 基础界面，目前尚未接入 Core 业务命令。真实 Microsoft 登录、系统凭证库写入和客户端运行尚未验收；首个端到端目标是 Minecraft 1.21.1。服务端已在 Linux x86_64 上实测；Windows 和 macOS 的真实运行结果仍待维护者验证。
+CLI 已提供以上功能。桌面端使用 Tauri + SvelteKit + shadcn-svelte + Lucide，Runtime 已提供版本目录、客户端安装/列表和 Microsoft 设备码账户 API；桌面 UI 正在重构，当前已接入窗口框架、账户菜单、登录弹窗及设置页（外观模式、自定义浅深色背景/文字/强调色、版本信息和项目入口），游戏/下载/账户设置仅有分类占位，客户端列表和安装版本选择面板已接入，安装提交、进度、暂停/继续、取消和窗口级下载任务已接入，安装完成自动刷新列表、失败/取消后显式重试及只读实例详情已接入，客户端启动尚未接入。桌面安装尚未在 WebView 中完成真实下载 smoke，Microsoft/Xbox 登录已进入真实联调，Minecraft Services 返回应用注册 403，等待 API 访问审核；完整登录与系统凭证库写入尚未验收；首个端到端目标是 Minecraft 1.21.1。服务端已在 Linux x86_64 上实测；Windows 和 macOS 的真实运行结果仍待维护者验证。
 
 ## 试用方式
 
-目前需要从源码运行，并安装 Rust 1.89 或更新版本，以及 Node.js 22.17 或更新版本和 npm。
+目前需要从源码运行，并安装 Rust 1.90 或更新版本，以及 Node.js 22.17 或更新版本和 npm。
 
 安装桌面端前端依赖并启动桌面开发模式：
 
@@ -23,6 +23,8 @@ npm run desktop:dev
 ```
 
 根目录的 npm workspace 管理 `apps/desktop` 前端；Cargo workspace 管理 Rust crates 和 `apps/shell/src-tauri` 宿主。共享 TypeScript 编译选项位于根目录 `tsconfig.json`，前端项目通过 `extends` 继承。
+
+桌面 Rust 日志在开发模式下同时写入终端与文件；macOS 路径为 `~/Library/Logs/Anvil`，分别保存 `shell.log` 和 `runtime.log`，按大小轮转。当前已接入日志基础设施，关键流程埋点与关于页入口待完成，见[日志执行项](todos/desktop-logging.md)。
 
 查看游戏版本：
 
