@@ -7,10 +7,15 @@ license.workspace = true
 build = "build.rs"
 
 [build-dependencies]
+semver.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 tauri-build.workspace = true
 
 [dependencies]
-anvil-core.workspace = true
+semver.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 tauri.workspace = true
 
 [features]

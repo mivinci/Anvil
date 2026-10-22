@@ -1,12 +1,12 @@
 # Anvil 架构方案
 
-状态：workspace、CLI、托管 Java 管理、Core 客户端文件安装与原版服务端 `create` / `list` / `start` 首轮已实现；客户端 CLI 流程已接入共享 Core。旧 Slint crate 已移除，桌面端现为 Tauri Shell + SvelteKit + shadcn-svelte + Lucide 基础骨架，尚未连接业务命令；真实登录和游戏启动验收仍待完成。Shell 职责与页面更新方案处于草案阶段，见 [Anvil Shell 设计草案](shell-design.md)。当前能力与验证边界见 [原版客户端首条可用流程](client-milestone.md)、[Java 管理](java-management.md) 和 [服务端实施项](server-milestone.md)。
+状态：workspace、CLI、托管 Java 管理、Core 客户端文件安装与原版服务端 `create` / `list` / `start` 首轮已实现；客户端 CLI 流程已接入共享 Core。旧 Slint crate 已移除，桌面端现为 Tauri Shell + SvelteKit + shadcn-svelte + Lucide 基础骨架，尚未连接业务命令；真实登录和游戏启动验收仍待完成。Shell 职责与页面更新方案见 [Anvil Shell 设计草案](shell-design.md)，逐项实施顺序见 [Shell 执行清单](shell-milestone.md)。当前能力与验证边界见 [原版客户端首条可用流程](client-milestone.md)、[Java 管理](java-management.md) 和 [服务端实施项](server-milestone.md)。
 
 Minecraft 文件清单、元数据差异和参数生成依据见 [Minecraft 文件安装与启动设计依据](minecraft-installation.md)，其中区分已核对的官方数据与仍需实际运行验证的行为。
 
 ## 产品定位与范围
 
-Anvil 是面向 Windows、macOS 和 Linux 的轻量 Minecraft Java 版工具，统一提供客户端与服务端的实例创建、安装、Java 管理和启动能力。`anvil` CLI 服务终端用户、脚本和 AI 工具；通用 Tauri Shell 按构建时的默认 App ID 启动并维护 App 版本；桌面产品流程属于 `anvil-desktop`，桌面 UI 骨架尚未接入业务能力。Core 可由 CLI 和 App 自己的业务组件复用，Shell 不承载 Minecraft 业务。
+Anvil 是面向 Windows、macOS 和 Linux 的轻量 Minecraft Java 版工具，统一提供客户端与服务端的实例创建、安装、Java 管理和启动能力。`anvil` CLI 服务终端用户、脚本和 AI 工具；通用 Tauri Shell 按构建时的默认 App ID 启动并维护 App 版本；桌面产品流程属于 npm workspace 包 `@anvil/desktop`，桌面 UI 骨架尚未接入业务能力。Core 可由 CLI 和 App 自己的业务组件复用，Shell 不承载 Minecraft 业务。
 
 首版建议支持选定的一组现代原版版本，客户端提供微软正版账户登录，服务端提供显式 EULA 接受与前台运行。明确验证各系统和 CPU 架构组合后再扩大范围；不因启动器可编译就宣称对应游戏版本可运行。模组加载器、整合包、云同步及模组市场后续单独设计。
 
@@ -31,11 +31,11 @@ Anvil/
       Cargo.toml
       src/                         # CLI，生成 anvil 可执行文件
   apps/
-    anvil-shell/
+    shell/
       src-tauri/                   # Tauri 桌面宿主 Cargo crate
-    anvil-desktop/
-      package.json                # SvelteKit 前端 npm workspace
-      vite.config.ts              # 静态适配器、Tailwind 与 SvelteKit
+    desktop/
+      package.json                 # SvelteKit 前端 npm workspace
+      vite.config.ts               # 静态适配器、Tailwind 与 SvelteKit
       src/                         # Svelte、shadcn-svelte、Lucide
   todos/
     architecture.md

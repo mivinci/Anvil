@@ -50,8 +50,9 @@ impl Fixture {
       while !thread_stop.load(Ordering::Relaxed) {
         match listener.accept() {
           Ok((mut stream, _)) => {
-            thread_requests.fetch_add(1, Ordering::Relaxed);
-            if let Err(error) = respond(&mut stream, &thread_state)
+            stream.set_nonblocking(false).unwrap();
+            if let Err(error) =
+              serve_connection(&mut stream, &thread_state, &thread_requests, &thread_stop)
               && error.kind() != std::io::ErrorKind::WouldBlock
               && error.kind() != std::io::ErrorKind::BrokenPipe
               && error.kind() != std::io::ErrorKind::ConnectionReset
@@ -95,28 +96,69 @@ impl Drop for Fixture {
   }
 }
 
-fn respond(stream: &mut TcpStream, state: &Mutex<Response>) -> std::io::Result<()> {
-  stream.set_read_timeout(Some(Duration::from_secs(10)))?;
+fn serve_connection(
+  stream: &mut TcpStream,
+  state: &Mutex<Response>,
+  requests: &AtomicUsize,
+  stop: &AtomicBool,
+) -> std::io::Result<()> {
+  loop {
+    match respond(stream, state, requests) {
+      Ok(Some(false)) => {}
+      Ok(Some(true) | None) => return Ok(()),
+      Err(error)
+        if matches!(
+          error.kind(),
+          std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+        ) && !stop.load(Ordering::Relaxed) =>
+      {
+        continue;
+      }
+      Err(error)
+        if matches!(
+          error.kind(),
+          std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+        ) =>
+      {
+        return Ok(());
+      }
+      Err(error) => return Err(error),
+    }
+  }
+}
+
+fn respond(
+  stream: &mut TcpStream,
+  state: &Mutex<Response>,
+  requests: &AtomicUsize,
+) -> std::io::Result<Option<bool>> {
+  stream.set_read_timeout(Some(Duration::from_millis(100)))?;
   stream.set_write_timeout(Some(Duration::from_secs(10)))?;
   let mut request = Vec::new();
   let mut byte = [0; 1];
   while !request.ends_with(b"\r\n\r\n") && request.len() < 8192 {
     if stream.read(&mut byte)? == 0 {
-      return Ok(());
+      return Ok(None);
     }
     request.push(byte[0]);
   }
+  requests.fetch_add(1, Ordering::Relaxed);
   let response = state.lock().unwrap().clone();
   if !response.delay.is_zero() {
     thread::sleep(response.delay);
   }
   write!(
     stream,
-    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-    response.bytes.len()
+    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: {}\r\n\r\n",
+    response.bytes.len(),
+    if response.sent_bytes < response.bytes.len() {
+      "close"
+    } else {
+      "keep-alive"
+    }
   )?;
   stream.write_all(&response.bytes[..response.sent_bytes.min(response.bytes.len())])?;
-  Ok(())
+  Ok(Some(response.sent_bytes < response.bytes.len()))
 }
 
 fn installer(root: &Path) -> ClientInstaller {

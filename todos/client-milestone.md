@@ -108,7 +108,7 @@ anvil --data-dir ./anvil-data client install vanilla --version 1.21.1
 
 **CLI 本地验收：** 2026-10-21 `cargo test --locked --offline -p anvil -p anvil-core`：1 项 CLI 单测、20 项 CLI 集成测试、62 项 Core 测试通过，1 项真实 Mojang metadata smoke 忽略。CLI 测试验证账户 profile 的原子存储、空客户端/账户列表的 JSON stdout、无效客户端名/Client ID 和缺少客户端错误；Core 测试验证重复安装结果与 LaunchSpec 生命周期内实例锁保持。Loopback fixture 测试需本地网络权限，本次仅访问回环地址；没有进行真实 Microsoft 登录、系统凭证库写入、Mojang 下载或客户端启动。
 
-**桌面工程：** 已删除原 Slint `anvil-gui` crate 与桌面依赖。`apps/anvil-shell/src-tauri` 是 Cargo workspace 中的通用 Tauri 宿主；`apps/anvil-desktop` 是独立的 SvelteKit App npm workspace，通过 Shell 加载。前端使用 shadcn-svelte 组件配置和 Lucide 图标，并继承根 `tsconfig.json`。当前界面是静态壳，按钮未执行客户端操作；App 自己的业务组件和 Shell 的通用 Runtime API 均待设计/接入。当前 Shell crate 仍声明 Core 依赖，是骨架阶段的过渡状态。
+**桌面工程：** 已删除原 Slint `anvil-gui` crate 与桌面依赖。`apps/shell/src-tauri` 是 Cargo workspace 中的通用 Tauri 宿主；`apps/desktop` 是独立的 SvelteKit App npm workspace，通过 Shell 加载。前端使用 shadcn-svelte 组件配置和 Lucide 图标，并继承根 `tsconfig.json`。当前界面是静态壳，按钮未执行客户端操作；App 自己的业务组件和 Shell 的通用 Runtime API 均待设计/接入。当前 Shell crate 仍声明 Core 依赖，是骨架阶段的过渡状态。
 
 **桌面验收：** 2026-10-22 拆分宿主与页面后，本地 `npm run desktop:check`（0 错误、0 警告）、`npm run desktop:build`、`cargo check --offline -p anvil-shell` 与 `cargo fmt --all -- --check` 通过；Tauri 生成 `target/release/anvil-shell`。尚未在 Tauri WebView 中运行；真实设备码登录、OS 凭证库、各 OS/CPU 的真实安装和游戏启动仍需维护者手动 smoke 逐一记录。Linux 桌面构建已加入 Live CI。
 

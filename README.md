@@ -22,7 +22,7 @@ npm install
 npm run desktop:dev
 ```
 
-根目录的 npm workspace 管理 `apps/anvil-desktop` 前端；Cargo workspace 管理 Rust crates 和 `apps/anvil-shell/src-tauri` 宿主。共享 TypeScript 编译选项位于根目录 `tsconfig.json`，前端项目通过 `extends` 继承。
+根目录的 npm workspace 管理 `apps/desktop` 前端；Cargo workspace 管理 Rust crates 和 `apps/shell/src-tauri` 宿主。共享 TypeScript 编译选项位于根目录 `tsconfig.json`，前端项目通过 `extends` 继承。
 
 查看游戏版本：
 

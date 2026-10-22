@@ -67,12 +67,20 @@ impl HttpFixture {
     let worker = thread::spawn(move || {
       while !thread_stop.load(Ordering::Relaxed) {
         match listener.accept() {
-          Ok((mut stream, _)) => {
+          Ok((mut stream, _)) => loop {
+            stream.set_nonblocking(false).unwrap();
             let request = match read_request(&mut stream) {
               Ok(Some(request)) => request,
-              Ok(None) => continue,
-              Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => continue,
-              Err(_) => continue,
+              Ok(None) => break,
+              Err(error)
+                if matches!(
+                  error.kind(),
+                  std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                ) && !thread_stop.load(Ordering::Relaxed) =>
+              {
+                continue;
+              }
+              Err(_) => break,
             };
             let response = respond(
               &request,
@@ -86,7 +94,7 @@ impl HttpFixture {
             {
               panic!("authorization fixture failed: {error}");
             }
-          }
+          },
           Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
             thread::sleep(Duration::from_millis(1));
           }
@@ -111,7 +119,7 @@ impl Drop for HttpFixture {
 }
 
 fn read_request(stream: &mut TcpStream) -> std::io::Result<Option<FixtureRequest>> {
-  stream.set_read_timeout(Some(Duration::from_secs(10)))?;
+  stream.set_read_timeout(Some(Duration::from_millis(100)))?;
   let mut header = Vec::new();
   let mut byte = [0u8; 1];
   while !header.ends_with(b"\r\n\r\n") && header.len() <= 16 * 1024 {
@@ -255,7 +263,7 @@ fn write_response(stream: &mut TcpStream, response: (u16, Vec<u8>)) -> std::io::
   };
   write!(
     stream,
-    "HTTP/1.1 {} {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+    "HTTP/1.1 {} {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: keep-alive\r\n\r\n",
     response.0,
     reason,
     response.1.len()

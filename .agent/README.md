@@ -12,7 +12,7 @@
 
 ## 架构与实现
 
-- 保持 Cargo workspace crate 职责清楚：`anvil-core` 放可复用业务逻辑，`anvil` 负责 CLI，`apps/anvil-shell/src-tauri` 负责通用 Tauri App 启动与版本管理。桌面 App 在 npm workspace 内维护并拥有自己的产品流程；由 App 自己的业务组件复用 core。Shell 不承载领域命令或依赖 core。
+- 保持 Cargo workspace crate 职责清楚：`anvil-core` 放可复用业务逻辑，`anvil` 负责 CLI，`apps/shell/src-tauri` 负责通用 Tauri App 启动与版本管理。桌面 App 在 npm workspace 内维护并拥有自己的产品流程；由 App 自己的业务组件复用 core。Shell 不承载领域命令或依赖 core。
 - core 不依赖 UI 框架、CLI 参数解析或入口创建的 Tokio runtime。由入口创建并持有自己的 Tokio runtime。
 - 复用固定版本的 Q2Q `q2q-http` 下载、并发、校验和恢复能力；不要在 Anvil 再造 HTTP 下载器或恢复格式。
 - 资源按需使用：避免空闲常驻服务、无界缓存、无界日志和没有明确收益的周期轮询。异步操作应定义进度、取消、清理和最终状态的边界。
