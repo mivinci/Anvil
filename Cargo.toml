@@ -18,7 +18,7 @@ directories = "6"
 getrandom = "0.3"
 flate2 = "1.1"
 keyring = { version = "4.2.0", default-features = false, features = ["v1"] }
-q2q-http = { git = "https://github.com/mivinci/Q2Q.git", rev = "effc504d4d14cbd68f7734461962c9c55a5da2ef" }
+q2q-http = { git = "https://github.com/mivinci/Q2Q.git", branch = "main" }
 ring = "0.17.14"
 rolling-file = "0.2.0"
 regex = "1"

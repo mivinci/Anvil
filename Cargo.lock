@@ -3239,7 +3239,7 @@ dependencies = [
 [[package]]
 name = "q2q-http"
 version = "0.1.0"
-source = "git+https://github.com/mivinci/Q2Q.git?rev=effc504d4d14cbd68f7734461962c9c55a5da2ef#effc504d4d14cbd68f7734461962c9c55a5da2ef"
+source = "git+https://github.com/mivinci/Q2Q.git?branch=main#0d40b7313ca4e8e2bbaa751d513edf3873f7f6ad"
 dependencies = [
  "bytes",
  "httpdate",
