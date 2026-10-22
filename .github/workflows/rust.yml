@@ -30,8 +30,8 @@ jobs:
         run: |
           unset HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy
           export NO_PROXY='*' no_proxy='*'
-          cargo test --locked -p anvil -p anvil-core -- --test-threads=1
-      - run: cargo clippy --locked -p anvil -p anvil-core --all-targets -- -D warnings
+          cargo test --locked -p anvil -p anvil-core -p anvil-shell -- --test-threads=1
+      - run: cargo clippy --locked -p anvil -p anvil-core -p anvil-shell --all-targets -- -D warnings
       - run: cargo build --locked -p anvil
 
   desktop:

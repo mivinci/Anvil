@@ -1084,13 +1084,14 @@ mod tests {
     let encoder = GzEncoder::new(File::create(path).unwrap(), Compression::default());
     let mut builder = Builder::new(encoder);
     let manifest = serde_json::json!({
-      "schema_version": 1,
+      "schema_version": 2,
       "app_id": "anvil.desktop",
       "version": version,
       "target": env!("ANVIL_TARGET_PLATFORM"),
       "page_entry": "web/index.html",
       "sidecar_entry": sidecar_entry(),
       "http_api_version": "1.0.0",
+      "http_api_compatibility": "^1.0.0",
       "shell_api_compatibility": "^1.0.0"
     });
     append_directory(&mut builder, "web/");

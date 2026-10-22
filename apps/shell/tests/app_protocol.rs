@@ -24,13 +24,14 @@ fn protocol(temp: &TempDir) -> AppPageProtocol {
 fn manifest(version: &str) -> String {
   format!(
     r#"{{
-      "schema_version": 1,
+      "schema_version": 2,
       "app_id": "{APP_ID}",
       "version": "{version}",
       "target": "{TARGET}",
       "page_entry": "web/index.html",
       "sidecar_entry": "runtime/anvil-desktop",
       "http_api_version": "1.0.0",
+      "http_api_compatibility": "^1.0.0",
       "shell_api_compatibility": "^{SHELL_API_VERSION}"
     }}"#
   )

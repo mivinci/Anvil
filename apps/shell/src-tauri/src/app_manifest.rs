@@ -1,7 +1,7 @@
 use semver::{Version, VersionReq};
 use serde::Deserialize;
 
-const CURRENT_SCHEMA_VERSION: u32 = 1;
+const CURRENT_SCHEMA_VERSION: u32 = 2;
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -13,6 +13,10 @@ pub struct AppManifest {
   pub page_entry: String,
   pub sidecar_entry: String,
   pub http_api_version: String,
+  /// Semver requirement of runtime HTTP API versions the packaged UI accepts;
+  /// the bundled seed's `http_api_version` must satisfy it, and so must any
+  /// sidecar override the runtime publishes later.
+  pub http_api_compatibility: String,
   pub shell_api_compatibility: String,
 }
 
@@ -51,8 +55,18 @@ impl AppManifest {
 
     Version::parse(&manifest.version)
       .map_err(|error| format!("version must be a semantic version: {error}"))?;
-    Version::parse(&manifest.http_api_version)
+    let http_api_version = Version::parse(&manifest.http_api_version)
       .map_err(|error| format!("http_api_version must be a semantic version: {error}"))?;
+    let http_api_compatibility =
+      VersionReq::parse(&manifest.http_api_compatibility).map_err(|error| {
+        format!("http_api_compatibility must be a semantic version requirement: {error}")
+      })?;
+    if !http_api_compatibility.matches(&http_api_version) {
+      return Err(format!(
+        "http_api_version {} is outside the manifest compatibility range {}",
+        manifest.http_api_version, manifest.http_api_compatibility
+      ));
+    }
     let shell_api_version = Version::parse(shell_api_version)
       .map_err(|error| format!("ANVIL_SHELL_API_VERSION must be a semantic version: {error}"))?;
     let compatibility = VersionReq::parse(&manifest.shell_api_compatibility).map_err(|error| {

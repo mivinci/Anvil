@@ -218,6 +218,13 @@ enum Output {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> ExitCode {
+  // Hidden diagnostic used by the runtime self-update gate check and the
+  // release pipeline to discover the served API version; short-circuits
+  // before clap so it never interferes with regular argument parsing.
+  if std::env::args().nth(1).as_deref() == Some("--serve-api-version") {
+    println!("{}", serve::HTTP_API_VERSION);
+    return ExitCode::SUCCESS;
+  }
   // Preserve JSON errors even when parsing fails; clap still owns help/version output.
   let json = std::env::args_os().any(|arg| arg == "--json");
   let json_events = std::env::args_os().any(|arg| arg == "--json-events");

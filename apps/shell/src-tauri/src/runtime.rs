@@ -5,6 +5,7 @@ use crate::{
 use getrandom::fill as fill_random;
 use serde::{Deserialize, Serialize};
 use std::{
+  fs,
   io::{self, BufRead, BufReader, Read, Write},
   path::{Path, PathBuf},
   process::{Child, ChildStdin, Command, Stdio},
@@ -22,6 +23,48 @@ const MAX_READY_LINE_BYTES: usize = 4096;
 const READY_TIMEOUT: Duration = Duration::from_secs(10);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 const MONITOR_INTERVAL: Duration = Duration::from_millis(250);
+
+/// Directory (inside the App's data directory) where the sidecar may publish
+/// newer versions of itself and the pointer the Shell prefers at startup.
+const SIDECAR_STORE_DIR: &str = "sidecar-store";
+const OVERRIDE_POINTER_ENTRY: &str = "current.json";
+const BLOCKED_LIST_ENTRY: &str = "blocked.json";
+const MAX_BLOCKED_VERSIONS: usize = 64;
+
+/// Sidecar self-update pointer, written by the running sidecar and preferred
+/// over the packaged seed by the Shell when it validates.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SidecarOverride {
+  schema_version: u32,
+  /// Sidecar package version, opaque to the Shell; used for failure blocking.
+  version: String,
+  sidecar_entry: String,
+  http_api_version: String,
+}
+
+/// Environment contract the Shell offers the sidecar so it can update itself:
+/// a private writable store plus the API range the packaged UI accepts.
+#[derive(Debug, Clone)]
+struct SidecarEnvironment {
+  store_dir: PathBuf,
+  http_api_compatibility: String,
+}
+
+#[derive(Debug)]
+struct SidecarCandidate {
+  path: PathBuf,
+  api_version: String,
+  /// Present only for overrides; the sidecar package version for blocking.
+  version: Option<String>,
+}
+
+#[derive(Debug)]
+struct ActiveSidecars {
+  /// Preferred first; the packaged seed is always last.
+  candidates: Vec<SidecarCandidate>,
+  environment: Option<SidecarEnvironment>,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -113,27 +156,72 @@ impl RuntimeSupervisor {
       api_version: None,
     });
 
-    match active_sidecar() {
-      Ok(None) => self.set_status(RuntimeStatus {
+    let Ok(storage) = AppStorage::for_current_user() else {
+      self.set_status(RuntimeStatus {
+        state: RuntimeState::Failed,
+        failure: Some(RuntimeFailure::StorageUnavailable),
+        api_version: None,
+      });
+      return;
+    };
+    self.start_from_storage(&storage);
+  }
+
+  /// Resolve sidecar candidates from `storage` and launch the first one that
+  /// reaches the ready handshake, falling back through the list on failure.
+  fn start_from_storage(&self, storage: &AppStorage) {
+    let active = match active_sidecars(storage) {
+      Ok(active) => active,
+      Err(failure) => {
+        self.set_status(RuntimeStatus {
+          state: RuntimeState::Failed,
+          failure: Some(failure),
+          api_version: None,
+        });
+        return;
+      }
+    };
+    if active.candidates.is_empty() {
+      self.set_status(RuntimeStatus {
         state: RuntimeState::NotInstalled,
         failure: None,
         api_version: None,
-      }),
-      Ok(Some((path, api_version))) => {
-        if let Err(failure) = self.launch(&path, &api_version) {
-          self.set_status(RuntimeStatus {
-            state: RuntimeState::Failed,
-            failure: Some(failure),
-            api_version: None,
-          });
+      });
+      return;
+    }
+
+    let mut last_failure = None;
+    for candidate in active.candidates {
+      let origin = candidate
+        .version
+        .as_deref()
+        .map(|version| format!("override {version}"))
+        .unwrap_or_else(|| "packaged seed".to_owned());
+      match self.launch(
+        &candidate.path,
+        &candidate.api_version,
+        active.environment.as_ref(),
+      ) {
+        Ok(()) => {
+          tracing::info!(origin, "Runtime startup succeeded");
+          return;
+        }
+        Err(failure) => {
+          if let (Some(version), Some(environment)) =
+            (&candidate.version, active.environment.as_ref())
+          {
+            block_override_version(environment, version);
+          }
+          tracing::warn!(origin, failure = ?failure, "Runtime candidate failed; falling back");
+          last_failure = Some(failure);
         }
       }
-      Err(failure) => self.set_status(RuntimeStatus {
-        state: RuntimeState::Failed,
-        failure: Some(failure),
-        api_version: None,
-      }),
     }
+    self.set_status(RuntimeStatus {
+      state: RuntimeState::Failed,
+      failure: last_failure,
+      api_version: None,
+    });
   }
 
   pub fn status(&self) -> RuntimeStatus {
@@ -167,7 +255,7 @@ impl RuntimeSupervisor {
       if !is_executable(&executable) {
         return Err(RuntimeFailure::SidecarNotExecutable);
       }
-      self.launch(&executable, &manifest.http_api_version)
+      self.launch(&executable, &manifest.http_api_version, None)
     })();
     if let Err(failure) = result {
       self.mark_startup_failure(failure);
@@ -235,7 +323,12 @@ impl RuntimeSupervisor {
     });
   }
 
-  fn launch(&self, executable: &Path, expected_api_version: &str) -> Result<(), RuntimeFailure> {
+  fn launch(
+    &self,
+    executable: &Path,
+    expected_api_version: &str,
+    environment: Option<&SidecarEnvironment>,
+  ) -> Result<(), RuntimeFailure> {
     self.set_status(RuntimeStatus {
       state: RuntimeState::Starting,
       failure: None,
@@ -243,7 +336,7 @@ impl RuntimeSupervisor {
     });
 
     tracing::info!(api_version = expected_api_version, "Runtime launch started");
-    let result = self.launch_ready(executable, expected_api_version);
+    let result = self.launch_ready(executable, expected_api_version, environment);
     if let Err(failure) = result {
       self.set_status(RuntimeStatus {
         state: RuntimeState::Failed,
@@ -258,6 +351,7 @@ impl RuntimeSupervisor {
     &self,
     executable: &Path,
     expected_api_version: &str,
+    environment: Option<&SidecarEnvironment>,
   ) -> Result<(), RuntimeFailure> {
     let token = create_token()?;
     let mut command = Command::new(executable);
@@ -285,6 +379,13 @@ impl RuntimeSupervisor {
     // The public App registration can be overridden for local development.
     if let Some(value) = std::env::var_os("ANVIL_MICROSOFT_CLIENT_ID") {
       command.env("ANVIL_MICROSOFT_CLIENT_ID", value);
+    }
+    // Self-update contract: a private writable store plus the API range the
+    // packaged UI accepts, so the sidecar can publish compatible versions.
+    if let Some(environment) = environment {
+      command
+        .env("ANVIL_SIDECAR_STORE_DIR", &environment.store_dir)
+        .env("ANVIL_HTTP_API_COMPAT", &environment.http_api_compatibility);
     }
     let mut child = command.spawn().map_err(|_| RuntimeFailure::SpawnFailed)?;
 
@@ -381,8 +482,7 @@ impl Default for RuntimeSupervisor {
   }
 }
 
-fn active_sidecar() -> Result<Option<(PathBuf, String)>, RuntimeFailure> {
-  let storage = AppStorage::for_current_user().map_err(|_| RuntimeFailure::StorageUnavailable)?;
+fn active_sidecars(storage: &AppStorage) -> Result<ActiveSidecars, RuntimeFailure> {
   let store = storage
     .app(env!("ANVIL_DEFAULT_APP_ID"))
     .map_err(|_| RuntimeFailure::StorageUnavailable)?;
@@ -390,17 +490,140 @@ fn active_sidecar() -> Result<Option<(PathBuf, String)>, RuntimeFailure> {
     .resolve_active()
     .map_err(|_| RuntimeFailure::StorageUnavailable)?
   else {
-    return Ok(None);
+    return Ok(ActiveSidecars {
+      candidates: Vec::new(),
+      environment: None,
+    });
   };
 
   let manifest = load_manifest(&version)?;
-  let path = version
-    .entry_path(&manifest.sidecar_entry)
+  let environment = SidecarEnvironment {
+    store_dir: store.app_dir().join(SIDECAR_STORE_DIR),
+    http_api_compatibility: manifest.http_api_compatibility.clone(),
+  };
+  let packaged = SidecarCandidate {
+    path: version
+      .entry_path(&manifest.sidecar_entry)
+      .map_err(|_| RuntimeFailure::SidecarMissing)?,
+    api_version: manifest.http_api_version.clone(),
+    version: None,
+  };
+  if !is_executable(&packaged.path) {
+    return Err(RuntimeFailure::SidecarNotExecutable);
+  }
+
+  let mut candidates = Vec::new();
+  match resolve_override(&environment, &manifest) {
+    Ok(Some(candidate)) => candidates.push(candidate),
+    Ok(None) => {}
+    Err(failure) => {
+      tracing::warn!(failure = ?failure, "Ignoring an invalid sidecar override pointer");
+    }
+  }
+  candidates.push(packaged);
+  Ok(ActiveSidecars {
+    candidates,
+    environment: Some(environment),
+  })
+}
+
+/// Read and validate the sidecar override pointer. `Ok(None)` means no valid
+/// override is present; malformed pointers never fail startup outright.
+fn resolve_override(
+  environment: &SidecarEnvironment,
+  manifest: &AppManifest,
+) -> Result<Option<SidecarCandidate>, RuntimeFailure> {
+  let Ok(source) = crate::bundled_app::read_entry(
+    &environment.store_dir,
+    OVERRIDE_POINTER_ENTRY,
+    MAX_MANIFEST_BYTES,
+  ) else {
+    return Ok(None);
+  };
+  let pointer: SidecarOverride =
+    serde_json::from_slice(&source).map_err(|_| RuntimeFailure::InvalidManifest)?;
+  if pointer.schema_version != 1 {
+    return Err(RuntimeFailure::InvalidManifest);
+  }
+  if semver::Version::parse(&pointer.version).is_err() {
+    return Err(RuntimeFailure::InvalidManifest);
+  }
+  let api_version = semver::Version::parse(&pointer.http_api_version)
+    .map_err(|_| RuntimeFailure::IncompatibleApi)?;
+  let compatibility = semver::VersionReq::parse(&manifest.http_api_compatibility)
+    .map_err(|_| RuntimeFailure::InvalidManifest)?;
+  if !compatibility.matches(&api_version) {
+    return Err(RuntimeFailure::IncompatibleApi);
+  }
+  if blocked_versions(environment).contains(&pointer.version) {
+    tracing::warn!(
+      version = %pointer.version,
+      "Skipping a blocked sidecar override version"
+    );
+    return Ok(None);
+  }
+  let path = crate::bundled_app::resolve_entry(&environment.store_dir, &pointer.sidecar_entry)
     .map_err(|_| RuntimeFailure::SidecarMissing)?;
   if !is_executable(&path) {
     return Err(RuntimeFailure::SidecarNotExecutable);
   }
-  Ok(Some((path, manifest.http_api_version)))
+  Ok(Some(SidecarCandidate {
+    path,
+    api_version: pointer.http_api_version,
+    version: Some(pointer.version),
+  }))
+}
+
+fn blocked_versions(environment: &SidecarEnvironment) -> Vec<String> {
+  crate::bundled_app::read_entry(
+    &environment.store_dir,
+    BLOCKED_LIST_ENTRY,
+    MAX_MANIFEST_BYTES,
+  )
+  .ok()
+  .and_then(|source| {
+    serde_json::from_slice::<BlockedListWithSchema>(&source)
+      .ok()
+      .filter(|blocked| blocked.schema_version == 1)
+      .map(|blocked| blocked.versions)
+  })
+  .unwrap_or_default()
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BlockedListWithSchema {
+  schema_version: u32,
+  #[serde(default)]
+  versions: Vec<String>,
+}
+
+/// Record a failed override version and drop the pointer, so the next startup
+/// goes straight to the packaged seed and the sidecar stops re-offering it.
+fn block_override_version(environment: &SidecarEnvironment, version: &str) {
+  let mut versions = blocked_versions(environment);
+  if !versions.iter().any(|entry| entry == version) {
+    versions.push(version.to_owned());
+  }
+  versions.truncate(MAX_BLOCKED_VERSIONS);
+  let document = BlockedListWithSchema {
+    schema_version: 1,
+    versions,
+  };
+  let result = (|| -> std::io::Result<()> {
+    fs::create_dir_all(&environment.store_dir)?;
+    let serialized = serde_json::to_vec(&document).map_err(std::io::Error::other)?;
+    let mut temporary = tempfile::NamedTempFile::new_in(&environment.store_dir)?;
+    use std::io::Write;
+    temporary.write_all(&serialized)?;
+    temporary.as_file().sync_all()?;
+    temporary.persist(environment.store_dir.join(BLOCKED_LIST_ENTRY))?;
+    let _ = fs::remove_file(environment.store_dir.join(OVERRIDE_POINTER_ENTRY));
+    Ok(())
+  })();
+  if let Err(error) = result {
+    tracing::warn!(%error, "Could not record the failed sidecar override version");
+  }
 }
 
 fn load_manifest(version: &PublishedAppVersion) -> Result<AppManifest, RuntimeFailure> {
@@ -581,7 +804,7 @@ mod tests {
       ),
     );
     let supervisor = RuntimeSupervisor::new();
-    supervisor.launch(&script, "1.0.0").unwrap();
+    supervisor.launch(&script, "1.0.0", None).unwrap();
     assert_eq!(supervisor.status().state, RuntimeState::Ready);
     let connection = supervisor.connection().unwrap();
     assert_eq!(connection.base_url, format!("http://127.0.0.1:{port}"));
@@ -603,7 +826,7 @@ mod tests {
     );
     let supervisor = RuntimeSupervisor::new();
     assert_eq!(
-      supervisor.launch(&script, "1.0.0").unwrap_err(),
+      supervisor.launch(&script, "1.0.0", None).unwrap_err(),
       RuntimeFailure::InvalidReadyMessage
     );
     assert_eq!(supervisor.status().state, RuntimeState::Failed);
@@ -615,5 +838,227 @@ mod tests {
     std::fs::write(&path, source).unwrap();
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
     path
+  }
+
+  // --- sidecar override (Phase 3) ---
+
+  use crate::app_storage::AppVersionState;
+
+  #[cfg(unix)]
+  struct OverrideFixture {
+    root: tempfile::TempDir,
+    storage: AppStorage,
+    seed_port: u16,
+    store_dir: PathBuf,
+  }
+
+  /// Publish and activate a minimal App package with a working seed stub.
+  #[cfg(unix)]
+  fn override_fixture() -> OverrideFixture {
+    let root = tempdir().unwrap();
+    let storage = AppStorage::open(root.path().join("data")).unwrap();
+    let store = storage.app(env!("ANVIL_DEFAULT_APP_ID")).unwrap();
+    let staging = store.stage_version().unwrap();
+    let directory = staging.directory();
+    fs::create_dir_all(directory.join("web")).unwrap();
+    fs::create_dir_all(directory.join("runtime")).unwrap();
+    let manifest = serde_json::json!({
+      "schema_version": 2,
+      "app_id": env!("ANVIL_DEFAULT_APP_ID"),
+      "version": "1.2.3",
+      "target": env!("ANVIL_TARGET_PLATFORM"),
+      "page_entry": "web/index.html",
+      "sidecar_entry": "runtime/anvil",
+      "http_api_version": "1.0.0",
+      "http_api_compatibility": "^1.0.0",
+      "shell_api_compatibility": env!("ANVIL_SHELL_API_VERSION"),
+    });
+    fs::write(directory.join("manifest.json"), manifest.to_string()).unwrap();
+    fs::write(directory.join("web/index.html"), "page").unwrap();
+    let seed_port = NEXT_PORT.fetch_add(1, AtomicOrdering::Relaxed);
+    let seed = make_stub(
+      directory,
+      &format!(
+        "#!/bin/sh\nIFS= read -r token || exit 2\nprintf '{{\"kind\":\"ready\",\"port\":{seed_port},\"apiVersion\":\"1.0.0\"}}\\n'\nIFS= read -r command\n[ \"$command\" = shutdown ]\n"
+      ),
+    );
+    fs::copy(seed, directory.join("runtime/anvil")).unwrap();
+    let version = semver::Version::parse("1.2.3").unwrap();
+    staging.publish(&version).unwrap();
+    store
+      .write_state(&AppVersionState {
+        active_version: Some(version),
+        ..AppVersionState::default()
+      })
+      .unwrap();
+    OverrideFixture {
+      store_dir: store.app_dir().join(SIDECAR_STORE_DIR),
+      root,
+      storage,
+      seed_port: seed_port as u16,
+    }
+  }
+
+  /// Publish an override binary plus the pointer the Shell should prefer.
+  #[cfg(unix)]
+  fn write_override(
+    fixture: &OverrideFixture,
+    version: &str,
+    http_api_version: &str,
+    source: &str,
+  ) {
+    let binary_dir = fixture.store_dir.join("versions").join(version);
+    fs::create_dir_all(&binary_dir).unwrap();
+    let path = make_stub(&binary_dir, source);
+    fs::rename(path, binary_dir.join("anvil")).unwrap();
+    let pointer = serde_json::json!({
+      "schema_version": 1,
+      "version": version,
+      "sidecar_entry": format!("versions/{version}/anvil"),
+      "http_api_version": http_api_version,
+    });
+    fs::create_dir_all(&fixture.store_dir).unwrap();
+    fs::write(
+      fixture.store_dir.join(OVERRIDE_POINTER_ENTRY),
+      pointer.to_string(),
+    )
+    .unwrap();
+  }
+
+  #[cfg(unix)]
+  fn blocked_path(fixture: &OverrideFixture) -> PathBuf {
+    fixture.store_dir.join(BLOCKED_LIST_ENTRY)
+  }
+
+  #[cfg(unix)]
+  fn pointer_path(fixture: &OverrideFixture) -> PathBuf {
+    fixture.store_dir.join(OVERRIDE_POINTER_ENTRY)
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn prefers_a_valid_override_and_passes_the_update_environment() {
+    let fixture = override_fixture();
+    let override_port = NEXT_PORT.fetch_add(1, AtomicOrdering::Relaxed);
+    let marker = fixture.root.path().join("override-env.txt");
+    let source = format!(
+      "#!/bin/sh\nIFS= read -r token || exit 2\nprintf '{{\"kind\":\"ready\",\"port\":{override_port},\"apiVersion\":\"1.0.0\"}}\\n'\nenv | grep -E '^ANVIL_SIDECAR_STORE_DIR=|^ANVIL_HTTP_API_COMPAT=' > \"{marker}\"\nIFS= read -r command\n[ \"$command\" = shutdown ]\n",
+      marker = marker.display(),
+    );
+    write_override(&fixture, "2.0.0", "1.0.0", &source);
+
+    let supervisor = RuntimeSupervisor::new();
+    supervisor.start_from_storage(&fixture.storage);
+    let status = supervisor.status();
+    assert_eq!(status.state, RuntimeState::Ready);
+    let connection = supervisor.connection().unwrap();
+    assert_eq!(
+      connection.base_url,
+      format!("http://127.0.0.1:{override_port}")
+    );
+
+    // The stub writes the marker after printing ready; poll until it lands.
+    let mut environment = String::new();
+    for _ in 0..40 {
+      if let Ok(contents) = fs::read_to_string(&marker) {
+        environment = contents;
+        break;
+      }
+      thread::sleep(Duration::from_millis(50));
+    }
+    assert!(environment.contains(&format!(
+      "ANVIL_SIDECAR_STORE_DIR={}",
+      fixture.store_dir.display()
+    )));
+    assert!(environment.contains("ANVIL_HTTP_API_COMPAT=^1.0.0"));
+    supervisor.shutdown();
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn falls_back_to_the_packaged_seed_and_blocks_the_failed_override() {
+    let fixture = override_fixture();
+    write_override(
+      &fixture,
+      "2.0.0",
+      "1.0.0",
+      "#!/bin/sh\nIFS= read -r token || exit 2\nexit 7\n",
+    );
+
+    let supervisor = RuntimeSupervisor::new();
+    supervisor.start_from_storage(&fixture.storage);
+    let status = supervisor.status();
+    assert_eq!(status.state, RuntimeState::Ready);
+    let connection = supervisor.connection().unwrap();
+    assert_eq!(
+      connection.base_url,
+      format!("http://127.0.0.1:{}", fixture.seed_port)
+    );
+
+    let blocked: serde_json::Value =
+      serde_json::from_slice(&fs::read(blocked_path(&fixture)).unwrap()).unwrap();
+    assert!(
+      blocked["versions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|value| value == "2.0.0")
+    );
+    assert!(!pointer_path(&fixture).exists());
+    supervisor.shutdown();
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn skips_an_override_outside_the_api_compatibility_range() {
+    let fixture = override_fixture();
+    let override_port = NEXT_PORT.fetch_add(1, AtomicOrdering::Relaxed);
+    write_override(
+      &fixture,
+      "2.0.0",
+      "2.0.0",
+      &format!(
+        "#!/bin/sh\nIFS= read -r token || exit 2\nprintf '{{\"kind\":\"ready\",\"port\":{override_port},\"apiVersion\":\"2.0.0\"}}\\n'\nIFS= read -r command\n[ \"$command\" = shutdown ]\n"
+      ),
+    );
+
+    let supervisor = RuntimeSupervisor::new();
+    supervisor.start_from_storage(&fixture.storage);
+    assert_eq!(supervisor.status().state, RuntimeState::Ready);
+    let connection = supervisor.connection().unwrap();
+    assert_eq!(
+      connection.base_url,
+      format!("http://127.0.0.1:{}", fixture.seed_port)
+    );
+    // The pointer stays: the runtime may replace it with a compatible one.
+    assert!(pointer_path(&fixture).exists());
+    supervisor.shutdown();
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn never_launches_a_blocked_override_version() {
+    let fixture = override_fixture();
+    let override_port = NEXT_PORT.fetch_add(1, AtomicOrdering::Relaxed);
+    write_override(
+      &fixture,
+      "2.0.0",
+      "1.0.0",
+      &format!(
+        "#!/bin/sh\nIFS= read -r token || exit 2\nprintf '{{\"kind\":\"ready\",\"port\":{override_port},\"apiVersion\":\"1.0.0\"}}\\n'\nIFS= read -r command\n[ \"$command\" = shutdown ]\n"
+      ),
+    );
+    let blocked = serde_json::json!({"schema_version": 1, "versions": ["2.0.0"]});
+    fs::write(blocked_path(&fixture), blocked.to_string()).unwrap();
+
+    let supervisor = RuntimeSupervisor::new();
+    supervisor.start_from_storage(&fixture.storage);
+    assert_eq!(supervisor.status().state, RuntimeState::Ready);
+    let connection = supervisor.connection().unwrap();
+    assert_eq!(
+      connection.base_url,
+      format!("http://127.0.0.1:{}", fixture.seed_port)
+    );
+    supervisor.shutdown();
   }
 }

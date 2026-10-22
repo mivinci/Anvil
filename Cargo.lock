@@ -110,6 +110,7 @@ dependencies = [
  "anvil-logging",
  "axum",
  "clap",
+ "ring",
  "semver",
  "serde",
  "serde_json",
@@ -118,6 +119,7 @@ dependencies = [
  "tokio-util",
  "tracing",
  "tracing-subscriber",
+ "url",
 ]
 
 [[package]]

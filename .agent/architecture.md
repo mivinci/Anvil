@@ -40,9 +40,16 @@ Anvil/
 
 Shell 与 Runtime 入口共用 `anvil-logging`，开发模式写终端和文件，发行模式写文件；Core 仅产生 tracing 事件，不持有日志输出。文件轮转、队列与历史数量有界，Runtime stdout 保留为握手协议，日志使用 stderr。不得记录认证凭据、验证码或请求体。实施状态与验收边界见[桌面日志执行项](../todos/desktop-logging.md)。
 
+## Runtime 自更新
+
+- Shell 保持通用：启动时优先读取 `<app>/sidecar-store/current.json`（schema 1：`version`/`sidecar_entry`/`http_api_version`），校验失败或启动失败即回退包内种子，并把失败版本写入 `blocked.json`。Shell 不了解 Anvil 版本策略或下载渠道。
+- App manifest 为 schema 2，新增 `http_api_compatibility`（VersionReq）：种子声明的 `http_api_version` 和 override 声明的版本都必须落在范围内。`serve` 侧以编译期常量校验 `ANVIL_HTTP_API_VERSION` 相等，握手不再只是回显。
+- Shell 给 sidecar 传 `ANVIL_SIDECAR_STORE_DIR` 与 `ANVIL_HTTP_API_COMPAT`；`serve` 的自更新器在编译期注入索引 URL 与 Ed25519 公钥（`ANVIL_RUNTIME_UPDATE_MANIFEST_URL`/`ANVIL_RUNTIME_UPDATE_PUBLIC_KEY`，缺失即禁用），24 小时限频拉取签名 `runtime-index.json`，按版本、API 范围、拉黑列表过滤，下载裸二进制经 sha256 与 `--version`/`--serve-api-version` 门禁后发布到 `versions/<ver>/` 并原子写 `current.json`，下次启动生效。
+- 校验强度与 Shell 的 App 更新通道对齐：Ed25519 签名索引 + HTTPS + 签名载荷钉死的 SHA-256。密钥经 `cargo run -p anvil --example gen_update_key` 生成，私钥存仓库 secret `ANVIL_RUNTIME_SIGNING_KEY`，公钥存仓库变量并在 release 构建时注入。
+
 ## 下载与文件安全
 
-- Anvil 通过固定 revision 的 `q2q-http` 复用 Q2Q 提供的 HTTP Executor、并发下载、哈希校验和恢复能力。不要另写 Range worker、重试队列或下载恢复格式。
+- Anvil 通过 git 分支依赖的 `q2q-http` 复用 Q2Q 提供的 HTTP Executor、并发下载、哈希校验和恢复能力（`Cargo.lock` 锁定精确提交）。不要另写 Range worker、重试队列或下载恢复格式。
 - 官方元数据与 Artifact 的可信哈希决定内容身份。传输完成不等于校验通过；校验、原子发布和安装记录提交是不同阶段。
 - 缓存放可验证、可重建的共享内容；实例目录放世界、配置和会话等可变数据。安装 staging 与最终发布应避免让半成品被识别为已安装。
 - 解包、下载、元数据读取和日志缓冲设定上限；取消操作要等待它拥有的实际 I/O 与清理工作完成。

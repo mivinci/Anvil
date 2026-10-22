@@ -1,10 +1,11 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "app_id": "anvil.desktop",
   "version": "0.1.0",
   "target": "aarch64-pc-windows-msvc",
   "page_entry": "web/index.html",
   "sidecar_entry": "runtime/anvil.exe",
   "http_api_version": "1.0.0",
+  "http_api_compatibility": "^1.0.0",
   "shell_api_compatibility": "^1.0.0"
 }

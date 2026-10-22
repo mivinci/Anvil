@@ -205,7 +205,7 @@ fn validate_published_package(
   Ok(())
 }
 
-fn read_entry(
+pub(crate) fn read_entry(
   root: &Path,
   entry: &str,
   maximum_bytes: u64,
@@ -218,7 +218,7 @@ fn read_entry(
   Ok(fs::read(path)?)
 }
 
-fn resolve_entry(root: &Path, entry: &str) -> Result<PathBuf, BundledAppInstallError> {
+pub(crate) fn resolve_entry(root: &Path, entry: &str) -> Result<PathBuf, BundledAppInstallError> {
   let path = Path::new(entry);
   let mut candidate = root.to_path_buf();
   for component in path.components() {

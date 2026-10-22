@@ -1,11 +1,11 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::{
   collections::HashMap,
   sync::{Arc, Weak},
 };
 
 use directories::ProjectDirs;
-use q2q_http::Downloader;
+use q2q_http::{Checksum, DownloadRequest, Downloader};
 use tokio::sync::{Mutex, OwnedMutexGuard, Semaphore};
 use tokio_util::sync::CancellationToken;
 
@@ -83,5 +83,82 @@ impl Context {
       _ = cancel.cancelled() => Err(Error::Cancelled),
       guard = lock.lock_owned() => Ok(guard),
     }
+  }
+
+  /// Fetch a bounded document over the shared HTTP executor, following the
+  /// executor's redirect budget. Intended for signed or otherwise
+  /// self-verifying metadata; bulk downloads use [`Self::download_file`].
+  pub async fn fetch_bounded(&self, url: &url::Url, max_bytes: u64) -> Result<Vec<u8>> {
+    let response = self
+      .http
+      .executor()
+      .get(url.as_str())
+      .max_body_size(max_bytes)
+      .send()
+      .await?;
+    Ok(response.collect_bounded(max_bytes as usize).await?.to_vec())
+  }
+
+  /// Download a single file to `destination`, verifying an optional SHA-256
+  /// hex digest and expected size. A partial download from a previous attempt
+  /// (q2q-http journal or part files) is resumed instead of restarted.
+  pub async fn download_file(
+    &self,
+    url: &url::Url,
+    destination: &Path,
+    sha256: Option<&str>,
+    expected_size: Option<u64>,
+    cancel: &CancellationToken,
+  ) -> Result<()> {
+    let parent = destination
+      .parent()
+      .ok_or_else(|| Error::Invalid("download destination has no parent directory".into()))?
+      .to_path_buf();
+    std::fs::create_dir_all(&parent)?;
+
+    let target = destination.to_path_buf();
+    let mut journal = destination.as_os_str().to_owned();
+    journal.push(".q2q-http.resume");
+    let mut part = destination.as_os_str().to_owned();
+    part.push(".q2q-http.part");
+    let resume =
+      target.try_exists()? || Path::new(&journal).try_exists()? || Path::new(&part).try_exists()?;
+
+    let mut request = DownloadRequest::new(&target).mirrors([url.as_str()]);
+    if let Some(size) = expected_size {
+      request = request.expected_size(size);
+    }
+    if let Some(sha256) = sha256 {
+      request = request.checksum(Checksum::sha256(sha256)?);
+    }
+
+    let task = tokio::select! {
+      _ = cancel.cancelled() => return Err(Error::Cancelled),
+      task = async {
+        if resume {
+          self.http.resume(request).await
+        } else {
+          self.http.download(request).await
+        }
+      } => task?,
+    };
+    let mut updates = task.subscribe_progress();
+    loop {
+      if updates.borrow_and_update().state.is_terminal() {
+        break;
+      }
+      if cancel.is_cancelled() {
+        task.cancel();
+        return Err(Error::Cancelled);
+      }
+      if updates.changed().await.is_err() {
+        break;
+      }
+    }
+    task.wait().await?;
+    if cancel.is_cancelled() {
+      return Err(Error::Cancelled);
+    }
+    Ok(())
   }
 }

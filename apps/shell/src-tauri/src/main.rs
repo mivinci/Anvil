@@ -39,7 +39,7 @@ fn main() {
         let source_package =
           std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../desktop/baseline");
         runtime.start_development_app(&source_package);
-        return Ok(());
+        Ok(())
       }
       #[cfg(not(dev))]
       {

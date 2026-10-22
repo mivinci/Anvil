@@ -159,13 +159,14 @@ fn fixture() -> (TempDir, AppStorage, PathBuf, String) {
   fs::create_dir_all(package.join("runtime")).unwrap();
   let version = env!("ANVIL_BUNDLED_APP_VERSION").to_owned();
   let manifest = serde_json::json!({
-    "schema_version": 1,
+    "schema_version": 2,
     "app_id": env!("ANVIL_DEFAULT_APP_ID"),
     "version": version,
     "target": env!("ANVIL_TARGET_PLATFORM"),
     "page_entry": "web/index.html",
     "sidecar_entry": sidecar_entry(),
     "http_api_version": "1.0.0",
+    "http_api_compatibility": "^1.0.0",
     "shell_api_compatibility": env!("ANVIL_SHELL_API_VERSION")
   });
   fs::write(
