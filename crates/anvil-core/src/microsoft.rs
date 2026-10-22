@@ -637,5 +637,5 @@ fn parse_json<T: for<'de> Deserialize<'de>>(bytes: &[u8], label: &str) -> Result
 }
 
 #[cfg(test)]
-#[path = "../../tests/account_microsoft.rs"]
+#[path = "../tests/account_microsoft.rs"]
 mod tests;

@@ -9,11 +9,11 @@ use std::{
 
 use anvil_core::{
   Context, Error, Paths,
-  account_store::{self, AccountEntry},
   account::{
     AccountProfile, AccountService, AccountSession, AuthorizationEvent, CredentialStore,
     MicrosoftAccountProvider, MicrosoftClientId, SystemCredentialStore,
   },
+  account_store::{self, AccountEntry},
   client::{ClientInstallResult, ClientInstaller, ClientInstance, ClientListEntry, ClientProgress},
   client_plan::ClientTarget,
   java::{InstallResult, JavaManager, JavaProgress},
