@@ -20,7 +20,8 @@ struct ReadyMessage {
 
 #[test]
 fn sidecar_binds_loopback_and_requires_token_and_allowed_origin() {
-  let mut child = Command::new(env!("CARGO_BIN_EXE_anvil-desktop"))
+  let mut child = Command::new(env!("CARGO_BIN_EXE_anvil"))
+    .arg("serve")
     .env("ANVIL_HTTP_API_VERSION", "1.0.0")
     .stdin(Stdio::piped())
     .stdout(Stdio::piped())
@@ -50,7 +51,13 @@ fn sidecar_binds_loopback_and_requires_token_and_allowed_origin() {
   let authorized = request(ready.port, "GET", "/health", Some(ORIGIN), Some(TOKEN));
   assert!(authorized.starts_with("HTTP/1.1 200 OK"), "{authorized}");
   assert!(authorized.contains("\"apiVersion\":\"1.0.0\""));
-  assert!(authorized.contains(&format!("Access-Control-Allow-Origin: {ORIGIN}")));
+  // Hyper writes HTTP/1.1 header names in lower case.
+  assert!(
+    authorized
+      .to_ascii_lowercase()
+      .contains(&format!("access-control-allow-origin: {ORIGIN}")),
+    "{authorized}"
+  );
 
   let unauthorized = request(ready.port, "GET", "/health", Some(ORIGIN), Some("wrong"));
   assert!(unauthorized.starts_with("HTTP/1.1 401 Unauthorized"));
@@ -66,7 +73,11 @@ fn sidecar_binds_loopback_and_requires_token_and_allowed_origin() {
 
   let preflight = request(ready.port, "OPTIONS", "/health", Some(ORIGIN), None);
   assert!(preflight.starts_with("HTTP/1.1 204 No Content"));
-  assert!(preflight.contains("Access-Control-Allow-Headers: authorization"));
+  assert!(
+    preflight
+      .to_ascii_lowercase()
+      .contains("access-control-allow-headers: authorization")
+  );
 
   stdin.write_all(b"shutdown\n").unwrap();
   stdin.flush().unwrap();

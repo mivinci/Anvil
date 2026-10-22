@@ -20,9 +20,9 @@ validateEntry(manifest.page_entry, 'web/');
 validateEntry(manifest.sidecar_entry, 'runtime/');
 
 run('npm', ['run', 'build', '--workspace', '@anvil/desktop']);
-run('cargo', ['build', '--locked', '--release', '--package', 'anvil-desktop-runtime', '--target', target]);
+run('cargo', ['build', '--locked', '--release', '--package', 'anvil', '--target', target]);
 
-const binaryName = process.platform === 'win32' || target.includes('windows') ? 'anvil-desktop.exe' : 'anvil-desktop';
+const binaryName = process.platform === 'win32' || target.includes('windows') ? 'anvil.exe' : 'anvil';
 const cargoTargetDirectory = path.resolve(repositoryRoot, process.env.CARGO_TARGET_DIR ?? 'target');
 const sidecarPath = path.join(cargoTargetDirectory, target, 'release', binaryName);
 const pageDirectory = path.join(desktopProject, 'build');

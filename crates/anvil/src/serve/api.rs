@@ -1,4 +1,4 @@
-use crate::{
+use super::{
   accounts::{
     AccountState, AccountSummary, LoginConfiguration, LoginOperationSnapshot, StartLoginError,
   },
@@ -31,7 +31,7 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 
 #[derive(Clone)]
 pub(super) struct AppState {
-  versions: Arc<crate::versions::VersionCatalog>,
+  versions: Arc<super::versions::VersionCatalog>,
   runtime: Arc<RuntimeState>,
   accounts: Arc<AccountState>,
   api_version: Arc<str>,
@@ -47,7 +47,7 @@ impl AppState {
     token: String,
   ) -> Self {
     Self {
-      versions: Arc::new(crate::versions::VersionCatalog::default()),
+      versions: Arc::new(super::versions::VersionCatalog::default()),
       runtime,
       accounts,
       api_version: Arc::from(api_version),

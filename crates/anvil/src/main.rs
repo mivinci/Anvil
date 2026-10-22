@@ -35,6 +35,8 @@ use tokio::{
 };
 use tokio_util::sync::CancellationToken;
 
+mod serve;
+
 #[derive(Parser)]
 #[command(
   name = "anvil",
@@ -88,6 +90,13 @@ enum Command {
     #[command(subcommand)]
     command: AccountCommand,
   },
+  /// Run the desktop app runtime server for the Anvil desktop app.
+  ///
+  /// This is a machine entry point spawned by the desktop shell: it reads a
+  /// short-lived credential on stdin, prints a JSON ready message on stdout,
+  /// and serves the loopback HTTP API used by the desktop UI. It is not
+  /// related to `server`, which manages Minecraft server instances.
+  Serve,
 }
 #[derive(Subcommand)]
 enum VersionCommand {
@@ -226,8 +235,39 @@ async fn main() -> ExitCode {
       error.exit();
     }
   };
+  init_tracing_or_serve(&cli).await
+}
+
+/// `anvil serve`: run the desktop app runtime, spawned by the desktop shell.
+///
+/// The shell passes `ANVIL_HTTP_API_VERSION` and logging switches through the
+/// environment and the runtime credential on stdin. The logging guard is
+/// dropped only after the match so queued records flush before exit.
+async fn serve_command() -> ExitCode {
+  let console = std::env::var("ANVIL_LOG_STDERR").is_ok_and(|value| value == "1");
+  let logging = anvil_logging::init(anvil_logging::Process::Runtime, console);
+  match serve::run_from_stdio_with_logging(Some(logging.status())).await {
+    Ok(()) => {
+      tracing::info!(target: "anvil::serve", "Runtime shutdown complete");
+      ExitCode::SUCCESS
+    }
+    Err(error) => {
+      tracing::error!(target: "anvil::serve", error = %error, "Runtime startup or shutdown failed");
+      // Return normally so the logging guard flushes before process exit.
+      ExitCode::FAILURE
+    }
+  }
+}
+
+/// Dispatch `serve` before the CLI tracing and JSON envelope setup: the
+/// runtime owns its logging (anvil-logging file/console sinks) and speaks a
+/// stdio bootstrap protocol instead of the command result envelope.
+async fn init_tracing_or_serve(cli: &Cli) -> ExitCode {
+  if matches!(cli.command, Command::Serve) {
+    return serve_command().await;
+  }
   init_tracing();
-  match run(&cli).await {
+  match run(cli).await {
     Ok(output) => {
       if cli.json_events {
         // `server start` emits its terminal state before returning.
@@ -569,6 +609,9 @@ async fn run(cli: &Cli) -> Result<Output, Error> {
         account_id: canonical_id,
       })
     }
+    // `serve` runs its own stdio protocol and is dispatched in `main` before
+    // the CLI result envelope is set up; it never reaches `run`.
+    Command::Serve => unreachable!("serve is dispatched before run()"),
   }
 }
 

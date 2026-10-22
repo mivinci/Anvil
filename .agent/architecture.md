@@ -19,8 +19,7 @@ Anvil/
   Cargo.lock
   crates/
     anvil-core/              # 公共业务、安装、存储、Java 与服务端生命周期
-    anvil/                   # CLI 参数、终端交互、JSON/JSONL、退出码
-    anvil-desktop-runtime/   # 桌面 App 专属 sidecar 可执行程序
+    anvil/                   # CLI 参数、终端交互、JSON/JSONL、退出码；`serve` 子命令承载桌面 App Runtime
     anvil-logging/           # Shell/Runtime 共用日志配置与文件输出，不依赖 Core
   apps/
     shell/                    # 通用 Tauri App 启动器与版本管理器
@@ -32,7 +31,7 @@ Anvil/
 
 - Cargo workspace 管理 Rust crates 与 Tauri 宿主，npm workspace 管理前端包；两者分别维护 `Cargo.lock` 与根 `package-lock.json`。根 `tsconfig.json` 提供前端共享选项，应用配置通过 `extends` 继承。
 - `apps/` 放可独立构建和运行的 App；`packages/` 只放被多个 App 实际复用的 npm 库。当前没有 `packages/` 目录；出现共享 API 合约或其他真实复用代码时再创建，不预先建立空包。
-- `anvil-core` 不依赖 UI 框架、CLI 参数解析、终端交互或 MCP，也不自行创建 Tokio runtime。由每个入口拥有 runtime 和业务上下文。`anvil-desktop-runtime` 是桌面 App 的独立进程入口，复用 Core；它留在 Cargo crates 树中，与 npm 前端包解耦。
+- `anvil-core` 不依赖 UI 框架、CLI 参数解析、终端交互或 MCP，也不自行创建 Tokio runtime。由每个入口拥有 runtime 和业务上下文。桌面 App 的 Runtime 是 `anvil` CLI 的 `serve` 子命令，作为独立进程复用 Core；它与 npm 前端包解耦，随桌面 App 包分发。方案与 phase 划分见[Runtime 合入 CLI 执行项](../todos/runtime-into-cli.md)。
 - `apps/mobile` 未来使用独立的 SvelteKit 页面、布局和交互，不复用 `apps/desktop` 的页面结构；可以共享 API schema 和无界面逻辑。
 - CLI 与 App 自己的业务组件可调用 core，不通过启动 CLI 子进程实现常规操作。Shell 只负责通用 App 生命周期和版本维护，不直接调用 core。前端使用 SvelteKit 静态输出，避免依赖 Node 服务端运行时。
 - 保持 crate 和模块按现有职责组织。新增 crate、公共 trait 或通用抽象前，先确认当前需求确实需要它。

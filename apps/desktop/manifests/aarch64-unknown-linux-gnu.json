@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "target": "aarch64-unknown-linux-gnu",
   "page_entry": "web/index.html",
-  "sidecar_entry": "runtime/anvil-desktop",
+  "sidecar_entry": "runtime/anvil",
   "http_api_version": "1.0.0",
   "shell_api_compatibility": "^1.0.0"
 }

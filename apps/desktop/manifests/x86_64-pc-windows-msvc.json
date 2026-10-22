@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "target": "x86_64-pc-windows-msvc",
   "page_entry": "web/index.html",
-  "sidecar_entry": "runtime/anvil-desktop.exe",
+  "sidecar_entry": "runtime/anvil.exe",
   "http_api_version": "1.0.0",
   "shell_api_compatibility": "^1.0.0"
 }

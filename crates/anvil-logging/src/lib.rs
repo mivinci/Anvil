@@ -241,10 +241,10 @@ impl Output {
 }
 impl Write for Output {
   fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-    if let Some(file) = self.file.as_mut() {
-      if let Err(error) = file.write_all(bytes) {
-        self.failed(error);
-      }
+    if let Some(file) = self.file.as_mut()
+      && let Err(error) = file.write_all(bytes)
+    {
+      self.failed(error);
     }
     if self.console || self.file.is_none() {
       let _ = io::stderr().write_all(bytes);
@@ -252,10 +252,10 @@ impl Write for Output {
     Ok(bytes.len())
   }
   fn flush(&mut self) -> io::Result<()> {
-    if let Some(file) = self.file.as_mut() {
-      if let Err(error) = file.flush() {
-        self.failed(error);
-      }
+    if let Some(file) = self.file.as_mut()
+      && let Err(error) = file.flush()
+    {
+      self.failed(error);
     }
     if self.console || self.file.is_none() {
       let _ = io::stderr().flush();

@@ -107,7 +107,10 @@ name = "anvil"
 version = "0.1.0"
 dependencies = [
  "anvil-core",
+ "anvil-logging",
+ "axum",
  "clap",
+ "semver",
  "serde",
  "serde_json",
  "tempfile",
@@ -138,20 +141,6 @@ dependencies = [
  "tokio-util",
  "url",
  "zip",
-]
-
-[[package]]
-name = "anvil-desktop-runtime"
-version = "0.1.0"
-dependencies = [
- "anvil-core",
- "anvil-logging",
- "axum",
- "semver",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
 ]
 
 [[package]]

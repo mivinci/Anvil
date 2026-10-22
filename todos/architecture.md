@@ -30,9 +30,7 @@ Anvil/
     anvil/
       Cargo.toml
       src/                         # CLI，生成 anvil 可执行文件
-    anvil-desktop-runtime/
-      Cargo.toml
-      src/                         # 桌面 App sidecar、Runtime API 与业务任务
+      src/serve/                   # `anvil serve`：桌面 App Runtime、本机 Axum API 与业务任务
   apps/
     shell/
       src-tauri/                   # Tauri 桌面宿主 Cargo crate
@@ -45,7 +43,7 @@ Anvil/
   README.md
 ```
 
-`anvil` 当前直接调用 `anvil-core`；`anvil-desktop-runtime` 是桌面 App 的独立 sidecar，调用同一 Core 并通过本机 Axum API 提供业务操作。通用 Tauri Shell 只负责 App 生命周期和版本维护，不依赖或调用 Core。Core 不依赖 UI 框架、命令行解析库、终端交互或 MCP 协议，也不自行创建 Tokio runtime。SvelteKit 使用 `adapter-static` 生成 WebView 需要的静态资源，不启动 Node SSR 服务。根 `tsconfig.json` 保存共享选项，应用 tsconfig 通过 `extends` 继承。
+`anvil` 当前直接调用 `anvil-core`；`anvil serve` 子命令是桌面 App 的 Runtime 进程，调用同一 Core 并通过本机 Axum API 提供业务操作，作为独立进程随桌面 App 包分发。通用 Tauri Shell 只负责 App 生命周期和版本维护，不依赖或调用 Core。Core 不依赖 UI 框架、命令行解析库、终端交互或 MCP 协议，也不自行创建 Tokio runtime。SvelteKit 使用 `adapter-static` 生成 WebView 需要的静态资源，不启动 Node SSR 服务。根 `tsconfig.json` 保存共享选项，应用 tsconfig 通过 `extends` 继承。
 
 `q2q-http` 维护在 Q2Q 仓库，作为 core 的下载依赖。开发可使用本地覆盖或固定 Git revision，正式构建使用可复现的版本来源，不依赖开发者绝对路径。不复制其源码，也不自行再实现 Range worker、重试队列与下载恢复格式。
 

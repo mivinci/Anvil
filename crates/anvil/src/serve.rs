@@ -1,24 +1,21 @@
-mod accounts;
-mod api;
-mod operations;
-mod protocol;
-mod versions;
+//! Desktop runtime server for the Anvil desktop app, started by `anvil serve`.
+//!
+//! The first line on stdin is a short-lived bearer token. The process writes a
+//! single JSON ready message to stdout after binding loopback, then accepts a
+//! `shutdown` line (or stdin EOF) to stop gracefully.
 
 use anvil_core::{Context, Paths};
 use semver::Version;
 use std::{error::Error, io, sync::Arc};
 use tokio::{io::BufReader, sync::oneshot};
 
-/// Start the Runtime protocol used by the Shell parent process.
-///
-/// The first line on stdin is a short-lived bearer token. The process writes a
-/// single JSON ready message to stdout after binding loopback, then accepts a
-/// `shutdown` line (or stdin EOF) to stop gracefully.
-pub async fn run_from_stdio() -> Result<(), Box<dyn Error + Send + Sync>> {
-  run_from_stdio_with_logging(None).await
-}
+mod accounts;
+mod api;
+mod operations;
+mod protocol;
+mod versions;
 
-pub async fn run_from_stdio_with_logging(
+pub(crate) async fn run_from_stdio_with_logging(
   logging: Option<anvil_logging::LoggingStatus>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
   tracing::info!("Runtime startup started");

@@ -24,7 +24,7 @@ flowchart LR
 
 - `apps/shell/src-tauri` 负责通用启动、App 包发现、更新检查/下载/校验/切换/回滚，以及 App 进程生命周期。
 - `apps/desktop` 拥有桌面 SvelteKit、shadcn-svelte、Lucide 界面和产品流程。其业务 API 与实现属于该 App。
-- `crates/anvil-desktop-runtime` 是桌面 App 专属 Rust sidecar crate，依赖 `anvil-core` 并提供本机 HTTP API。它作为独立进程随桌面 App 包分发；Shell 启动和监管 sidecar，但不转发或解释业务请求。
+- `crates/anvil` 的 `serve` 子命令是桌面 App 的 Rust Runtime 进程，依赖 `anvil-core` 并提供本机 HTTP API。它作为独立进程随桌面 App 包分发；Shell 启动和监管该进程，但不转发或解释业务请求。
 - sidecar 是 Shell 管理的 App 进程，可在 App 运行期间常驻；首版不让它脱离 Shell 成为系统级 daemon。Shell 退出时请求 sidecar 有序停止，超时后结束进程。
 - `apps/mobile` 以后仍使用 SvelteKit，但拥有不同的导航、页面布局和交互。移动原生能力由该 App 自己的 Tauri plugin 提供，不复用桌面 sidecar 生命周期。
 - desktop 与 mobile 可以共享 API schema、纯类型和无界面逻辑，不共享页面布局。只有出现第二个消费者时再抽取 `packages/shell-api` 等共享前端包。
@@ -97,7 +97,7 @@ manifest schema v1 使用以下字段，版本号采用 SemVer，`shell_api_comp
   "version": "0.1.0",
   "target": "aarch64-apple-darwin",
   "page_entry": "web/index.html",
-  "sidecar_entry": "runtime/anvil-desktop",
+  "sidecar_entry": "runtime/anvil",
   "http_api_version": "1.0.0",
   "shell_api_compatibility": "^1.0.0"
 }
