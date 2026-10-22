@@ -892,11 +892,7 @@ fn sync_directory(path: &Path) -> Result<()> {
 }
 
 fn valid_version_id(version: &str) -> bool {
-  !version.is_empty()
-    && version.len() <= 64
-    && version
-      .bytes()
-      .all(|b| b.is_ascii_alphanumeric() || b"._+-".contains(&b))
+  crate::metadata::is_valid_version_id(version)
 }
 
 fn valid_sha1(value: &str) -> bool {
@@ -909,12 +905,7 @@ fn make_plan(artifact: ServerArtifact) -> Result<ServerInstallPlan> {
 }
 
 fn validate_artifact(artifact: &ServerArtifact) -> Result<()> {
-  if artifact.version_id.is_empty()
-    || artifact.version_id.len() > 64
-    || !artifact
-      .version_id
-      .bytes()
-      .all(|b| b.is_ascii_alphanumeric() || b"._+-".contains(&b))
+  if !valid_version_id(&artifact.version_id)
     || artifact.java_major < 8
     || artifact.java_major > 99
     || artifact.size == 0

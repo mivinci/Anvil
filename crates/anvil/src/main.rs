@@ -694,6 +694,9 @@ fn show_authorization_event(event: AuthorizationEvent) {
       eprintln!("Open {verification_uri} and enter code {user_code}.");
       eprintln!("The code expires in {expires_in_seconds} seconds.");
     }
+    AuthorizationEvent::CheckingProfile => {
+      eprintln!("Microsoft authorized; checking Minecraft profile…");
+    }
     AuthorizationEvent::WaitingForApproval => {
       eprintln!("Waiting for Microsoft account approval…");
     }

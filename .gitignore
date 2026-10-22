@@ -5,6 +5,7 @@ target
 node_modules
 **/.svelte-kit
 **/build
+apps/desktop/baseline
 apps/shell/src-tauri/gen/schemas
 npm-debug.log*
 

@@ -6,9 +6,10 @@ use std::{
   io::Read,
   path::{Path, PathBuf},
   sync::{
-    Arc,
+    Arc, Mutex,
     atomic::{AtomicUsize, Ordering},
   },
+  time::{Duration, Instant},
 };
 
 use q2q_http::{Checksum, DownloadRequest, Task};
@@ -52,6 +53,9 @@ pub struct ClientProgress {
   pub stage: ClientInstallStage,
   pub completed_files: usize,
   pub total_files: Option<usize>,
+  pub downloaded_bytes: u64,
+  pub total_bytes: Option<u64>,
+  pub received_bytes: u64,
 }
 
 impl Default for ClientProgress {
@@ -60,6 +64,9 @@ impl Default for ClientProgress {
       stage: ClientInstallStage::Resolving,
       completed_files: 0,
       total_files: None,
+      downloaded_bytes: 0,
+      total_bytes: None,
+      received_bytes: 0,
     }
   }
 }
@@ -160,6 +167,72 @@ struct DownloadBatch {
   reused: Arc<AtomicUsize>,
   progress: watch::Sender<ClientProgress>,
   total: usize,
+  bytes: Arc<Mutex<BatchBytes>>,
+}
+
+#[derive(Default)]
+struct BatchBytes {
+  // Only in-flight files are retained (bounded by download concurrency).
+  active: HashMap<String, (u64, u64)>,
+  completed: u64,
+  received: u64,
+  last_publish: Option<Instant>,
+}
+
+struct FileByteProgress {
+  key: String,
+  bytes: Arc<Mutex<BatchBytes>>,
+  progress: watch::Sender<ClientProgress>,
+}
+
+impl FileByteProgress {
+  fn begin(&self) {
+    self
+      .bytes
+      .lock()
+      .unwrap_or_else(std::sync::PoisonError::into_inner)
+      .active
+      .insert(self.key.clone(), (0, 0));
+  }
+
+  fn update(&self, received: u64, staged: u64, force: bool) {
+    let mut bytes = self
+      .bytes
+      .lock()
+      .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let previous = bytes.active.get(&self.key).map_or(0, |entry| entry.0);
+    bytes.received = bytes
+      .received
+      .saturating_add(received.saturating_sub(previous));
+    bytes.active.insert(self.key.clone(), (received, staged));
+    self.publish(&mut bytes, force);
+  }
+
+  fn finish(&self, size: u64) {
+    let mut bytes = self
+      .bytes
+      .lock()
+      .unwrap_or_else(std::sync::PoisonError::into_inner);
+    bytes.active.remove(&self.key);
+    bytes.completed = bytes.completed.saturating_add(size);
+    self.publish(&mut bytes, true);
+  }
+
+  fn publish(&self, bytes: &mut BatchBytes, force: bool) {
+    if !force
+      && bytes
+        .last_publish
+        .is_some_and(|last| last.elapsed() < Duration::from_millis(100))
+    {
+      return;
+    }
+    let staged = bytes.active.values().map(|entry| entry.1).sum::<u64>();
+    self.progress.send_modify(|progress| {
+      progress.downloaded_bytes = bytes.completed.saturating_add(staged);
+      progress.received_bytes = bytes.received;
+    });
+    bytes.last_publish = Some(Instant::now());
+  }
 }
 
 struct CancelOnDrop(CancellationToken);
@@ -209,6 +282,7 @@ impl ClientInstaller {
       stage: ClientInstallStage::Planning,
       completed_files: 0,
       total_files: Some(1),
+      ..ClientProgress::default()
     });
     let cached = self
       .download_cached(&version.asset_index.file, &cancel)
@@ -224,6 +298,7 @@ impl ClientInstaller {
       stage: ClientInstallStage::Completed,
       completed_files: 1,
       total_files: Some(1),
+      ..ClientProgress::default()
     });
     Ok(plan)
   }
@@ -249,6 +324,8 @@ impl ClientInstaller {
       stage: ClientInstallStage::Downloading,
       completed_files: 0,
       total_files: Some(artifacts.len()),
+      total_bytes: Some(artifacts.iter().map(|artifact| artifact.size).sum()),
+      ..ClientProgress::default()
     });
 
     let context = self.context.clone();
@@ -520,6 +597,7 @@ impl ClientInstaller {
       reused: Arc::new(AtomicUsize::new(0)),
       progress: progress.clone(),
       total,
+      bytes: Arc::new(Mutex::new(BatchBytes::default())),
     };
     let mut first_error = None;
 
@@ -572,7 +650,7 @@ impl ClientInstaller {
     cancel: &CancellationToken,
   ) -> Result<CacheResult> {
     self
-      .download_cached_with_urls(file, vec![file.url.as_str().to_owned()], cancel)
+      .download_cached_with_urls(file, vec![file.url.as_str().to_owned()], cancel, None)
       .await
   }
 
@@ -580,6 +658,7 @@ impl ClientInstaller {
     &self,
     artifact: &Artifact,
     cancel: &CancellationToken,
+    observer: &FileByteProgress,
   ) -> Result<CacheResult> {
     let file = ClientFile {
       url: Url::parse(&artifact.urls[0])
@@ -588,7 +667,7 @@ impl ClientInstaller {
       sha1: artifact.sha1.clone(),
     };
     self
-      .download_cached_with_urls(&file, artifact.urls.clone(), cancel)
+      .download_cached_with_urls(&file, artifact.urls.clone(), cancel, Some(observer))
       .await
   }
 
@@ -597,6 +676,7 @@ impl ClientInstaller {
     file: &ClientFile,
     urls: Vec<String>,
     cancel: &CancellationToken,
+    observer: Option<&FileByteProgress>,
   ) -> Result<CacheResult> {
     validate_client_file(file)?;
     for url in &urls {
@@ -608,7 +688,9 @@ impl ClientInstaller {
       };
       validate_client_file(&mirror)?;
     }
-    self.download_cached_request(file, urls, cancel).await
+    self
+      .download_cached_request(file, urls, cancel, observer)
+      .await
   }
 
   async fn download_cached_request(
@@ -616,6 +698,7 @@ impl ClientInstaller {
     file: &ClientFile,
     urls: Vec<String>,
     cancel: &CancellationToken,
+    observer: Option<&FileByteProgress>,
   ) -> Result<CacheResult> {
     // This is split from `download_cached` so duplicate content can use every
     // trusted URL as a q2q-http mirror while retaining one SHA-1 cache target.
@@ -656,7 +739,9 @@ impl ClientInstaller {
       .mirrors(urls.iter())
       .expected_size(file.size)
       .checksum(checksum);
-    let first = self.run_download(request.clone(), resume, cancel).await;
+    let first = self
+      .run_download(request.clone(), resume, cancel, observer)
+      .await;
     let mut reused = target_existed;
     let downloaded_path = match first {
       Ok(path) => path,
@@ -679,7 +764,7 @@ impl ClientInstaller {
           })
           .await?;
         reused = false;
-        self.run_download(request, resume, cancel).await?
+        self.run_download(request, resume, cancel, observer).await?
       }
       Err(error) => return Err(error),
     };
@@ -700,6 +785,7 @@ impl ClientInstaller {
     request: DownloadRequest,
     resume: bool,
     cancel: &CancellationToken,
+    observer: Option<&FileByteProgress>,
   ) -> Result<PathBuf> {
     check_cancel(cancel)?;
     let task = tokio::select! {
@@ -712,7 +798,10 @@ impl ClientInstaller {
         }
       } => result?,
     };
-    match wait_download(task, cancel).await {
+    if let Some(observer) = observer {
+      observer.begin();
+    }
+    match wait_download(task, cancel, observer).await {
       Err(q2q_http::Error::Cancelled) => Err(Error::Cancelled),
       result => result.map_err(Error::from),
     }
@@ -742,9 +831,15 @@ fn spawn_download(
   batch: DownloadBatch,
 ) {
   tasks.spawn(async move {
+    let observer = FileByteProgress {
+      key: artifact.sha1.clone(),
+      bytes: batch.bytes.clone(),
+      progress: batch.progress.clone(),
+    };
     let result = installer
-      .download_artifact_cached(&artifact, &batch.cancel)
+      .download_artifact_cached(&artifact, &batch.cancel, &observer)
       .await?;
+    observer.finish(artifact.size);
     if result.reused {
       batch.reused.fetch_add(1, Ordering::Relaxed);
     } else {
@@ -763,11 +858,19 @@ fn spawn_download(
 async fn wait_download(
   task: Task,
   cancel: &CancellationToken,
+  observer: Option<&FileByteProgress>,
 ) -> std::result::Result<PathBuf, q2q_http::Error> {
   let mut updates = task.subscribe_progress();
   let mut cancel_sent = false;
   loop {
     let state = *updates.borrow_and_update();
+    if let Some(observer) = observer {
+      observer.update(
+        state.received_bytes,
+        state.staged_bytes.min(state.total_bytes),
+        state.state.is_terminal(),
+      );
+    }
     if state.state.is_terminal() {
       break;
     }
@@ -1244,12 +1347,7 @@ fn validate_layout_path(path: &str) -> Result<()> {
 }
 
 fn validate_version_id(version: &str) -> Result<()> {
-  if version.is_empty()
-    || version.len() > 64
-    || !version
-      .bytes()
-      .all(|byte| byte.is_ascii_alphanumeric() || b"._+-".contains(&byte))
-  {
+  if !crate::metadata::is_valid_version_id(version) {
     return Err(Error::Metadata(
       "invalid Minecraft client version ID".into(),
     ));

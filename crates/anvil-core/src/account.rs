@@ -146,6 +146,8 @@ pub enum AuthorizationEvent {
     poll_interval_seconds: u64,
   },
   WaitingForApproval,
+  /// Microsoft approved the device; Xbox and Minecraft identity checks are underway.
+  CheckingProfile,
 }
 
 /// Result of a successful Microsoft → Xbox → Minecraft profile exchange.

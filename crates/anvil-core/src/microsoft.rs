@@ -375,6 +375,29 @@ impl MicrosoftAccountProvider {
       result = request.send() => result.map_err(|_| Error::Authentication(format!("{operation} request failed")))?,
     };
     let (status, bytes) = read_bounded(response, cancel).await?;
+    if !status.is_success() && operation == "Minecraft Services login" {
+      // Classify this documented rejection without exposing arbitrary service
+      // response text, which may contain identifiers or credentials.
+      let invalid_registration = serde_json::from_slice::<serde_json::Value>(&bytes)
+        .ok()
+        .and_then(|body| {
+          body
+            .get("errorMessage")
+            .and_then(|value| value.as_str())
+            .map(str::to_owned)
+        })
+        .is_some_and(|message| {
+          message
+            .to_ascii_lowercase()
+            .contains("invalid app registration")
+        });
+      if invalid_registration {
+        return Err(Error::Authentication(format!(
+          "{operation} was rejected (HTTP {}): invalid app registration; Minecraft API application approval is required",
+          status.as_u16()
+        )));
+      }
+    }
     require_success(status, operation)?;
     Ok(bytes)
   }
@@ -413,6 +436,9 @@ impl AccountProvider for MicrosoftAccountProvider {
       let tokens = provider
         .authorize_device_code(&client_id, &cancel, &events)
         .await?;
+      events
+        .send(AuthorizationEvent::CheckingProfile)
+        .map_err(|_| Error::Cancelled)?;
       let refresh_token = tokens
         .refresh_token
         .ok_or_else(|| Error::Authentication("Microsoft did not return a refresh token".into()))?;
@@ -628,7 +654,10 @@ fn require_success(status: StatusCode, operation: &str) -> Result<()> {
   if status.is_success() {
     Ok(())
   } else {
-    Err(Error::Authentication(format!("{operation} was rejected")))
+    Err(Error::Authentication(format!(
+      "{operation} was rejected (HTTP {})",
+      status.as_u16()
+    )))
   }
 }
 

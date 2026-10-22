@@ -634,12 +634,16 @@ fn validate_version_id(version_id: &str) -> Result<()> {
   Ok(())
 }
 
-fn is_valid_version_id(version_id: &str) -> bool {
-  !(version_id.is_empty()
-    || version_id.len() > 64
-    || !version_id
+/// Whether an official version ID is a bounded, portable single path component.
+/// Historical Mojang releases include ordinary spaces in their IDs.
+pub fn is_valid_version_id(version_id: &str) -> bool {
+  !version_id.is_empty()
+    && version_id.len() <= 64
+    && version_id.as_bytes()[0].is_ascii_alphanumeric()
+    && !version_id.ends_with([' ', '.'])
+    && version_id
       .bytes()
-      .all(|byte| byte.is_ascii_alphanumeric() || b"._+-".contains(&byte)))
+      .all(|byte| byte.is_ascii_alphanumeric() || b"._+- ".contains(&byte))
 }
 
 fn validate_sha1(value: &str) -> Result<()> {

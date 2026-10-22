@@ -842,12 +842,7 @@ fn validate_hash(hash: &str) -> Result<()> {
 }
 
 fn validate_version_id(version_id: &str) -> Result<()> {
-  if version_id.is_empty()
-    || version_id.len() > 64
-    || !version_id
-      .bytes()
-      .all(|byte| byte.is_ascii_alphanumeric() || b"._+-".contains(&byte))
-  {
+  if !crate::metadata::is_valid_version_id(version_id) {
     return Err(Error::Metadata(
       "invalid Minecraft version ID in client plan".into(),
     ));
