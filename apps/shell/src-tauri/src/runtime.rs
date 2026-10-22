@@ -942,7 +942,7 @@ mod tests {
     let override_port = NEXT_PORT.fetch_add(1, AtomicOrdering::Relaxed);
     let marker = fixture.root.path().join("override-env.txt");
     let source = format!(
-      "#!/bin/sh\nIFS= read -r token || exit 2\nprintf '{{\"kind\":\"ready\",\"port\":{override_port},\"apiVersion\":\"1.0.0\"}}\\n'\nenv | grep -E '^ANVIL_SIDECAR_STORE_DIR=|^ANVIL_HTTP_API_COMPAT=' > \"{marker}\"\nIFS= read -r command\n[ \"$command\" = shutdown ]\n",
+      "#!/bin/sh\nIFS= read -r token || exit 2\nprintf '{{\"kind\":\"ready\",\"port\":{override_port},\"apiVersion\":\"1.0.0\"}}\\n'\nprintf 'ANVIL_SIDECAR_STORE_DIR=%s\\nANVIL_HTTP_API_COMPAT=%s\\n' \"$ANVIL_SIDECAR_STORE_DIR\" \"$ANVIL_HTTP_API_COMPAT\" > \"{marker}\"\nIFS= read -r command\n[ \"$command\" = shutdown ]\n",
       marker = marker.display(),
     );
     write_override(&fixture, "2.0.0", "1.0.0", &source);
@@ -957,10 +957,13 @@ mod tests {
       format!("http://127.0.0.1:{override_port}")
     );
 
-    // The stub writes the marker after printing ready; poll until it lands.
+    // The stub creates the marker file before its content lands, so poll
+    // until the read is non-empty instead of merely until the file exists.
     let mut environment = String::new();
     for _ in 0..40 {
-      if let Ok(contents) = fs::read_to_string(&marker) {
+      if let Ok(contents) = fs::read_to_string(&marker)
+        && !contents.is_empty()
+      {
         environment = contents;
         break;
       }
