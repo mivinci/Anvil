@@ -1,5 +1,3 @@
-mod account_store;
-
 use std::{
   future::Future,
   io::{BufRead, Write},
@@ -11,6 +9,7 @@ use std::{
 
 use anvil_core::{
   Context, Error, Paths,
+  account_store::{self, AccountEntry},
   account::{
     AccountProfile, AccountService, AccountSession, AuthorizationEvent, CredentialStore,
     MicrosoftAccountProvider, MicrosoftClientId, SystemCredentialStore,
@@ -201,7 +200,7 @@ enum Output {
     account: AccountProfile,
   },
   AccountList {
-    accounts: Vec<account_store::AccountEntry>,
+    accounts: Vec<AccountEntry>,
   },
   AccountLogout {
     account_id: String,

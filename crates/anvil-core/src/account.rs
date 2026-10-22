@@ -10,7 +10,7 @@ use crate::{Error, Result};
 pub type AuthorizationFuture =
   Pin<Box<dyn Future<Output = Result<AuthenticatedAccount>> + Send + 'static>>;
 
-#[path = "account/microsoft.rs"]
+#[path = "microsoft.rs"]
 pub mod microsoft;
 
 pub use microsoft::{MicrosoftAccountProvider, SystemCredentialStore};
