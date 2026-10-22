@@ -3,5 +3,20 @@
   "identifier": "default",
   "description": "Permissions for the Anvil desktop window.",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": [
+    "core:default",
+    "allow-shell-get-app-info",
+    "allow-shell-get-logging-status",
+    "allow-shell-open-log-directory",
+    "allow-shell-open-external-url",
+    "allow-shell-get-update-status",
+    "allow-shell-check-for-updates",
+    "allow-shell-cancel-update",
+    "allow-shell-get-runtime-status",
+    "allow-shell-get-runtime-connection",
+    "allow-shell-confirm-app-ready",
+		"allow-shell-report-app-startup-failure",
+		"core:window:allow-start-dragging",
+		"core:window:allow-set-theme"
+  ]
 }

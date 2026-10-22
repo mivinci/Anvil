@@ -1,0 +1,31 @@
+{
+	"$schema": "https://schema.tauri.app/config/2",
+	"identifier": "",
+	"app": {
+		"windows": [
+			{
+				"label": "main",
+				"title": "Anvil",
+				"url": "anvil-app://localhost/",
+				"width": 900,
+				"height": 620,
+				"minWidth": 900,
+				"minHeight": 620,
+				"titleBarStyle": "Overlay",
+				"trafficLightPosition": {
+					"x": 12,
+					"y": 19
+				},
+				"hiddenTitle": true,
+				"transparent": true,
+				"windowEffects": {
+					"effects": [
+						"liquidGlassRegular",
+						"underWindowBackground"
+					],
+					"state": "followsWindowActiveState"
+				}
+			}
+		]
+	}
+}

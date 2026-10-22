@@ -2,30 +2,59 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Anvil",
   "version": "0.1.0",
-  "identifier": "com.mivinci.anvil",
+  "identifier": "app.q2q.anvil",
   "build": {
-    "beforeDevCommand": "npm run dev --workspace @anvil/desktop",
-    "devUrl": "http://localhost:5173",
-    "beforeBuildCommand": "npm run build --workspace @anvil/desktop",
-    "frontendDist": "../../desktop/build"
+    "beforeDevCommand": "npm run desktop:package && npm run dev --workspace @anvil/desktop",
+    "beforeBuildCommand": "npm run desktop:package",
+    "devUrl": "http://127.0.0.1:5173",
+    "frontendDist": "../bootstrap"
   },
   "app": {
     "windows": [
       {
         "label": "main",
         "title": "Anvil",
-        "width": 1180,
-        "height": 780,
+        "url": "anvil-app://localhost/",
+        "width": 900,
+        "height": 620,
         "minWidth": 900,
-        "minHeight": 620
+        "minHeight": 620,
+				"windowEffects": {
+          "effects": ["liquidGlassRegular", "underWindowBackground"],
+					"state": "followsWindowActiveState"
+				}
       }
     ],
     "security": {
-      "csp": null
+      "csp": {
+        "default-src": "'self'",
+        "base-uri": "'self'",
+        "connect-src": "ipc: http://ipc.localhost http://127.0.0.1:*",
+        "font-src": "'self' asset: http://asset.localhost data:",
+        "img-src": "'self' asset: http://asset.localhost data: blob:",
+        "object-src": "'none'",
+        "script-src": "'self'",
+        "style-src": "'self' 'unsafe-inline'",
+        "form-action": "'self'"
+      },
+      "devCsp": {
+        "default-src": "'self'",
+        "base-uri": "'self'",
+        "connect-src": "ipc: http://ipc.localhost http://127.0.0.1:5173 ws://127.0.0.1:5173 http://127.0.0.1:*",
+        "font-src": "'self' asset: http://asset.localhost data:",
+        "img-src": "'self' asset: http://asset.localhost data: blob:",
+        "object-src": "'none'",
+        "script-src": "'self'",
+        "style-src": "'self' 'unsafe-inline'",
+        "form-action": "'self'"
+      }
     }
   },
   "bundle": {
-    "active": false,
-    "icon": []
+    "active": true,
+    "icon": ["icons/icon.png"],
+    "resources": {
+      "../../desktop/baseline/": "baseline/"
+    }
   }
 }

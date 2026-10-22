@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-shell-get-runtime-connection"
+description = "Enables the shell_get_runtime_connection command without any pre-configured scope."
+commands.allow = ["shell_get_runtime_connection"]
+
+[[permission]]
+identifier = "deny-shell-get-runtime-connection"
+description = "Denies the shell_get_runtime_connection command without any pre-configured scope."
+commands.deny = ["shell_get_runtime_connection"]

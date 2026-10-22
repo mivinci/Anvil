@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-shell-cancel-update"
+description = "Enables the shell_cancel_update command without any pre-configured scope."
+commands.allow = ["shell_cancel_update"]
+
+[[permission]]
+identifier = "deny-shell-cancel-update"
+description = "Denies the shell_cancel_update command without any pre-configured scope."
+commands.deny = ["shell_cancel_update"]

@@ -11,12 +11,43 @@ semver.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tauri-build.workspace = true
+url.workspace = true
 
 [dependencies]
+anvil-logging.workspace = true
+tracing.workspace = true
+directories.workspace = true
+flate2.workspace = true
+getrandom.workspace = true
+percent-encoding.workspace = true
+q2q-http.workspace = true
+ring.workspace = true
 semver.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+tar.workspace = true
+tempfile.workspace = true
+thiserror.workspace = true
 tauri.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+url.workspace = true
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]
+
+[[test]]
+name = "app_storage"
+path = "../tests/app_storage.rs"
+
+[[test]]
+name = "app_protocol"
+path = "../tests/app_protocol.rs"
+
+[[test]]
+name = "bundled_app"
+path = "../tests/bundled_app.rs"
+
+[[test]]
+name = "app_activation"
+path = "../tests/app_activation.rs"

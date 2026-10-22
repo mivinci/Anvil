@@ -72,7 +72,7 @@ impl AppManifest {
   }
 }
 
-fn validate_app_id(field: &str, app_id: &str) -> Result<(), String> {
+pub(crate) fn validate_app_id(field: &str, app_id: &str) -> Result<(), String> {
   let valid = app_id.split('.').count() >= 2
     && app_id.split('.').all(|part| {
       let first = part.chars().next();
