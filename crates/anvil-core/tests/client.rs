@@ -57,6 +57,9 @@ impl Fixture {
               && error.kind() != std::io::ErrorKind::BrokenPipe
               && error.kind() != std::io::ErrorKind::ConnectionReset
               && error.kind() != std::io::ErrorKind::ConnectionAborted
+              // macOS sometimes reports EINVAL instead of EPIPE when the
+              // fixture writes to a connection the client aborted mid-download.
+              && error.kind() != std::io::ErrorKind::InvalidInput
             {
               panic!("client download fixture failed: {error}");
             }

@@ -1262,9 +1262,16 @@ mod tests {
 
   #[test]
   fn rejects_wrong_app_target_channel_and_untrusted_urls() {
+    // The replacement must differ from the build target even when the tests
+    // run on an x86_64 Linux host.
+    let wrong_target = if env!("ANVIL_TARGET_PLATFORM") == "x86_64-unknown-linux-gnu" {
+      "aarch64-unknown-linux-gnu"
+    } else {
+      "x86_64-unknown-linux-gnu"
+    };
     for (needle, replacement) in [
       ("anvil.desktop", "anvil.other"),
-      (env!("ANVIL_TARGET_PLATFORM"), "x86_64-unknown-linux-gnu"),
+      (env!("ANVIL_TARGET_PLATFORM"), wrong_target),
       ("stable", "beta"),
       (
         "https://updates.example.test",
