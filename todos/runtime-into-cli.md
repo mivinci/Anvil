@@ -8,14 +8,14 @@
 - 终端用户安装的 CLI 与桌面 App 运行的业务逻辑天然同源，口径一致。
 - App 包继续把 `anvil` 二进制作为 sidecar 打入，Shell 现有签名更新通道与启动监管不变。
 
-**暂缓**：CLI 发布流水线与 Runtime 自更新（见下文 Phase 2–4）。待出现"Runtime 频繁迭代、UI 不动"的真实发布痛点再立项；届时优先考虑在 `stable.json` 更新 manifest 内把 sidecar 做成独立版本化的 artifact（同一条 Ed25519 签名通道、独立版本与回滚），而不是让 Shell 直连 GitHub release 第二下载通道。
+**进度**：Phase 1（合代码）、Phase 2（CLI 发布流水线）已完成；Phase 3–4（Shell 覆盖机制与 `serve` 自更新）暂缓，待出现"Runtime 频繁迭代、UI 不动"的真实发布痛点再立项；届时优先考虑在 `stable.json` 更新 manifest 内把 sidecar 做成独立版本化的 artifact（同一条 Ed25519 签名通道、独立版本与回滚），而不是让 Shell 直连 GitHub release 第二下载通道。
 
 ## Phase 划分
 
 1. [x] 合代码：Runtime 模块搬入 `anvil`（`serve` 子命令），删除 `anvil-desktop-runtime`，迁移集成测试，打包脚本与 App manifest 指向 `anvil` 二进制。
-2. [ ] CLI 三平台发布流水线 + SHA-256 清单 + 最新版索引（暂缓；独立于桌面端，CLI 用户亦受益）。
+2. [x] CLI 发布流水线 + SHA-256 清单 + `latest.json` 最新版索引（2026-10-23 完成；4 个 target 与 Q2Q release 矩阵一致，linux/windows arm64 待 Phase 3/4 需要时扩展）。
 3. [ ] Shell 侧数据目录覆盖机制（包内种子 + 版本目录优先）与 manifest schema 调整（暂缓）。
-4. [ ] `serve` 自更新器：检查/下载/校验/发布/回滚 + `http_api_version` 兼容策略（暂缓）。
+4. [ ] `serve` 自更新器：检查/下载/校验/发布/回滚 + `http_api_version` 兼容策略（暂缓；可消费 Phase 2 的 `latest.json` 索引）。
 
 每项独立可合可回滚；Phase 2–4 开工前需维护者确认。
 
@@ -41,3 +41,13 @@
 - 顺带修复两处既有问题：`anvil-logging` 两处 `if let` 嵌套不合 clippy `collapsible_if`（此前未被 CI clippy 覆盖，`anvil` 依赖它后暴露），已折叠为 let 链；迁移后的 `runtime_server` 集成测试首次真实运行，发现 CORS 断言写死了 Title-Case 头名而 Hyper 实际输出小写头，已改为大小写不敏感断言。该测试此前从未被执行过（见 client-milestone 与 desktop-account-login 的"未运行自动化测试"记录），非本次合并引入的行为变化。
 - Shell 接口零改动：`ANVIL_HTTP_API_VERSION` 等环境变量、stdin 凭据、ready JSON 协议均保持；`apps/desktop/manifests/*.json` 的 `sidecar_entry` 改为 `runtime/anvil(.exe)`；`package-desktop-app.mjs` 改为构建并复制 `anvil` 二进制。
 - 检查：`cargo fmt --all --check`、`cargo clippy --locked -p anvil --all-targets -- -D warnings` 通过；`cargo test --locked -p anvil -p anvil-core -- --test-threads=1`（20 + 63 项，1 项忽略）与 `cargo test --locked -p anvil-shell`（27 项）通过。未重新执行真实下载 smoke 与 WebView 联调，维持既有验收边界；`desktop:package` 脚本未在本机实际执行打包。
+
+## Phase 2 验收记录
+
+2026-10-23（维护者确认后开工）：
+
+- 新增 `.github/workflows/cli-release.yml`，tag `cli/v*` 推送触发。流程：4 target matrix 构建 → 版本校验（tag ↔ `Cargo.toml` workspace 版本 ↔ 二进制 `--version` 三方一致）→ 打包（`anvil-<ver>-<target>.tar.gz` / `.zip`，含二进制 + LICENSE + README.md）→ release job 生成 `SHA256SUMS` 与 `latest.json`（版本、tag、每 target 的归档名/sha256/下载 URL，供将来 Phase 4 自更新器消费）→ draft release → 上传 → publish --latest。已发布 release 的 asset 不可变，重试只允许修复 draft。
+- target 矩阵与 Q2Q release 完全一致：`x86_64-unknown-linux-gnu`（ubuntu-22.04，glibc 2.35 兼容）、`x86_64-apple-darwin`（macos-15-intel）、`aarch64-apple-darwin`（macos-15）、`x86_64-pc-windows-msvc`（windows-2022）。`macos-15-intel` 经 Q2Q 10-22 的成功 run 验证可用（actionlint 1.7.7 的 label 数据库滞后，报未知属误报）。
+- `latest.json` 生成脚本与版本提取脚本段在本地用假产物实测通过；修复了一处 `.tar.gz` 双后缀被 `rpartition('.')` 切错的真实 bug。
+- 发布操作流程：`Cargo.toml` workspace 版本 bump 并合入 main → `git tag cli/vX.Y.Z && git push origin cli/vX.Y.Z`。CI 未真实执行过一次完整发布，首次打 tag 时需人工核对产物。
+- 风险提示（Phase 4 开工前复核）：GitHub release asset 无 Ed25519 签名，sha256 与产物同源（同一 release 页面），校验强度低于 Shell 的 `stable.json` 签名通道。
