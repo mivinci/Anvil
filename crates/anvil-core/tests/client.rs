@@ -56,6 +56,7 @@ impl Fixture {
               && error.kind() != std::io::ErrorKind::WouldBlock
               && error.kind() != std::io::ErrorKind::BrokenPipe
               && error.kind() != std::io::ErrorKind::ConnectionReset
+              && error.kind() != std::io::ErrorKind::ConnectionAborted
             {
               panic!("client download fixture failed: {error}");
             }
