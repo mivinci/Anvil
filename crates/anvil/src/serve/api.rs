@@ -29,18 +29,16 @@ use tokio::{net::TcpListener, sync::oneshot, time::Duration};
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 
+struct FabricVersionCacheEntry {
+  game: String,
+  cached_at: std::time::Instant,
+  versions: Vec<anvil_core::fabric::FabricVersion>,
+}
+
 #[derive(Clone)]
 pub(super) struct AppState {
   versions: Arc<super::versions::VersionCatalog>,
-  fabric_versions: Arc<
-    tokio::sync::Mutex<
-      std::collections::VecDeque<(
-        String,
-        std::time::Instant,
-        Vec<anvil_core::fabric::FabricVersion>,
-      )>,
-    >,
-  >,
+  fabric_versions: Arc<tokio::sync::Mutex<std::collections::VecDeque<FabricVersionCacheEntry>>>,
   pub(super) runtime: Arc<RuntimeState>,
   pub(super) curseforge: Arc<super::curseforge::Catalog>,
   accounts: Arc<AccountState>,
@@ -314,9 +312,9 @@ async fn fabric_versions(
   RoutePath(game): RoutePath<String>,
 ) -> Result<Json<Vec<anvil_core::fabric::FabricVersion>>, ApiError> {
   let mut cache = state.fabric_versions.lock().await;
-  cache.retain(|(_, at, _)| at.elapsed() < std::time::Duration::from_secs(1800));
-  if let Some((_, _, versions)) = cache.iter().find(|(key, _, _)| key == &game) {
-    return Ok(Json(versions.clone()));
+  cache.retain(|entry| entry.cached_at.elapsed() < std::time::Duration::from_secs(1800));
+  if let Some(entry) = cache.iter().find(|entry| entry.game == game) {
+    return Ok(Json(entry.versions.clone()));
   }
   let versions = tokio::time::timeout(
     std::time::Duration::from_secs(25),
@@ -333,7 +331,11 @@ async fn fabric_versions(
   while cache.len() >= 8 {
     cache.pop_front();
   }
-  cache.push_back((game, std::time::Instant::now(), versions.clone()));
+  cache.push_back(FabricVersionCacheEntry {
+    game,
+    cached_at: std::time::Instant::now(),
+    versions: versions.clone(),
+  });
   Ok(Json(versions))
 }
 
