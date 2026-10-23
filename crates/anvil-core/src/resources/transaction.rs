@@ -34,9 +34,9 @@ fn exists(path: &Path) -> Result<bool> {
     Err(error) => Err(error.into()),
   }
 }
-fn sync_directory(path: &Path) -> Result<()> {
+fn sync_directory(_path: &Path) -> Result<()> {
   #[cfg(unix)]
-  File::open(path)?.sync_all()?;
+  File::open(_path)?.sync_all()?;
   Ok(())
 }
 fn validate_layout(layout: &Layout) -> Result<()> {
