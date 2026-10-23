@@ -1,14 +1,51 @@
 <script lang="ts">
-	import { Check, Copy, RefreshCw } from '@lucide/svelte';
+	import { resolve } from '$app/paths';
+	import { page } from '$app/state';
+	import { untrack } from 'svelte';
+	import { listClientResourcePacks } from '#lib/runtime.js';
+	import { validateClientResourcePacks } from '#lib/client-resource-pack-state.svelte.js';
+	import ClientScreenPreview from '#lib/components/clients/client-screen-preview.svelte';
+	import ClientLaunchControls from '#lib/components/clients/client-launch-controls.svelte';
+	import { getClientLaunchState, launchActive, launchLabel } from '#lib/client-launch-state.svelte.js';
+	import { Boxes, Image, Sparkles, ArrowUpRight, ChevronDown, Check, Copy, RefreshCw } from '@lucide/svelte';
 	import { getClientDetailState } from '#lib/client-detail-state.svelte.js';
 	const detail = getClientDetailState();
+	const name = $derived(page.params.name ?? '');
+	let packCount = $state<number | null>(null);
+	let countLoading = $state(false);
+	let countError = $state(false);
+	let countRequest: AbortController | null = null;
+	async function loadCount(target: string) {
+		countRequest?.abort();
+		const controller = new AbortController(); countRequest = controller;
+		countLoading = true; countError = false;
+		try {
+			const result = validateClientResourcePacks(await listClientResourcePacks(target, AbortSignal.any([controller.signal, AbortSignal.timeout(20_000)])));
+			if (countRequest === controller && !controller.signal.aborted) packCount = result.packs.length;
+		} catch {
+			if (countRequest === controller && !controller.signal.aborted) { packCount = null; countError = true; }
+		} finally {
+			if (countRequest === controller) { countRequest = null; countLoading = false; }
+		}
+	}
+	$effect(() => {
+		const target = name;
+		untrack(() => { packCount = null; void loadCount(target); });
+		return () => { countRequest?.abort(); countRequest = null; };
+	});
+	function refresh() { void detail.load(name); void loadCount(name); }
+	const launches = getClientLaunchState();
+	const operation = $derived(detail.client ? launches.forClient(detail.client.name) : undefined);
+	const status = $derived(operation && launchActive(operation) ? launchLabel(operation) : '未运行');
+	const links = $derived(detail.client ? [
+		{ title: '模组', hint: '管理与添加模组', icon: Boxes, href: resolve('/clients/[name]/mods', { name: detail.client.name.toLowerCase() }) },
+		{ title: '资源包', hint: packCount !== null ? `${packCount} 个资源包` : countLoading ? '读取数量…' : '查看与管理资源包', icon: Image, href: resolve('/clients/[name]/resource-packs', { name: detail.client.name.toLowerCase() }) },
+		{ title: '光影', hint: '功能准备中', icon: Sparkles, href: resolve('/clients/[name]/shader-packs', { name: detail.client.name.toLowerCase() }) },
+	] : []);
 	let copied = $state<string | null>(null);
 	let copyError = $state<string | null>(null);
 	let copying = $state(false);
 	const fields = $derived(detail.client ? [
-		{ label: '实例名称', value: detail.client.name, copy: true },
-		{ label: '游戏版本', value: detail.client.versionId, copy: true },
-		{ label: '游戏类型', value: detail.client.loader ? `Fabric ${detail.client.loader.version}` : 'Minecraft Java · 原版', copy: false },
 		{ label: '版本类型', value: detail.client.versionType === 'release' ? '正式版' : detail.client.versionType === 'snapshot' ? '快照' : detail.client.versionType, copy: false },
 		{ label: 'Java 要求', value: `Java ${detail.client.javaMajor}`, copy: false },
 		{ label: '安装目标', value: `${detail.client.os} · ${detail.client.architecture}`, copy: false },
@@ -25,13 +62,31 @@
 
 <svelte:head><title>{detail.client?.name ?? '实例'} · 概览 · Anvil</title></svelte:head>
 <section aria-labelledby="client-overview-title" class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 lg:px-6">
-	<div class="flex items-center justify-between gap-3"><h1 id="client-overview-title" class="text-base font-semibold tracking-tight">概览</h1><button type="button" aria-label="刷新实例详情" title="刷新实例详情" disabled={detail.loading || !detail.client} onclick={() => { if (detail.client) void detail.load(detail.client.name); }} class="grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40"><RefreshCw size={14} class={detail.loading ? 'animate-spin motion-reduce:animate-none' : ''} aria-hidden="true" /></button></div>
-	<dl class="mt-4 divide-y divide-border rounded-lg border border-border bg-card px-3.5">
-		{#each fields as field (field.label)}
-			<div class="flex min-h-10 items-center justify-between gap-4 py-2"><dt class="shrink-0 text-[13px]">{field.label}</dt><dd class="flex min-w-0 items-center gap-1"><span class="min-w-0 select-text break-all text-right text-xs text-muted-foreground">{field.value}</span>{#if field.copy}<button type="button" aria-label={`复制${field.label}`} title={`复制${field.label}`} disabled={copying} onclick={() => void copy(field.label, field.value)} class="grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40">{#if copied === field.label}<Check size={12} class="text-primary" aria-hidden="true" />{:else}<Copy size={12} aria-hidden="true" />{/if}</button>{/if}</dd></div>
-		{/each}
-	</dl>
-	<p class="mt-3 text-[11px] leading-5 text-muted-foreground">安装记录已读取，尚未检查游戏文件完整性。Java 要求来自安装记录，不代表已安装的 Java 版本。</p>
+	{#if detail.client}
+		<div class="flex items-center justify-between"><p class="text-[11px] text-muted-foreground">实例概览</p><button type="button" aria-label="刷新实例详情" title="刷新实例详情" disabled={detail.loading || countLoading} onclick={refresh} class="grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40"><RefreshCw size={14} class={detail.loading || countLoading ? 'animate-spin motion-reduce:animate-none' : ''} aria-hidden="true" /></button></div>
+		<div class="relative isolate mt-2 flex min-h-48 items-center overflow-hidden rounded-xl bg-primary/5 px-5 py-6">
+			<div class="relative z-10 min-w-0 flex-1">
+				<p class="mb-2 flex items-center gap-1.5 text-[11px] text-muted-foreground"><span class={`size-1.5 rounded-full ${operation && launchActive(operation) ? 'bg-primary' : 'bg-muted-foreground/50'}`}></span>{status}</p>
+				<h1 id="client-overview-title" class="max-w-full break-all text-xl font-semibold tracking-tight">{detail.client.name}</h1>
+				<div class="mt-2 flex flex-wrap gap-1.5 text-[11px] text-muted-foreground"><span class="rounded-md bg-card/70 px-2 py-1">Minecraft {detail.client.versionId}</span><span class="rounded-md bg-card/70 px-2 py-1">{detail.client.loader ? `Fabric ${detail.client.loader.version}` : '原版'}</span></div>
+				<div class="mt-5"><ClientLaunchControls client={detail.client} /></div>
+			</div>
+			<div class="ml-5 w-[46%] max-w-96 shrink-0"><ClientScreenPreview /></div>
+		</div>
+		<div class="mt-5 grid grid-cols-3 gap-2">
+			{#each links as item (item.title)}
+				<a href={item.href} title={item.title === '资源包' && countError ? '数量暂时无法读取，点击进入管理；可刷新概览重试。' : undefined} class="group min-w-0 rounded-xl bg-card p-3 transition-colors hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring"><div class="flex items-center justify-between"><item.icon size={19} strokeWidth={1.5} class="text-primary" aria-hidden="true" /><ArrowUpRight size={13} class="text-muted-foreground/50 transition-transform motion-safe:group-hover:-translate-y-0.5 motion-safe:group-hover:translate-x-0.5" aria-hidden="true" /></div><h2 class="mt-3 text-[13px] font-medium">{item.title}</h2><p class="mt-1 text-[11px] leading-4 text-muted-foreground">{item.hint}</p></a>
+			{/each}
+		</div>
+		<details class="group mt-5 border-t border-border pt-3">
+			<summary class="flex cursor-pointer list-none items-center justify-between rounded-md py-1 text-xs text-muted-foreground focus-visible:outline-2 focus-visible:outline-ring [&::-webkit-details-marker]:hidden">安装信息<ChevronDown size={14} class="transition-transform group-open:rotate-180 motion-reduce:transition-none" aria-hidden="true" /></summary>
+			<dl class="mt-2 grid grid-cols-2 gap-x-6 gap-y-3 rounded-lg bg-card p-3">
+				{#each fields as field (field.label)}<div class="min-w-0"><dt class="text-[11px] text-muted-foreground">{field.label}</dt><dd class="mt-1 select-text break-all text-xs">{field.value}</dd></div>{/each}
+			</dl>
+			<div class="mt-2 flex gap-3">{#each [{ label: '实例名称', value: detail.client.name }, { label: '游戏版本', value: detail.client.versionId }] as item}<button type="button" disabled={copying} onclick={() => void copy(item.label, item.value)} class="inline-flex items-center gap-1 rounded px-1 py-1 text-[11px] text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring">{#if copied === item.label}<Check size={12} aria-hidden="true" />{:else}<Copy size={12} aria-hidden="true" />{/if}复制{item.label}</button>{/each}</div>
+			<p class="mt-2 text-[11px] leading-5 text-muted-foreground">以上来自安装记录，尚未检查游戏文件完整性；Java 要求不代表已安装的 Java 版本。</p>
+		</details>
+	{/if}
 	{#if copied}<p role="status" class="mt-2 text-[11px] text-muted-foreground">已复制{copied}</p>{/if}
 	{#if copyError}<p role="alert" class="mt-2 text-[11px] text-destructive">{copyError}</p>{/if}
 </section>

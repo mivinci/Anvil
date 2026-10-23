@@ -23,7 +23,7 @@
 	const name = $derived(page.params.name ?? '');
 	const visible = $derived(manifest?.mods.filter((mod) => mod.filename.toLowerCase().includes(search.trim().toLowerCase())) ?? []);
 	function validate(result: ClientResourceManifest) {
-		if (!result || ![1, 2].includes(result.schemaVersion) || !Number.isSafeInteger(result.revision) || !Array.isArray(result.mods) || result.mods.length > 1024 || result.mods.some((entry) => typeof entry.filename !== 'string' || !/^[a-f0-9]{64}$/.test(entry.sha256) || !Number.isSafeInteger(entry.size) || typeof entry.enabled !== 'boolean' || !['local', 'curseforge'].includes(entry.source))) throw new Error('资源清单格式不正确。');
+		if (!result || ![1, 2, 3].includes(result.schemaVersion) || !Number.isSafeInteger(result.revision) || !Array.isArray(result.mods) || result.mods.length > 1024 || result.mods.some((entry) => typeof entry.filename !== 'string' || !/^[a-f0-9]{64}$/.test(entry.sha256) || !Number.isSafeInteger(entry.size) || typeof entry.enabled !== 'boolean' || !['local', 'curseforge'].includes(entry.source))) throw new Error('资源清单格式不正确。');
 		return result;
 	}
 	async function run(action: (signal: AbortSignal) => Promise<ClientResourceManifest>, mutation = false) {

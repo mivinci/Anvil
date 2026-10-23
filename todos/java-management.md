@@ -102,3 +102,13 @@ Ctrl-C 请求取消并等待下载器清理、已开始的阻塞任务和探测�
 - 旧 Slint 桌面入口曾通过 CI 构建，随后已移除。2026-10-21 Tauri/SvelteKit 桌面壳的前端类型检查、静态构建、Tauri Rust 离线检查和 rustfmt 检查通过；尚未在 Tauri WebView 中运行。真实 Temurin 安装不加入 CI；`scripts/java-smoke.py` 可在目标平台本地运行。当前 Windows/macOS 的真实安装尚未验收，不把 Linux 结果视为其他平台已通过。
 
 真实安装检查使用隔离临时数据目录；测试和 smoke 脚本不写用户系统 Java 目录。可用 `python scripts/java-smoke.py --binary target/debug/anvil` 重复 Linux 真实验收，`--check-interrupt --versions 21` 会增加分段落盘后的取消/恢复检查。
+
+## 客户端安装时准备 Java（当前实现）
+
+桌面安装任务与 CLI client install 在解析安装计划后，先调用 Core ClientInstaller::prepare_install_java，再进入 Minecraft 文件下载/实例发布。复用 JavaManager::ensure_major 检查已有托管 Java 的主版本、平台和可执行性；缺失才下载，不按实例重复安装。低层 install 仍只负责游戏文件，入口显式组合统一的 Java 准备方法，不在安装器中重写 Java 下载、解包或校验。
+
+安装任务新增 java 阶段与 javaMajor/javaStage，复用原任务显示查找、下载、解包、校验与安装进度；Minecraft 的文件进度独立重置，不把两个来源的字节混成一个总量。Java 准备失败/取消不发布 Minecraft 实例，已完成的共享 Java 不随后续游戏失败而删除。Java 阶段可取消；既有暂停/继续仍限 Minecraft 下载阶段，恢复游戏传输不重复准备 Java。计划准备结束保持 planning，避免元数据完成时误报整体安装完成。
+
+启动仍检查 Java；旧实例、被删除/损坏的托管 Java 继续走显式补装入口。启动下载任务仅在实际下载/解包/发布时出现，缓存命中探测不显示短暂任务；最后一次实际 Java 安装在既有有界启动历史内保留终态。入口按钮/取消位置、状态区域、同一进度元素和字节行保持稳定，重试时隐藏旧错误，避免 Java 阶段切换造成明显跳动。
+
+本次检查：Rust 格式/严格 Clippy、Svelte 0 错误/0 警告、前端生产构建及 macOS ARM64 Runtime release 构建，更新本地 baseline。未添加或运行测试、未真实下载 Java/Minecraft、未启动游戏或操作 dev；实际安装复用、取消与视觉连续性待维护者验收，新增 Runtime 字段需完整重启 dev。

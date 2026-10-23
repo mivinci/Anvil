@@ -5,7 +5,7 @@ use super::{
 };
 use anvil_core::{
   client::ClientInstaller,
-  curseforge::{CatalogPage, CurseForge, DependencyPreview, ModFile, Project},
+  curseforge::{CurseForge, DependencyPreview},
   fabric::ClientLoader,
 };
 use axum::{
@@ -19,7 +19,8 @@ use tokio::sync::Semaphore;
 
 pub(super) struct Catalog {
   pub(super) installs: super::resource_operations::ResourceOperations,
-  provider: Result<CurseForge, ()>,
+  provider: Result<Arc<CurseForge>, ()>,
+  discovery: super::discovery_catalog::DiscoveryCatalog,
   slots: Semaphore,
 }
 impl Catalog {
@@ -27,11 +28,12 @@ impl Catalog {
     let key = std::env::var("ANVIL_CURSEFORGE_API_KEY").ok();
     Self {
       installs: super::resource_operations::ResourceOperations::new(),
-      provider: CurseForge::new(key).map_err(|_| ()),
+      provider: CurseForge::new(key).map(Arc::new).map_err(|_| ()),
+      discovery: super::discovery_catalog::DiscoveryCatalog::default(),
       slots: Semaphore::new(2),
     }
   }
-  fn provider(&self) -> Result<&CurseForge, ApiError> {
+  fn provider(&self) -> Result<&Arc<CurseForge>, ApiError> {
     let provider = self.provider.as_ref().map_err(|_| {
       ApiError::new(
         StatusCode::SERVICE_UNAVAILABLE,
@@ -79,12 +81,18 @@ pub(super) struct Search {
   q: String,
   #[serde(default)]
   index: u32,
+  #[serde(default)]
+  refresh: bool,
+  after: Option<u64>,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Paging {
   #[serde(default)]
   index: u32,
+  #[serde(default)]
+  refresh: bool,
+  after: Option<u64>,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -131,35 +139,55 @@ pub(super) async fn search(
   State(state): State<AppState>,
   Path(name): Path<String>,
   Query(query): Query<Search>,
-) -> Result<Json<CatalogPage<Project>>, ApiError> {
+) -> Result<Json<serde_json::Value>, ApiError> {
   let _slot = state.curseforge.slot()?;
-  let provider = state.curseforge.provider()?;
-  bounded(async {
-    let game = game(&state.runtime, &name).await?;
-    provider
-      .search(&game, query.q.trim(), query.index)
-      .await
-      .map(Json)
-      .map_err(upstream)
-  })
-  .await
+  let provider = state.curseforge.provider()?.clone();
+  let version = game(&state.runtime, &name).await?;
+  let identity = anvil_core::curseforge::DiscoveryQuery::Search {
+    game: version,
+    text: query.q.trim().into(),
+    index: query.index,
+  };
+  state
+    .curseforge
+    .discovery
+    .get(
+      state.runtime.context.clone(),
+      provider,
+      identity,
+      query.refresh,
+      query.after,
+    )
+    .await
+    .map(Json)
+    .map_err(|error| ApiError::new(StatusCode::BAD_GATEWAY, error))
 }
 pub(super) async fn files(
   State(state): State<AppState>,
   Path((name, project)): Path<(String, u32)>,
   Query(query): Query<Paging>,
-) -> Result<Json<CatalogPage<ModFile>>, ApiError> {
+) -> Result<Json<serde_json::Value>, ApiError> {
   let _slot = state.curseforge.slot()?;
-  let provider = state.curseforge.provider()?;
-  bounded(async {
-    let game = game(&state.runtime, &name).await?;
-    provider
-      .files(&game, project, query.index)
-      .await
-      .map(Json)
-      .map_err(upstream)
-  })
-  .await
+  let provider = state.curseforge.provider()?.clone();
+  let version = game(&state.runtime, &name).await?;
+  let identity = anvil_core::curseforge::DiscoveryQuery::Files {
+    game: version,
+    project,
+    index: query.index,
+  };
+  state
+    .curseforge
+    .discovery
+    .get(
+      state.runtime.context.clone(),
+      provider,
+      identity,
+      query.refresh,
+      query.after,
+    )
+    .await
+    .map(Json)
+    .map_err(|error| ApiError::new(StatusCode::BAD_GATEWAY, error))
 }
 pub(super) async fn preview(
   State(state): State<AppState>,

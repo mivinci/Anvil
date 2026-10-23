@@ -11,7 +11,13 @@ use tokio::{io::BufReader, sync::oneshot};
 
 mod accounts;
 mod api;
+mod catalog;
+mod client_resources;
+mod client_settings;
 mod curseforge;
+mod discovery_catalog;
+mod fabric_catalog;
+mod launches;
 mod operations;
 mod protocol;
 mod resource_operations;

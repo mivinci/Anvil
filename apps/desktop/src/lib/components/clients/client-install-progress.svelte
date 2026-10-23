@@ -16,12 +16,11 @@
 </script>
 
 <div class="space-y-3">
-	<div><p class="truncate text-[13px] font-medium">{operation?.name ?? installs.intent?.name ?? 'Minecraft'}</p><p class="mt-1 text-[11px] text-muted-foreground">{operation?.loader ? `Fabric ${operation.loader.version}` : 'Minecraft Java'} · {operation?.versionId ?? installs.intent?.versionId ?? '—'}</p></div>
+	<div><p class="truncate text-[13px] font-medium">{operation?.name ?? installs.intent?.name ?? 'Minecraft'}</p><p class="mt-1 text-[11px] text-muted-foreground">Minecraft {operation?.versionId ?? installs.intent?.versionId ?? '—'}{operation?.loader ? ` · Fabric ${operation.loader.version}` : ''}</p></div>
 	<p role="status" class="text-xs text-muted-foreground">{installs.label}</p>
 	{#if installs.active || installs.starting}
-		{#if percent !== null}<progress max="100" value={percent} aria-label="安装下载进度" class="block h-1.5 w-full overflow-hidden rounded-full accent-primary [&::-webkit-progress-bar]:rounded-full [&::-webkit-progress-bar]:bg-chrome-hover [&::-webkit-progress-value]:rounded-full [&::-webkit-progress-value]:bg-primary"></progress>
-		{:else}<progress aria-label="正在准备安装" class="block h-1.5 w-full overflow-hidden rounded-full accent-primary [&::-webkit-progress-bar]:bg-chrome-hover [&::-webkit-progress-value]:bg-primary"></progress>{/if}
-		<div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[11px] tabular-nums text-muted-foreground">
+		<progress max="100" value={percent ?? undefined} aria-label="安装下载进度" class="block h-1.5 w-full overflow-hidden rounded-full accent-primary [&::-webkit-progress-bar]:rounded-full [&::-webkit-progress-bar]:bg-chrome-hover [&::-webkit-progress-value]:rounded-full [&::-webkit-progress-value]:bg-primary"></progress>
+		<div class="flex min-h-4 flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[11px] tabular-nums text-muted-foreground">
 				{#if totalBytes !== null}<span>{formatBytes(Math.min(downloadedBytes, totalBytes))} / {formatBytes(totalBytes)}</span>{:else if files !== null}<span>文件 {operation?.progress.completedFiles ?? 0} / {files}</span>{/if}
 				{#if showSpeed}<span aria-label="下载速度">{installs.bytesPerSecond === null ? '—' : `${formatBytes(installs.bytesPerSecond)}/s`}</span>{/if}
 			</div>

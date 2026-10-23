@@ -295,7 +295,7 @@ impl ResourceManager {
         let before = read_manifest(directory)?;
         check_revision(&before, revision)?;
         let mut after = before.clone();
-        after.schema_version = 2;
+        after.schema_version = 3;
         let mut files = Vec::new();
         let mut summary = Vec::new();
         let mut projects = HashSet::new();
@@ -427,7 +427,7 @@ impl ResourceManager {
           return Err(Error::Cancelled);
         }
         let mut after = plan.before.clone();
-        after.schema_version = 2;
+        after.schema_version = 3;
         for (file, sha256) in plan.files.iter().zip(objects) {
           verify_object(&object_path(data, &sha256), &sha256, file.file.file_length)?;
           merge(&mut after, file, sha256)?;

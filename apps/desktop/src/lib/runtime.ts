@@ -59,6 +59,7 @@ export type AccountLoginOperation = {
 };
 
 export type ClientInstallStage =
+	| 'java'
 	| 'resolving'
 	| 'planning'
 	| 'downloading'
@@ -75,6 +76,8 @@ export interface ClientInstallOperation {
 	state: 'running' | 'pausing' | 'paused' | 'resuming' | 'completed' | 'failed' | 'cancelled';
 	progress: {
 		stage: ClientInstallStage;
+		javaMajor: number | null;
+		javaStage: ClientLaunch['javaStage'];
 		completedFiles: number;
 		totalFiles: number | null;
 		downloadedBytes: number;
@@ -231,10 +234,11 @@ export interface ClientResourceEntry {
 	origin?: { projectId: number; fileId: number; projectName: string; sha1: string; direct: boolean; requiredProjects: number[]; incompatibleProjects: number[] };
 }
 export interface ClientResourceManifest {
-	schemaVersion: 1 | 2;
+	schemaVersion: 1 | 2 | 3;
 	revision: number;
 	appliedRevision?: number | null;
 	mods: ClientResourceEntry[];
+	resourcePacks?: ClientResourcePack[];
 }
 export const listClientResources = (name: string, signal: AbortSignal) =>
 	runtimeRequest<ClientResourceManifest>(`/clients/${encodeURIComponent(name)}/resources`, { signal });
@@ -243,9 +247,28 @@ export const importClientMod = (name: string, file: File, revision: number, sign
 export const changeClientMod = (name: string, sha256: string, revision: number, enabled: boolean | null, signal: AbortSignal) =>
 	runtimeRequest<ClientResourceManifest>(`/clients/${encodeURIComponent(name)}/resources/${encodeURIComponent(sha256)}${enabled === null ? `?revision=${revision}` : '/enabled'}`, enabled === null ? { method: 'DELETE', signal } : { method: 'POST', body: JSON.stringify({ revision, enabled }), signal });
 
+export interface ResourcePackFormat { major: number; minor: number }
+export interface ClientResourcePack {
+	sha256: string; filename: string; size: number; source: 'local';
+	metadata: { description: string; packFormat: number | null; minFormat: ResourcePackFormat; maxFormat: ResourcePackFormat };
+}
+export interface ClientResourcePacks { revision: number; appliedRevision: number | null; packs: ClientResourcePack[] }
+export const listClientResourcePacks = (name: string, signal: AbortSignal) =>
+	runtimeRequest<ClientResourcePacks>(`/clients/${encodeURIComponent(name)}/resource-packs`, { signal });
+export const importClientResourcePack = (name: string, file: File, revision: number, signal: AbortSignal) =>
+	runtimeRequest<ClientResourcePacks>(`/clients/${encodeURIComponent(name)}/resource-packs?${new URLSearchParams({ filename: file.name, revision: String(revision) })}`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file, signal });
+export const removeClientResourcePack = (name: string, sha256: string, revision: number, signal: AbortSignal) =>
+	runtimeRequest<ClientResourcePacks>(`/clients/${encodeURIComponent(name)}/resource-packs/${encodeURIComponent(sha256)}?revision=${revision}`, { method: 'DELETE', signal });
+
+export interface CatalogStatus { stale: boolean; freshForMs: number; revision: number; refreshError: string | null }
+export interface CatalogOptions { refresh?: boolean; after?: number }
+function catalogQuery(options: CatalogOptions = {}) {
+	return { ...(options.refresh ? { refresh: 'true' } : {}), ...(options.after !== undefined ? { after: String(options.after) } : {}) };
+}
 export interface FabricLoaderVersion { version: string; stable: boolean }
-export const listFabricVersions = (game: string, signal: AbortSignal) =>
-	runtimeRequest<FabricLoaderVersion[]>(`/client/fabric/versions/${encodeURIComponent(game)}`, { signal });
+export interface FabricVersionCatalog extends CatalogStatus { versions: FabricLoaderVersion[] }
+export const listFabricVersions = (game: string, signal: AbortSignal, options?: CatalogOptions) =>
+	runtimeRequest<FabricVersionCatalog>(`/client/fabric/versions/${encodeURIComponent(game)}?${new URLSearchParams(catalogQuery(options))}`, { signal });
 
 export const syncClientResources = (name: string, revision: number, signal: AbortSignal) =>
 	runtimeRequest<ClientResourceManifest>(`/clients/${encodeURIComponent(name)}/resources/sync`, { method: 'POST', body: JSON.stringify({ revision }), signal });
@@ -260,7 +283,7 @@ export interface CurseForgeFile {
 	id: number; modId: number; displayName: string; fileName: string; fileLength: number;
 	fileDate: string; releaseType: number; isAvailable: boolean;
 }
-export interface CurseForgePage<T> { items: T[]; nextIndex: number | null }
+export interface CurseForgePage<T> extends CatalogStatus { items: T[]; nextIndex: number | null }
 export interface CurseForgePreview {
 	gameVersion: string; revision: number; totalBytes: number;
 	items: { project: CurseForgeProject; file: CurseForgeFile; direct: boolean }[];
@@ -268,10 +291,10 @@ export interface CurseForgePreview {
 }
 export const getCurseForgeConfiguration = (signal: AbortSignal) =>
 	runtimeRequest<CurseForgeConfiguration>('/resources/curseforge/configuration', { signal });
-export const searchCurseForgeProjects = (name: string, q: string, index: number, signal: AbortSignal) =>
-	runtimeRequest<CurseForgePage<CurseForgeProject>>(`/clients/${encodeURIComponent(name)}/curseforge/projects?${new URLSearchParams({ q, index: String(index) })}`, { signal });
-export const listCurseForgeFiles = (name: string, project: number, index: number, signal: AbortSignal) =>
-	runtimeRequest<CurseForgePage<CurseForgeFile>>(`/clients/${encodeURIComponent(name)}/curseforge/projects/${project}/files?index=${index}`, { signal });
+export const searchCurseForgeProjects = (name: string, q: string, index: number, signal: AbortSignal, options?: CatalogOptions) =>
+	runtimeRequest<CurseForgePage<CurseForgeProject>>(`/clients/${encodeURIComponent(name)}/curseforge/projects?${new URLSearchParams({ q, index: String(index), ...catalogQuery(options) })}`, { signal });
+export const listCurseForgeFiles = (name: string, project: number, index: number, signal: AbortSignal, options?: CatalogOptions) =>
+	runtimeRequest<CurseForgePage<CurseForgeFile>>(`/clients/${encodeURIComponent(name)}/curseforge/projects/${project}/files?${new URLSearchParams({ index: String(index), ...catalogQuery(options) })}`, { signal });
 export const previewCurseForgeDependencies = (name: string, project: number, file: number, signal: AbortSignal) =>
 	runtimeRequest<CurseForgePreview>(`/clients/${encodeURIComponent(name)}/curseforge/projects/${project}/files/${file}/preview`, { signal });
 
@@ -293,3 +316,43 @@ export const listResourceOperations = (signal: AbortSignal) =>
 	runtimeRequest<ResourceInstallOperation[]>('/resource-operations', { signal });
 export const cancelResourceOperation = (id: number, signal: AbortSignal) =>
 	runtimeRequest<ResourceInstallOperation>(`/resource-operations/${id}`, { method: 'DELETE', signal });
+
+export interface ClientLaunch {
+	id: number; name: string; offlineTest: boolean; javaDownloadStarted: boolean;
+	phase: 'preparing' | 'authenticating' | 'planning' | 'java' | 'running' | 'stopping' | 'exited' | 'failed' | 'cancelled';
+	cancelRequested: boolean; javaMajor: number | null;
+	javaStage: 'resolving' | 'downloading' | 'extracting' | 'validating' | 'publishing' | 'completed' | null;
+	javaDownloadedBytes: number; javaTotalBytes: number | null;
+	exitCode: number | null; errorCode: string | null; error: string | null;
+}
+export const listClientLaunches = (signal: AbortSignal) => runtimeRequest<ClientLaunch[]>('/client-launches', { signal });
+export const startClientLaunch = (name: string, accountId: string | null, installJava: boolean, signal: AbortSignal, offlineTest = false) =>
+	runtimeRequest<ClientLaunch>(`/clients/${encodeURIComponent(name)}/launch`, { method: 'POST', body: JSON.stringify({ accountId, installJava, offlineTest }), signal });
+export const stopClientLaunch = (id: number, signal: AbortSignal) =>
+	runtimeRequest<ClientLaunch>(`/client-launches/${id}`, { method: 'DELETE', signal });
+
+export interface ClientGameLog { exists: boolean; text: string; totalBytes: number; truncated: boolean }
+export const getClientGameLog = (name: string, signal: AbortSignal) =>
+	runtimeRequest<ClientGameLog>(`/clients/${encodeURIComponent(name)}/logs/latest`, { signal });
+export interface ClientConsoleLog extends ClientGameLog { launchId: number | null; readFailed: boolean }
+export const getClientConsoleLog = (name: string, signal: AbortSignal) =>
+	runtimeRequest<ClientConsoleLog>(`/clients/${encodeURIComponent(name)}/logs/console`, { signal, cache: 'no-store' });
+
+export interface ClientCrashReportEntry { name: string; size: number; modifiedAt: number | null }
+export interface ClientCrashReports { reports: ClientCrashReportEntry[]; truncated: boolean; maxReportBytes: number }
+export interface ClientCrashReport { name: string; text: string; totalBytes: number }
+export const listClientCrashReports = (name: string, signal: AbortSignal) =>
+	runtimeRequest<ClientCrashReports>(`/clients/${encodeURIComponent(name)}/crash-reports`, { signal, cache: 'no-store' });
+export const getClientCrashReport = (name: string, filename: string, signal: AbortSignal) =>
+	runtimeRequest<ClientCrashReport>(`/clients/${encodeURIComponent(name)}/crash-reports/${encodeURIComponent(filename)}`, { signal, cache: 'no-store' });
+
+export interface ClientLaunchSettings {
+	schemaVersion: 1; revision: number; maxMemoryMib: number; initialMemoryMib: number | null;
+	resolution: { width: number; height: number } | null;
+}
+export const getClientLaunchSettings = (name: string, signal: AbortSignal) =>
+	runtimeRequest<ClientLaunchSettings>(`/clients/${encodeURIComponent(name)}/launch-settings`, { signal, cache: 'no-store' });
+export const saveClientLaunchSettings = (name: string, settings: ClientLaunchSettings, signal: AbortSignal) =>
+	runtimeRequest<ClientLaunchSettings>(`/clients/${encodeURIComponent(name)}/launch-settings`, { method: 'PUT', body: JSON.stringify(settings), signal });
+export const getDeviceMemory = (signal: AbortSignal) =>
+	runtimeRequest<{ totalMib: number | null }>('/system/memory', { signal });

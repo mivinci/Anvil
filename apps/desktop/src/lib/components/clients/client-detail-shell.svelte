@@ -6,7 +6,7 @@
 	const reducedMotion = new MediaQuery('(prefers-reduced-motion: reduce)');
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
-	import { Box, Boxes, Image, LoaderCircle, Settings2, Sparkles } from '@lucide/svelte';
+	import { Box, Boxes, Image, FileText, LoaderCircle, Settings2, Sparkles } from '@lucide/svelte';
 	import { ClientDetailState, setClientDetailState } from '../../client-detail-state.svelte.js';
 	import { getClientSidebarState } from '../../client-sidebar-state.svelte.js';
 	let { children }: { children: Snippet } = $props();
@@ -20,6 +20,7 @@
 		{ href: resolve('/clients/[name]/mods', { name }), label: '模组', icon: Boxes },
 		{ href: resolve('/clients/[name]/resource-packs', { name }), label: '资源包', icon: Image },
 		{ href: resolve('/clients/[name]/shader-packs', { name }), label: '光影', icon: Sparkles },
+		{ href: resolve('/clients/[name]/logs', { name }), label: '游戏日志', icon: FileText },
 		{ href: resolve('/clients/[name]/settings', { name }), label: '实例设置', icon: Settings2 },
 	]);
 	$effect(() => { if (valid) void detail.load(name); else detail.client = null; return () => detail.cancel(); });

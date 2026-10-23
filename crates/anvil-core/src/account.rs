@@ -191,9 +191,26 @@ pub struct AccountSession {
   access_token: AccessToken,
   expires_at: SystemTime,
   demo_user: bool,
+  offline_test: bool,
 }
 
 impl AccountSession {
+  /// Explicit local development identity. No Microsoft authentication or service access.
+  /// Never add this session to the saved account list or credential store.
+  pub fn offline_test() -> Self {
+    Self {
+      profile: AccountProfile::new("86425aa3-fbf6-3927-a42e-55bfe75352c4", "AnvilTester", None)
+        .expect("valid fixed offline identity"),
+      access_token: AccessToken::new("0").expect("valid placeholder token"),
+      expires_at: SystemTime::now() + std::time::Duration::from_secs(86400),
+      demo_user: false,
+      offline_test: true,
+    }
+  }
+  pub fn is_offline_test(&self) -> bool {
+    self.offline_test
+  }
+
   pub fn profile(&self) -> &AccountProfile {
     &self.profile
   }
@@ -204,6 +221,33 @@ impl AccountSession {
 
   pub fn is_demo_user(&self) -> bool {
     self.demo_user
+  }
+
+  /// Filter process output without exposing the session credential to an entry point.
+  /// Suppresses the entire line, including tokens split across I/O chunks by the caller.
+  pub fn redact_process_output(&self, line: &str) -> String {
+    let lower = line.to_ascii_lowercase();
+    if (!self.offline_test && line.contains(self.access_token()))
+      || line.contains("eyJ")
+      || [
+        "access_token",
+        "accesstoken",
+        "refresh_token",
+        "refreshtoken",
+        "authorization",
+        "bearer ",
+        "sessionid",
+      ]
+      .iter()
+      .any(|marker| lower.contains(marker))
+    {
+      "[已隐藏认证相关输出]".into()
+    } else {
+      line
+        .chars()
+        .filter(|c| !c.is_control() || *c == '\t')
+        .collect()
+    }
   }
 
   pub(crate) fn access_token(&self) -> &str {
@@ -217,6 +261,7 @@ impl AccountSession {
         access_token: account.access_token,
         expires_at: account.expires_at,
         demo_user: account.demo_user,
+        offline_test: false,
       },
       account.refresh_token,
     )
@@ -231,6 +276,7 @@ impl fmt::Debug for AccountSession {
       .field("access_token", &"[REDACTED]")
       .field("expires_at", &self.expires_at)
       .field("demo_user", &self.demo_user)
+      .field("offline_test", &self.offline_test)
       .finish()
   }
 }

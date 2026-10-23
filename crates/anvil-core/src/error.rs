@@ -1,5 +1,8 @@
 use std::io;
 
+/// Public transport failure type carried by `Error::Http`.
+pub use q2q_http::Error as HttpError;
+
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, thiserror::Error)]

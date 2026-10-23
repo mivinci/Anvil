@@ -5,8 +5,9 @@ import {
 } from './runtime';
 
 export const installStages = {
-	resolving: '读取版本信息', planning: '准备安装计划', downloading: '下载并校验文件',
-	verifying: '检查安装文件', publishing: '保存实例', completed: '安装完成',
+	java: '正在准备 Java',
+	resolving: '正在读取 Minecraft 版本信息', planning: '正在准备 Minecraft 安装计划', downloading: '正在下载 Minecraft',
+	verifying: '正在校验 Minecraft 文件', publishing: '正在保存 Minecraft 实例', completed: 'Minecraft 安装完成',
 };
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
 export class ClientInstallState {
@@ -45,11 +46,16 @@ export class ClientInstallState {
 		if (this.changingPause) return this.operation?.state === 'paused' ? '正在请求继续…' : '正在请求暂停…';
 		if (this.cancelling || this.operation?.cancelRequested) return '正在取消并清理…';
 		if (this.operation?.state === 'pausing') return '正在暂停传输…';
-		if (this.operation?.state === 'paused') return '下载已暂停';
-		if (this.operation?.state === 'resuming') return '正在继续下载…';
+		if (this.operation?.state === 'paused') return 'Minecraft 下载已暂停';
+		if (this.operation?.state === 'resuming') return '正在继续下载 Minecraft…';
 		if (this.operation?.state === 'completed') return '安装完成';
 		if (this.operation?.state === 'failed') return '安装失败';
 		if (this.operation?.state === 'cancelled') return '安装已取消';
+		if (this.operation?.progress.stage === 'java') {
+			const progress = this.operation.progress, java = `Java${progress.javaMajor ? ` ${progress.javaMajor}` : ''}`;
+			const steps = { resolving: '查找', downloading: '下载', extracting: '解压', validating: '校验', publishing: '安装', completed: '准备完成' };
+			return progress.javaStage === 'completed' ? `${java} 已就绪` : `正在${progress.javaStage ? steps[progress.javaStage] : '准备'} ${java}…`;
+		}
 		return this.operation ? installStages[this.operation.progress.stage] : '暂无安装任务';
 	}
 	private async request<T>(run: (signal: AbortSignal) => Promise<T>): Promise<T> {

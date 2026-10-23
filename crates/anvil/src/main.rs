@@ -17,7 +17,7 @@ use anvil_core::{
   client::{ClientInstallResult, ClientInstaller, ClientInstance, ClientListEntry, ClientProgress},
   client_plan::ClientTarget,
   java::{InstallResult, JavaManager, JavaProgress},
-  launch::{LaunchOptions, build_launch_spec},
+  launch::{LaunchOptions, build_launch_spec_with_settings},
   metadata::{self, GameVersion},
   server::{
     ServerInstallStage, ServerInstaller, ServerInstance, ServerInstanceManager, ServerProgress,
@@ -653,6 +653,9 @@ async fn install_client(
   let operation = async {
     let target = ClientTarget::current()?;
     let plan = installer.plan(version_id, target, &cancel, &sender).await?;
+    installer
+      .prepare_install_java(&plan, &cancel, &sender)
+      .await?;
     installer.install(name, &plan, &cancel, &sender).await
   };
   tokio::pin!(operation);
@@ -769,6 +772,7 @@ async fn launch_client(
     .find(|instance| instance.name.eq_ignore_ascii_case(name))
     .ok_or_else(|| Error::NotFound(format!("Minecraft client instance {name}")))?;
   let installed = installer.load_install_record(&instance).await?;
+  let launch_settings = installer.launch_settings(&instance.name).await?;
   let account_file = account_store::load(&context.paths.data)?;
   let profile = match account_id {
     Some(id) => account_file.find(id),
@@ -863,7 +867,14 @@ async fn launch_client(
     microsoft_client_id: Some(client_id),
     ..LaunchOptions::default()
   };
-  let launch = build_launch_spec(&plan, runtime, &session, game_directory, &options)?;
+  let launch = build_launch_spec_with_settings(
+    &plan,
+    runtime,
+    &session,
+    game_directory,
+    &options,
+    &launch_settings,
+  )?;
   let mut command = TokioCommand::new(launch.java_executable());
   command
     .args(launch.argv())

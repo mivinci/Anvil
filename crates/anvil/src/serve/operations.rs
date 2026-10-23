@@ -54,6 +54,8 @@ pub(super) struct InstallReceipt {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct InstallProgress {
+  pub java_major: Option<u32>,
+  pub java_stage: Option<anvil_core::java::InstallStage>,
   pub stage: ClientInstallStage,
   pub completed_files: usize,
   pub total_files: Option<usize>,
@@ -66,6 +68,8 @@ impl From<ClientProgress> for InstallProgress {
   fn from(progress: ClientProgress) -> Self {
     Self {
       stage: progress.stage,
+      java_major: progress.java_major,
+      java_stage: progress.java_stage,
       completed_files: progress.completed_files,
       total_files: progress.total_files,
       downloaded_bytes: progress.downloaded_bytes,
@@ -241,6 +245,9 @@ impl RuntimeState {
             &cancel,
             &progress_tx,
           )
+          .await?;
+        installer
+          .prepare_install_java(&plan, &cancel, &progress_tx)
           .await?;
         loop {
           let attempt = {

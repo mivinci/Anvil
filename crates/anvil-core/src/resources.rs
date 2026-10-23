@@ -17,6 +17,8 @@ pub const MAX_IMPORT_BYTES: usize = 64 * 1024 * 1024;
 const MAX_ENTRIES: usize = 1024;
 const MAX_RECORD_BYTES: usize = 1024 * 1024;
 
+mod packs;
+pub use packs::{PackFormat, PackMetadata, ResourcePackEntry};
 mod platform;
 mod transfer;
 pub use platform::{
@@ -63,6 +65,8 @@ pub struct ResourceManifest {
   #[serde(default)]
   pub applied_revision: Option<u64>,
   pub mods: Vec<ResourceEntry>,
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub resource_packs: Vec<ResourcePackEntry>,
 }
 impl Default for ResourceManifest {
   fn default() -> Self {
@@ -71,6 +75,7 @@ impl Default for ResourceManifest {
       revision: 0,
       applied_revision: None,
       mods: Vec::new(),
+      resource_packs: Vec::new(),
     }
   }
 }
@@ -112,9 +117,9 @@ impl ResourceManager {
           verify_object(&object_path(data, &sha256), &sha256, entry.size)?;
           return Ok(manifest);
         }
-        if manifest.mods.len() >= MAX_ENTRIES {
+        if manifest.mods.len() + manifest.resource_packs.len() >= MAX_ENTRIES {
           return Err(Error::Invalid(
-            "at most 1024 managed mods per instance".into(),
+            "at most 1024 managed resources per instance".into(),
           ));
         }
         if manifest
@@ -126,29 +131,7 @@ impl ResourceManager {
             "another managed mod uses this filename".into(),
           ));
         }
-        // Global lock also provides the future GC/publication coordination boundary.
-
-        let resources = data.join("resources");
-        ensure_directory(&resources, true)?;
-        ensure_directory(&resources.join("objects"), true)?;
-        ensure_directory(&resources.join("objects/sha256"), true)?;
-        let path = object_path(data, &sha256);
-        let parent = path.parent().expect("object parent");
-        ensure_directory(parent, true)?;
-        match fs::symlink_metadata(&path) {
-          Ok(_) => verify_object(&path, &sha256, bytes.len() as u64)?,
-          Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
-            temporary.write_all(&bytes)?;
-            temporary.as_file().sync_all()?;
-            temporary
-              .persist_noclobber(&path)
-              .map_err(|error| Error::Io(error.error))?;
-            #[cfg(unix)]
-            File::open(parent)?.sync_all()?;
-          }
-          Err(error) => return Err(error.into()),
-        }
+        publish_object(data, &sha256, &bytes)?;
         manifest.mods.push(ResourceEntry {
           origin: None,
           source: ResourceSource::Local,
@@ -210,14 +193,9 @@ impl ResourceManager {
   pub async fn sync(&self, name: &str, revision: u64) -> Result<ResourceManifest> {
     self
       .access(name, move |directory, data, fabric| {
-        if !fabric {
-          return Err(Error::Invalid(
-            "enabled mods require a Fabric instance".into(),
-          ));
-        }
         let mut manifest = read_manifest(directory)?;
         check_revision(&manifest, revision)?;
-        commit(directory, data, &mut manifest, true)?;
+        commit(directory, data, &mut manifest, fabric)?;
         Ok(manifest)
       })
       .await
@@ -282,8 +260,8 @@ fn read_manifest(directory: &Path) -> Result<ResourceManifest> {
   Ok(manifest)
 }
 fn validate_manifest(manifest: &ResourceManifest) -> Result<()> {
-  if !matches!(manifest.schema_version, 1 | 2)
-    || manifest.mods.len() > MAX_ENTRIES
+  if !matches!(manifest.schema_version, 1..=3)
+    || manifest.mods.len() + manifest.resource_packs.len() > MAX_ENTRIES
     || manifest.revision > 9_007_199_254_740_990
     || manifest
       .applied_revision
@@ -297,7 +275,7 @@ fn validate_manifest(manifest: &ResourceManifest) -> Result<()> {
   for entry in &manifest.mods {
     match (&entry.source, &entry.origin) {
       (ResourceSource::Local, None) => {}
-      (ResourceSource::Curseforge, Some(origin)) if manifest.schema_version == 2 => {
+      (ResourceSource::Curseforge, Some(origin)) if manifest.schema_version >= 2 => {
         platform::validate_origin(origin)?;
         if !projects.insert(origin.project_id) {
           return Err(Error::Metadata("duplicate CurseForge project".into()));
@@ -317,6 +295,12 @@ fn validate_manifest(manifest: &ResourceManifest) -> Result<()> {
       ));
     }
   }
+  if manifest.schema_version < 3 && !manifest.resource_packs.is_empty() {
+    return Err(Error::Metadata(
+      "resource packs require manifest schema 3".into(),
+    ));
+  }
+  packs::validate_entries(&manifest.resource_packs)?;
   if serde_json::to_vec_pretty(manifest)?.len() > MAX_RECORD_BYTES {
     return Err(Error::Metadata(
       "resource manifest exceeds size limit".into(),
@@ -355,7 +339,7 @@ fn commit_cancel(
   cancel: &crate::CancellationToken,
 ) -> Result<()> {
   let before = read_manifest(directory)?;
-  manifest.schema_version = 2;
+  manifest.schema_version = 3;
   validate_manifest(manifest)?;
   if cancel.is_cancelled() {
     return Err(Error::Cancelled);
@@ -365,18 +349,20 @@ fn commit_cancel(
     .checked_add(1)
     .filter(|value| *value <= 9_007_199_254_740_990)
     .ok_or_else(|| Error::Conflict("resource revision exhausted".into()))?;
-  if fabric {
-    manifest.applied_revision = Some(manifest.revision);
-    transact(directory, data, &before, manifest, cancel)
-  } else {
-    if !read_layout(directory)?.mods.is_empty() {
-      return Err(Error::Conflict("mod layout requires Fabric".into()));
-    }
-    manifest.applied_revision = None;
-    storage::replace_json(&directory.join("resources.json"), manifest)
+  if !fabric
+    && (manifest.mods.iter().any(|entry| entry.enabled) || !read_layout(directory)?.mods.is_empty())
+  {
+    return Err(Error::Conflict(
+      "enabled managed mods require Fabric".into(),
+    ));
   }
+  manifest.applied_revision = Some(manifest.revision);
+  transact(directory, data, &before, manifest, cancel)
 }
 pub(crate) fn validate_filename(filename: &str) -> Result<()> {
+  validate_resource_filename(filename, "jar")
+}
+fn validate_resource_filename(filename: &str, extension: &str) -> Result<()> {
   let stem = filename
     .split('.')
     .next()
@@ -384,7 +370,9 @@ pub(crate) fn validate_filename(filename: &str) -> Result<()> {
     .to_ascii_uppercase();
   if filename.len() > 128
     || filename.len() < 5
-    || !filename.to_ascii_lowercase().ends_with(".jar")
+    || !filename
+      .to_ascii_lowercase()
+      .ends_with(&format!(".{extension}"))
     || !filename.as_bytes()[0].is_ascii_alphanumeric()
     || !filename
       .bytes()
@@ -394,7 +382,9 @@ pub(crate) fn validate_filename(filename: &str) -> Result<()> {
       && (stem.starts_with("COM") || stem.starts_with("LPT"))
       && stem.as_bytes()[3].is_ascii_digit())
   {
-    return Err(Error::Invalid("use a .jar filename starting with an ASCII letter/digit, containing only letters, digits, spaces and . _ + - (max 128 bytes)".into()));
+    return Err(Error::Invalid(format!(
+      "use a .{extension} filename starting with an ASCII letter/digit, containing only letters, digits, spaces and . _ + - (max 128 bytes)"
+    )));
   }
   Ok(())
 }
@@ -407,6 +397,31 @@ fn validate_hash(hash: &str) -> Result<()> {
     return Err(Error::Invalid("invalid resource digest".into()));
   }
   Ok(())
+}
+// Caller holds the shared object-store lock. Both local JAR and ZIP imports use this path.
+fn publish_object(data: &Path, hash: &str, bytes: &[u8]) -> Result<()> {
+  validate_hash(hash)?;
+  for path in ["resources", "resources/objects", "resources/objects/sha256"] {
+    ensure_directory(&data.join(path), true)?;
+  }
+  let path = object_path(data, hash);
+  let parent = path.parent().expect("object parent");
+  ensure_directory(parent, true)?;
+  match fs::symlink_metadata(&path) {
+    Ok(_) => verify_object(&path, hash, bytes.len() as u64),
+    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+      let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
+      temporary.write_all(bytes)?;
+      temporary.as_file().sync_all()?;
+      temporary
+        .persist_noclobber(&path)
+        .map_err(|error| Error::Io(error.error))?;
+      #[cfg(unix)]
+      File::open(parent)?.sync_all()?;
+      Ok(())
+    }
+    Err(error) => Err(error.into()),
+  }
 }
 fn object_path(data: &Path, hash: &str) -> PathBuf {
   data
@@ -484,6 +499,9 @@ fn hex(bytes: &[u8]) -> String {
 // Reject oversized central-directory counts before ZIP parsing allocates entry records.
 // ZIP64 is unnecessary for the bounded local-import format and is not accepted here.
 fn validate_jar(bytes: &[u8]) -> Result<()> {
+  open_zip(bytes).map(|_| ())
+}
+fn open_zip(bytes: &[u8]) -> Result<zip::ZipArchive<std::io::Cursor<&[u8]>>> {
   let invalid = || Error::Invalid("invalid JAR/ZIP; expected 1–4096 entries without ZIP64".into());
   let start = bytes.len().saturating_sub(65_557);
   let at = (start..bytes.len().saturating_sub(21))
@@ -505,5 +523,5 @@ fn validate_jar(bytes: &[u8]) -> Result<()> {
   if archive.len() != count as usize {
     return Err(invalid());
   }
-  Ok(())
+  Ok(archive)
 }

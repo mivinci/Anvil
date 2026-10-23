@@ -7,7 +7,7 @@ export type ThemePreferences = { theme: 'default' | 'custom'; light: Palette; da
 export const defaultTheme = (): ThemePreferences => ({
 	theme: 'default',
 	light: { background: '#f8f8f7', foreground: '#2d2e30', accent: '#827099' },
-	dark: { background: '#191a1b', foreground: '#e9e9e7', accent: '#b5a0ce' },
+	dark: { background: '#222223', foreground: '#e9e9e7', accent: '#b5a0ce' },
 });
 export const isColor = (value: unknown): value is string => typeof value === 'string' && /^#[\da-f]{6}$/i.test(value);
 export function readTheme(value: string | null): ThemePreferences {

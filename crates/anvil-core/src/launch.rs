@@ -7,6 +7,7 @@ use std::{
   time::SystemTime,
 };
 
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::{
@@ -19,7 +20,8 @@ use crate::{
 const MAX_LAUNCHER_NAME: usize = 128;
 const MAX_LAUNCHER_VERSION: usize = 64;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Resolution {
   pub width: u32,
   pub height: u32,
@@ -107,6 +109,28 @@ pub fn build_launch_spec(
   game_directory: impl AsRef<Path>,
   options: &LaunchOptions,
 ) -> Result<LaunchSpec> {
+  build_launch_spec_with_settings(
+    plan,
+    runtime,
+    account,
+    game_directory,
+    options,
+    &crate::client::ClientLaunchSettings::default(),
+  )
+}
+
+pub fn build_launch_spec_with_settings(
+  plan: &ClientInstallPlan,
+  runtime: ClientRuntimePreparation,
+  account: &AccountSession,
+  game_directory: impl AsRef<Path>,
+  options: &LaunchOptions,
+  settings: &crate::client::ClientLaunchSettings,
+) -> Result<LaunchSpec> {
+  settings.validate()?;
+  let mut effective = options.clone();
+  effective.resolution = options.resolution.or(settings.resolution);
+  let options = &effective;
   validate_launch_inputs(plan, &runtime, account, options)?;
   let game_directory = game_directory.as_ref();
   let profile = account.profile();
@@ -118,7 +142,15 @@ pub fn build_launch_spec(
       profile.id().replace('-', "").to_ascii_lowercase(),
     ),
     ("auth_access_token", account.access_token().to_owned()),
-    ("user_type", "msa".into()),
+    (
+      "user_type",
+      if account.is_offline_test() {
+        "legacy"
+      } else {
+        "msa"
+      }
+      .into(),
+    ),
     ("version_name", plan.version_id.clone()),
     ("version_type", plan.version_type.clone()),
     ("game_directory", path_value(game_directory)?),
@@ -129,6 +161,10 @@ pub fn build_launch_spec(
     ("launcher_name", options.launcher_name.clone()),
     ("launcher_version", options.launcher_version.clone()),
   ]);
+  if account.is_offline_test() {
+    values.insert("auth_xuid", "0".into());
+    values.insert("clientid", "00000000-0000-0000-0000-000000000000".into());
+  }
   if let Some(xuid) = profile.xuid() {
     values.insert("auth_xuid", xuid.to_owned());
   }
@@ -159,13 +195,34 @@ pub fn build_launch_spec(
   target.features.insert("is_quick_play_realms".into(), false);
 
   let mut jvm_arguments = expand_arguments(&plan.arguments.jvm, &target, &values)?;
+  // Instance heap settings take precedence over heap flags supplied by metadata.
+  jvm_arguments.retain(|argument| !argument.starts_with("-Xmx") && !argument.starts_with("-Xms"));
+  jvm_arguments.push(format!("-Xmx{}M", settings.max_memory_mib));
+  if let Some(initial) = settings.initial_memory_mib {
+    jvm_arguments.push(format!("-Xms{initial}M"));
+  }
   if let Some(logging) = &plan.logging {
     let path = installed_artifact_path(&runtime, &logging.file.path, &logging.file)?;
     let logging_values = HashMap::from([("path", path_value(&path)?)]);
     let argument = expand_template(&logging.argument, &logging_values)?;
     jvm_arguments.push(argument);
   }
-  let game_arguments = expand_arguments(&plan.arguments.game, &target, &values)?;
+  let mut game_arguments = expand_arguments(&plan.arguments.game, &target, &values)?;
+  if let Some(resolution) = options.resolution {
+    for (flag, value) in [
+      ("--width", resolution.width),
+      ("--height", resolution.height),
+    ] {
+      if let Some(index) = game_arguments.iter().position(|argument| argument == flag) {
+        let argument = game_arguments
+          .get_mut(index + 1)
+          .ok_or_else(|| Error::Invalid("invalid window size arguments".into()))?;
+        *argument = value.to_string();
+      } else {
+        game_arguments.extend([flag.to_owned(), value.to_string()]);
+      }
+    }
+  }
 
   Ok(LaunchSpec {
     java_executable: runtime.java.executable.clone(),
@@ -257,13 +314,13 @@ fn classpath(plan: &ClientInstallPlan, runtime: &ClientRuntimePreparation) -> Re
   let mut entries = Vec::with_capacity(plan.libraries.len() + 1);
   for library in &plan.libraries {
     let logical_path = format!("libraries/{}", library.artifact.path);
-    entries.push(installed_artifact_path(
+    entries.push(classpath_artifact_path(
       runtime,
       &logical_path,
       &library.artifact,
     )?);
   }
-  entries.push(installed_artifact_path(
+  entries.push(classpath_artifact_path(
     runtime,
     &plan.client_jar.path,
     &plan.client_jar,
@@ -272,6 +329,25 @@ fn classpath(plan: &ClientInstallPlan, runtime: &ClientRuntimePreparation) -> Re
     .map_err(|_| Error::Invalid("client classpath contains a separator".into()))?
     .into_string()
     .map_err(|_| Error::Unsupported("non-UTF8 client classpath path".into()))
+}
+
+fn classpath_artifact_path(
+  runtime: &ClientRuntimePreparation,
+  logical_path: &str,
+  planned: &PlannedFile,
+) -> Result<PathBuf> {
+  // Retain the record/plan identity check, but launch the private .jar view.
+  let cached = installed_artifact_path(runtime, logical_path, planned)?;
+  if runtime.installed.loader.is_none() {
+    return Ok(cached);
+  }
+  let path = crate::client::classpath::jar_path(&runtime.session_directory, &planned.file.sha1);
+  let metadata = fs::symlink_metadata(&path)?;
+  if metadata.file_type().is_symlink() || !metadata.is_file() || metadata.len() != planned.file.size
+  {
+    return Err(Error::Conflict("session classpath JAR is invalid".into()));
+  }
+  Ok(path)
 }
 
 fn installed_artifact_path(

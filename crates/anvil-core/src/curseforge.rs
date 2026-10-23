@@ -1,5 +1,7 @@
 //! Read-only CurseForge discovery and bounded dependency previews. No file transfer or mutation.
+mod catalog;
 use crate::{Error, Result};
+pub use catalog::{CachedDiscovery, DiscoveryPage, DiscoveryQuery};
 use reqwest::{Client, header::HeaderValue};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::{
@@ -90,7 +92,7 @@ struct Pagination {
   result_count: u32,
   total_count: u64,
 }
-#[derive(Serialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CatalogPage<T> {
   pub items: Vec<T>,
@@ -141,6 +143,14 @@ impl CurseForge {
     self.key.is_some()
   }
   async fn get<T: DeserializeOwned>(&self, path: &str, query: &[(&str, String)]) -> Result<T> {
+    self.get_with_refresh(path, query, false).await
+  }
+  async fn get_with_refresh<T: DeserializeOwned>(
+    &self,
+    path: &str,
+    query: &[(&str, String)],
+    force: bool,
+  ) -> Result<T> {
     let key = self
       .key
       .as_ref()
@@ -154,7 +164,7 @@ impl CurseForge {
     // Serialize cache misses; the Runtime bounds callers before they enter this provider.
     let mut cache = self.cache.lock().await;
     cache.retain(|(_, at, _)| at.elapsed() < Duration::from_secs(300));
-    if let Some((_, _, bytes)) = cache.iter().find(|(id, _, _)| id == &identity) {
+    if !force && let Some((_, _, bytes)) = cache.iter().find(|(id, _, _)| id == &identity) {
       return serde_json::from_slice(bytes)
         .map_err(|_| Error::Metadata("CurseForge response is invalid".into()));
     }
@@ -187,6 +197,7 @@ impl CurseForge {
     }
     let value = serde_json::from_slice(&bytes)
       .map_err(|_| Error::Metadata("CurseForge response is invalid".into()))?;
+    cache.retain(|(id, _, _)| id != &identity);
     while cache.len() >= 16 {
       cache.pop_front();
     }
@@ -194,12 +205,21 @@ impl CurseForge {
     Ok(value)
   }
   pub async fn search(&self, game: &str, text: &str, index: u32) -> Result<CatalogPage<Project>> {
+    self.search_with_refresh(game, text, index, false).await
+  }
+  async fn search_with_refresh(
+    &self,
+    game: &str,
+    text: &str,
+    index: u32,
+    force: bool,
+  ) -> Result<CatalogPage<Project>> {
     validate_query(game, index)?;
     if text.len() > 128 || text.chars().any(char::is_control) {
       return Err(Error::Invalid("invalid search query".into()));
     }
     let page: UpstreamPage<Project> = self
-      .get(
+      .get_with_refresh(
         "mods/search",
         &[
           ("gameId", "432".into()),
@@ -212,6 +232,7 @@ impl CurseForge {
           ("pageSize", PAGE.to_string()),
           ("index", index.to_string()),
         ],
+        force,
       )
       .await?;
     let next_index = next(&page, index)?;
@@ -230,10 +251,19 @@ impl CurseForge {
     })
   }
   pub async fn files(&self, game: &str, project: u32, index: u32) -> Result<CatalogPage<ModFile>> {
+    self.files_with_refresh(game, project, index, false).await
+  }
+  async fn files_with_refresh(
+    &self,
+    game: &str,
+    project: u32,
+    index: u32,
+    force: bool,
+  ) -> Result<CatalogPage<ModFile>> {
     validate_query(game, index)?;
     validate_id(project)?;
     let page: UpstreamPage<ModFile> = self
-      .get(
+      .get_with_refresh(
         &format!("mods/{project}/files"),
         &[
           ("gameVersion", game.into()),
@@ -241,6 +271,7 @@ impl CurseForge {
           ("pageSize", PAGE.to_string()),
           ("index", index.to_string()),
         ],
+        force,
       )
       .await?;
     let next_index = next(&page, index)?;

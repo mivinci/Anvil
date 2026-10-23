@@ -45,6 +45,8 @@ export class AccountState {
 	loginError = $state<string | null>(null);
 	loginErrorDetail = $state<string | null>(null);
 	loginDialogOpen = $state(false);
+	offlineMode = $state(false);
+	private offlineLaunch: (() => void) | null = null;
 
 	private disposed = false;
 	private cancelAfterStart = false;
@@ -123,6 +125,7 @@ export class AccountState {
 				? selectAccount(id, { signal }) : logoutAccount(id, { signal }));
 			if (this.disposed) return false;
 			this.accounts = accounts;
+			if (kind === 'switch') this.offlineMode = false;
 			this.loaded = true;
 			return true;
 		} catch (error) {
@@ -240,20 +243,30 @@ export class AccountState {
 		return true;
 	}
 
-	openLoginDialog() {
+	openLoginDialog(offlineLaunch: (() => void) | null = null) {
 		if (this.disposed) return;
 		if (!this.loginRunning && !this.loginStarting) {
 			this.resetLogin();
 			void this.loadLoginConfiguration();
 		}
+		this.offlineLaunch = offlineLaunch;
 		this.loginDialogOpen = true;
 	}
 
 	closeLoginDialog(): boolean {
 		if (this.loginRunning && this.login?.stage === 'saving_account') return false;
+		this.offlineLaunch = null;
 		this.loginDialogOpen = false;
 		if (this.canCancelLogin) void this.cancelLogin();
 		return true;
+	}
+
+	useOfflineMode() {
+		if (this.disposed || this.loginStarting || this.loginRunning || this.loginCancelling) return;
+		const launch = this.offlineLaunch;
+		this.offlineMode = true;
+		this.closeLoginDialog();
+		launch?.();
 	}
 
 	async cancelLogin(): Promise<boolean> {
@@ -304,6 +317,7 @@ export class AccountState {
 		}
 		if (operation.state !== 'running') this.stopPolling();
 		if (operation.state === 'completed' && operation.account) {
+			this.offlineMode = false;
 			const account = operation.account;
 			this.accounts = [
 				...this.accounts.filter((item) => item.id !== account.id).map((item) => ({ ...item, selected: false })),
@@ -379,6 +393,7 @@ export class AccountState {
 
 	dispose() {
 		if (this.disposed) return;
+		this.offlineLaunch = null;
 		this.disposed = true;
 		this.cancelAfterStart = true;
 		this.stopPolling();

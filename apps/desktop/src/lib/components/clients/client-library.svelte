@@ -35,7 +35,7 @@
 		{:else if library.loaded && filtered.length === 0}
 			<div class="flex min-h-56 flex-col items-center justify-center gap-3 text-muted-foreground"><SearchX size={24} strokeWidth={1.5} aria-hidden="true" /><p class="text-xs">没有匹配的客户端</p><button type="button" onclick={() => library.query = ''} class="rounded px-2 py-1 text-xs text-primary hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring">清除搜索</button></div>
 		{:else if library.loaded}
-			<ul class="grid grid-cols-1 gap-3 xl:grid-cols-2" aria-label="已安装客户端">{#each filtered as client (client.id)}<ClientCard {client} />{/each}</ul>
+			<ul class="grid grid-cols-[repeat(auto-fill,minmax(min(100%,210px),1fr))] items-start gap-3" aria-label="已安装客户端">{#each filtered as client (client.id)}<ClientCard {client} />{/each}</ul>
 		{/if}
 	</div>
 </section>

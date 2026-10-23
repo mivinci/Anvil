@@ -14,6 +14,14 @@ pub(crate) fn server_instance_lock(data: &Path, id: &str) -> Result<Arc<File>> {
   lock_named(data, "instance", id)
 }
 
+pub(crate) fn catalog_cache_lock(data: &Path, source: &str) -> Result<Arc<File>> {
+  lock_named(data, "catalogue-cache", source)
+}
+
+pub(crate) fn client_settings_lock(data: &Path, id: &str) -> Result<Arc<File>> {
+  lock_named(data, "client-settings", id)
+}
+
 pub(crate) fn client_cache_lock(data: &Path, sha1: &str) -> Result<Arc<File>> {
   lock_named(data, "client-cache", sha1)
 }

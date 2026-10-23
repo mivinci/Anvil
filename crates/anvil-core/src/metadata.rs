@@ -1,4 +1,6 @@
 //! Bounded Mojang version metadata for launcher and original-server workflows.
+mod catalog;
+pub use catalog::{CachedVersionCatalog, load_cached_version_catalog, refresh_version_catalog};
 use std::collections::HashSet;
 
 use q2q_http::Executor;
@@ -82,11 +84,11 @@ pub struct ClientArguments {
   pub game: Vec<Value>,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct VersionManifest {
   versions: Vec<ManifestEntry>,
 }
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct ManifestEntry {
   id: String,
   url: String,
@@ -178,8 +180,7 @@ struct LoggingFileDocument {
 
 /// List versions from Mojang's bounded, official version manifest.
 pub async fn list_versions(context: &Context) -> Result<Vec<GameVersion>> {
-  let http = context.http.executor();
-  list_versions_from(&http, version_manifest_url()?).await
+  Ok(refresh_version_catalog(context).await?.versions)
 }
 
 fn version_manifest_url() -> Result<Url> {
@@ -187,7 +188,12 @@ fn version_manifest_url() -> Result<Url> {
     .map_err(|_| Error::Metadata("invalid Mojang version manifest URL".into()))
 }
 
+#[cfg(test)]
 async fn list_versions_from(http: &Executor, manifest_url: Url) -> Result<Vec<GameVersion>> {
+  versions_from_manifest(&fetch_version_manifest(http, manifest_url).await?)
+}
+
+async fn fetch_version_manifest(http: &Executor, manifest_url: Url) -> Result<VersionManifest> {
   validate_metadata_url(&manifest_url)?;
   let response = http
     .get(manifest_url.as_str())
@@ -197,14 +203,17 @@ async fn list_versions_from(http: &Executor, manifest_url: Url) -> Result<Vec<Ga
   let bytes = response
     .collect_bounded(VERSION_MANIFEST_LIMIT as usize)
     .await?;
-  let manifest: VersionManifest = parse_json(&bytes)?;
+  parse_json(&bytes)
+}
+
+fn versions_from_manifest(manifest: &VersionManifest) -> Result<Vec<GameVersion>> {
   if manifest.versions.len() > MAX_VERSION_ENTRIES {
     return Err(Error::Metadata("too many versions in manifest".into()));
   }
 
   let mut ids = HashSet::with_capacity(manifest.versions.len());
   let mut versions = Vec::with_capacity(manifest.versions.len());
-  for entry in manifest.versions {
+  for entry in &manifest.versions {
     if !is_valid_version_id(&entry.id) {
       return Err(Error::Metadata(
         "invalid Minecraft version ID in manifest".into(),
@@ -238,9 +247,9 @@ async fn list_versions_from(http: &Executor, manifest_url: Url) -> Result<Vec<Ga
       return Err(Error::Metadata("duplicate version ID in manifest".into()));
     }
     versions.push(GameVersion {
-      id: entry.id,
-      version_type: entry.version_type,
-      release_time: entry.release_time,
+      id: entry.id.clone(),
+      version_type: entry.version_type.clone(),
+      release_time: entry.release_time.clone(),
     });
   }
   Ok(versions)

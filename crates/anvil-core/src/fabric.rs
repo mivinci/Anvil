@@ -114,6 +114,61 @@ pub async fn versions(context: &Context, game: &str) -> Result<Vec<FabricVersion
   result.sort_by_key(|version| !version.stable);
   Ok(result)
 }
+pub struct CachedFabricVersions {
+  pub versions: Vec<FabricVersion>,
+  pub fetched_at: std::time::SystemTime,
+  pub persistence_error: Option<Error>,
+}
+fn validate_versions(values: &[FabricVersion]) -> Result<()> {
+  if values.len() > 1024 {
+    return Err(Error::Metadata("too many Fabric loader versions".into()));
+  }
+  let mut seen = std::collections::HashSet::new();
+  for value in values {
+    validate_version(&value.version)?;
+    if !seen.insert(&value.version) {
+      return Err(Error::Metadata("duplicate Fabric loader version".into()));
+    }
+  }
+  Ok(())
+}
+pub async fn load_cached_versions(
+  context: &Context,
+  game: &str,
+) -> Result<Option<CachedFabricVersions>> {
+  meta_url(game, None, false)?;
+  let Some(snapshot) =
+    crate::catalog_cache::load::<Vec<FabricVersion>>(context, crate::catalog_cache::FABRIC, game)
+      .await?
+  else {
+    return Ok(None);
+  };
+  validate_versions(&snapshot.value)?;
+  Ok(Some(CachedFabricVersions {
+    versions: snapshot.value,
+    fetched_at: snapshot.fetched_at,
+    persistence_error: None,
+  }))
+}
+pub async fn refresh_versions(context: &Context, game: &str) -> Result<CachedFabricVersions> {
+  let versions = versions(context, game).await?;
+  validate_versions(&versions)?;
+  let fetched_at = std::time::SystemTime::now();
+  let persistence_error = crate::catalog_cache::save(
+    context,
+    crate::catalog_cache::FABRIC,
+    game,
+    versions.clone(),
+    fetched_at,
+  )
+  .await
+  .err();
+  Ok(CachedFabricVersions {
+    versions,
+    fetched_at,
+    persistence_error,
+  })
+}
 pub async fn apply(
   context: &Context,
   plan: &mut ClientInstallPlan,

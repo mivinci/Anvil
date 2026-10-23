@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Dialog } from 'bits-ui';
 	import { isTauri } from '@tauri-apps/api/core';
-	import { Check, CircleAlert, CircleCheck, CircleSlash, Clock3, Copy, ExternalLink, LoaderCircle, UserRound, X } from '@lucide/svelte';
+	import { Check, CircleAlert, CircleCheck, CircleSlash, Clock3, Copy, ExternalLink, FlaskConical, LoaderCircle, UserRound, X } from '@lucide/svelte';
 	import { getAccountState } from '../account-state.svelte.js';
 	import { loginPhase, remainingTime, verificationUrl } from '../account-login';
 	import { shell } from '../shell';
@@ -165,7 +165,10 @@
 			{/if}
 		</div>
 
-		<div class="mt-5 flex justify-end gap-1.5">
+		<div class="mt-5 flex items-center justify-end gap-1.5">
+			{#if phase !== 'success'}
+				<button type="button" class={`${secondaryClass} mr-auto`} disabled={accounts.loginStarting || accounts.loginRunning || accounts.loginCancelling} title="使用本地玩家 AnvilTester" onclick={() => accounts.useOfflineMode()}><FlaskConical size={13} aria-hidden="true" />离线模式</button>
+			{/if}
 			{#if phase === 'success'}
 				<button type="button" class={primaryClass} onclick={close}>完成</button>
 			{:else if accounts.loginError && accounts.loginRunning}

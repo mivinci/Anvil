@@ -196,30 +196,8 @@ impl ResourceManager {
         verify_upstream(&bytes, &sha1)?;
         let hash = hex(&Sha256::digest(&bytes));
         let _store = storage::client_cache_lock(&data, "resources-store")?;
-        for path in [
-          data.join("resources/objects"),
-          data.join("resources/objects/sha256"),
-          data.join("resources/sha1"),
-        ] {
-          ensure_directory(&path, true)?;
-        }
-        let object = object_path(&data, &hash);
-        let parent = object.parent().expect("object parent");
-        ensure_directory(parent, true)?;
-        match fs::symlink_metadata(&object) {
-          Ok(_) => verify_object(&object, &hash, spec.file_length)?,
-          Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            let mut temp = tempfile::NamedTempFile::new_in(parent)?;
-            temp.write_all(&bytes)?;
-            temp.as_file().sync_all()?;
-            temp
-              .persist_noclobber(&object)
-              .map_err(|e| Error::Io(e.error))?;
-            #[cfg(unix)]
-            File::open(parent)?.sync_all()?;
-          }
-          Err(e) => return Err(e.into()),
-        }
+        publish_object(&data, &hash, &bytes)?;
+        ensure_directory(&data.join("resources/sha1"), true)?;
         storage::replace_json(
           &index_path(&data, &sha1),
           &ObjectIndex {

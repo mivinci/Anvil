@@ -378,6 +378,22 @@ impl RuntimeSupervisor {
         command.env(key, value);
       }
     }
+    // Preserve explicit network routing in the otherwise sanitized environment.
+    // Values can contain credentials: never log them or pass them to the WebView.
+    for key in [
+      "HTTP_PROXY",
+      "HTTPS_PROXY",
+      "ALL_PROXY",
+      "NO_PROXY",
+      "http_proxy",
+      "https_proxy",
+      "all_proxy",
+      "no_proxy",
+    ] {
+      if let Some(value) = std::env::var_os(key) {
+        command.env(key, value);
+      }
+    }
     // Keep both processes in the same log directory even when XDG/HOME
     // overrides are absent from the sanitized sidecar environment.
     if let Ok(directory) = anvil_logging::log_directory() {

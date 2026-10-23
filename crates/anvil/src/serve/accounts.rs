@@ -131,6 +131,13 @@ impl AccountState {
     .map_err(|error| error.to_string())
   }
 
+  pub(super) fn client_id(&self) -> anvil_core::Result<MicrosoftClientId> {
+    self
+      .client_id
+      .clone()
+      .map_err(anvil_core::Error::Authentication)
+  }
+
   pub(super) fn login_configuration(&self) -> LoginConfiguration {
     LoginConfiguration {
       enabled: self.client_id.is_ok(),

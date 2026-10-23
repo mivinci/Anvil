@@ -1,3 +1,8 @@
+pub(super) use super::client_resources::resource_error;
+use super::client_resources::{
+  client_resources, enable_client_resource, import_client_resource, limit_resource_requests,
+  remove_client_resource, sync_client_resources,
+};
 use super::{
   accounts::{
     AccountState, AccountSummary, LoginConfiguration, LoginOperationSnapshot, StartLoginError,
@@ -29,19 +34,14 @@ use tokio::{net::TcpListener, sync::oneshot, time::Duration};
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 
-struct FabricVersionCacheEntry {
-  game: String,
-  cached_at: std::time::Instant,
-  versions: Vec<anvil_core::fabric::FabricVersion>,
-}
-
 #[derive(Clone)]
 pub(super) struct AppState {
+  pub(super) launches: Arc<super::launches::Launches>,
   versions: Arc<super::versions::VersionCatalog>,
-  fabric_versions: Arc<tokio::sync::Mutex<std::collections::VecDeque<FabricVersionCacheEntry>>>,
+  fabric_versions: Arc<super::fabric_catalog::FabricCatalog>,
   pub(super) runtime: Arc<RuntimeState>,
   pub(super) curseforge: Arc<super::curseforge::Catalog>,
-  accounts: Arc<AccountState>,
+  pub(super) accounts: Arc<AccountState>,
   api_version: Arc<str>,
   token: Arc<str>,
   pub(super) logging: Option<anvil_logging::LoggingStatus>,
@@ -55,9 +55,10 @@ impl AppState {
     token: String,
   ) -> Self {
     Self {
+      launches: Arc::new(super::launches::Launches::new()),
       curseforge: Arc::new(super::curseforge::Catalog::new()),
       versions: Arc::new(super::versions::VersionCatalog::default()),
-      fabric_versions: Arc::new(tokio::sync::Mutex::new(std::collections::VecDeque::new())),
+      fabric_versions: Arc::new(super::fabric_catalog::FabricCatalog::default()),
       runtime,
       accounts,
       api_version: Arc::from(api_version),
@@ -109,11 +110,18 @@ pub(super) async fn serve(
     ));
   }
 
+  let launches = state.launches.clone();
   let resources = state.curseforge.clone();
   let runtime = state.runtime.clone();
   let account_state = state.accounts.clone();
   let app = Router::new()
     .route("/health", get(health))
+    .route("/client-launches", get(super::launches::list))
+    .route(
+      "/client-launches/{id}",
+      axum::routing::delete(super::launches::stop),
+    )
+    .route("/clients/{name}/launch", post(super::launches::start))
     .route(
       "/resource-operations",
       get(super::resource_operations::list),
@@ -152,6 +160,21 @@ pub(super) async fn serve(
     .route("/clients", get(clients))
     .route("/clients/{name}", get(client_details))
     .route(
+      "/clients/{name}/launch-settings",
+      get(super::client_settings::get).put(super::client_settings::save),
+    )
+    .route("/system/memory", get(super::client_settings::memory))
+    .route("/clients/{name}/logs/latest", get(client_game_log))
+    .route("/clients/{name}/crash-reports", get(client_crash_reports))
+    .route(
+      "/clients/{name}/crash-reports/{filename}",
+      get(client_crash_report),
+    )
+    .route(
+      "/clients/{name}/logs/console",
+      get(super::launches::console_log),
+    )
+    .route(
       "/clients/{name}/resources",
       get(client_resources)
         .post(import_client_resource)
@@ -172,6 +195,20 @@ pub(super) async fn serve(
     .route(
       "/clients/{name}/resources/{sha256}/enabled",
       post(enable_client_resource).layer(middleware::from_fn(limit_resource_requests)),
+    )
+    .route(
+      "/clients/{name}/resource-packs",
+      get(super::client_resources::packs)
+        .post(super::client_resources::import_pack)
+        .layer(DefaultBodyLimit::max(
+          anvil_core::resources::MAX_IMPORT_BYTES,
+        ))
+        .layer(middleware::from_fn(limit_resource_requests)),
+    )
+    .route(
+      "/clients/{name}/resource-packs/{sha256}",
+      axum::routing::delete(super::client_resources::remove_pack)
+        .layer(middleware::from_fn(limit_resource_requests)),
     )
     .route("/clients/install", post(install_client))
     .route("/operations", get(operations))
@@ -202,6 +239,7 @@ pub(super) async fn serve(
       let _ = shutdown.await;
       tracing::info!("Runtime shutdown requested; draining operations");
       tokio::join!(
+        launches.shutdown(),
         resources.installs.shutdown(),
         runtime.shutdown_operations(),
         account_state.shutdown_operations()
@@ -310,33 +348,19 @@ async fn health(State(state): State<AppState>) -> Json<serde_json::Value> {
 async fn fabric_versions(
   State(state): State<AppState>,
   RoutePath(game): RoutePath<String>,
-) -> Result<Json<Vec<anvil_core::fabric::FabricVersion>>, ApiError> {
-  let mut cache = state.fabric_versions.lock().await;
-  cache.retain(|entry| entry.cached_at.elapsed() < std::time::Duration::from_secs(1800));
-  if let Some(entry) = cache.iter().find(|entry| entry.game == game) {
-    return Ok(Json(entry.versions.clone()));
-  }
-  let versions = tokio::time::timeout(
-    std::time::Duration::from_secs(25),
-    anvil_core::fabric::versions(&state.runtime.context, &game),
-  )
-  .await
-  .map_err(|_| {
-    ApiError::new(
-      StatusCode::GATEWAY_TIMEOUT,
-      "Fabric version lookup timed out",
+  Query(query): Query<VersionQuery>,
+) -> Result<Json<super::fabric_catalog::Response>, ApiError> {
+  state
+    .fabric_versions
+    .get(
+      state.runtime.context.clone(),
+      game,
+      query.refresh,
+      query.after,
     )
-  })?
-  .map_err(|error| ApiError::new(StatusCode::BAD_GATEWAY, error.to_string()))?;
-  while cache.len() >= 8 {
-    cache.pop_front();
-  }
-  cache.push_back(FabricVersionCacheEntry {
-    game,
-    cached_at: std::time::Instant::now(),
-    versions: versions.clone(),
-  });
-  Ok(Json(versions))
+    .await
+    .map(Json)
+    .map_err(|error| ApiError::new(StatusCode::BAD_GATEWAY, error))
 }
 
 async fn client_versions(
@@ -348,7 +372,7 @@ async fn client_versions(
     .await
     .map_err(|error| ApiError::new(StatusCode::BAD_GATEWAY, error))?;
   Ok(Json(
-    catalog.versions.into_iter().map(version_summary).collect(),
+    catalog.value.into_iter().map(version_summary).collect(),
   ))
 }
 
@@ -380,7 +404,7 @@ async fn client_version_catalog(
     .await
     .map_err(|error| ApiError::new(StatusCode::BAD_GATEWAY, error))?;
   Ok(Json(VersionCatalogResponse {
-    versions: catalog.versions.into_iter().map(version_summary).collect(),
+    versions: catalog.value.into_iter().map(version_summary).collect(),
     stale: catalog.stale,
     fresh_for_ms: catalog.fresh_for_ms,
     revision: catalog.revision,
@@ -400,6 +424,63 @@ struct ClientDetails {
   os: String,
   architecture: String,
   file_count: usize,
+}
+
+static LOG_READS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(2);
+fn crash_error(error: anvil_core::Error) -> ApiError {
+  tracing::warn!(error_code = error.code(), "Crash report read failed");
+  let (status, message) = match error {
+    anvil_core::Error::Invalid(message) => (StatusCode::BAD_REQUEST, message),
+    anvil_core::Error::NotFound(_) => (StatusCode::NOT_FOUND, "报告不存在，请刷新列表。".into()),
+    _ => (
+      StatusCode::INTERNAL_SERVER_ERROR,
+      "无法读取崩溃报告，请刷新后重试。".into(),
+    ),
+  };
+  ApiError::new(status, message)
+}
+async fn client_crash_reports(
+  State(state): State<AppState>,
+  RoutePath(name): RoutePath<String>,
+) -> Result<Json<anvil_core::client::ClientCrashReports>, ApiError> {
+  let _permit = LOG_READS
+    .try_acquire()
+    .map_err(|_| ApiError::new(StatusCode::TOO_MANY_REQUESTS, "日志正在读取，请稍后重试。"))?;
+  ClientInstaller::new(state.runtime.context.clone())
+    .list_crash_reports(&name)
+    .await
+    .map(Json)
+    .map_err(crash_error)
+}
+async fn client_crash_report(
+  State(state): State<AppState>,
+  RoutePath((name, filename)): RoutePath<(String, String)>,
+) -> Result<Json<anvil_core::client::ClientCrashReport>, ApiError> {
+  let _permit = LOG_READS
+    .try_acquire()
+    .map_err(|_| ApiError::new(StatusCode::TOO_MANY_REQUESTS, "日志正在读取，请稍后重试。"))?;
+  ClientInstaller::new(state.runtime.context.clone())
+    .read_crash_report(&name, &filename)
+    .await
+    .map(Json)
+    .map_err(crash_error)
+}
+
+async fn client_game_log(
+  State(state): State<AppState>,
+  RoutePath(name): RoutePath<String>,
+) -> Result<Json<anvil_core::client::ClientGameLog>, ApiError> {
+  let _permit = LOG_READS
+    .try_acquire()
+    .map_err(|_| ApiError::new(StatusCode::TOO_MANY_REQUESTS, "日志正在读取，请稍后重试。"))?;
+  ClientInstaller::new(state.runtime.context.clone())
+    .read_game_log(&name)
+    .await
+    .map(Json)
+    .map_err(|error| {
+      tracing::warn!(error_code = error.code(), "Game log read failed");
+      ApiError::new(StatusCode::BAD_REQUEST, "无法读取此实例的游戏日志。")
+    })
 }
 
 async fn client_details(
@@ -429,117 +510,6 @@ async fn client_details(
     architecture: record.architecture,
     file_count: record.files.len(),
   }))
-}
-
-// Limit uploads before body extraction: at most one 64 MiB resource request at a time.
-static RESOURCE_REQUESTS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(1);
-async fn limit_resource_requests(request: Request<Body>, next: Next) -> Response {
-  let Ok(_permit) = RESOURCE_REQUESTS.try_acquire() else {
-    return ApiError::new(
-      StatusCode::TOO_MANY_REQUESTS,
-      "resource manager is busy; retry after refreshing",
-    )
-    .into_response();
-  };
-  next.run(request).await
-}
-pub(super) fn resource_error(error: anvil_core::Error) -> ApiError {
-  let status = match &error {
-    anvil_core::Error::Invalid(_) => StatusCode::BAD_REQUEST,
-    anvil_core::Error::NotFound(_) => StatusCode::NOT_FOUND,
-    anvil_core::Error::Busy(_) | anvil_core::Error::Conflict(_) => StatusCode::CONFLICT,
-    _ => StatusCode::INTERNAL_SERVER_ERROR,
-  };
-  tracing::warn!(
-    error_code = error.code(),
-    "Client resource operation failed"
-  );
-  ApiError::new(status, error.to_string())
-}
-async fn client_resources(
-  State(state): State<AppState>,
-  RoutePath(name): RoutePath<String>,
-) -> Result<Json<anvil_core::resources::ResourceManifest>, ApiError> {
-  anvil_core::resources::ResourceManager::new(state.runtime.context.clone())
-    .list(&name)
-    .await
-    .map(Json)
-    .map_err(resource_error)
-}
-#[derive(serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-struct ImportResourceQuery {
-  filename: String,
-  revision: u64,
-}
-async fn import_client_resource(
-  State(state): State<AppState>,
-  RoutePath(name): RoutePath<String>,
-  Query(query): Query<ImportResourceQuery>,
-  bytes: axum::body::Bytes,
-) -> Result<Json<anvil_core::resources::ResourceManifest>, ApiError> {
-  let result = anvil_core::resources::ResourceManager::new(state.runtime.context.clone())
-    .import(&name, query.filename, bytes.to_vec(), query.revision)
-    .await
-    .map_err(resource_error)?;
-  tracing::info!(
-    revision = result.revision,
-    mod_count = result.mods.len(),
-    "Local mod reference imported"
-  );
-  Ok(Json(result))
-}
-#[derive(serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-struct ResourceRevision {
-  revision: u64,
-}
-async fn sync_client_resources(
-  State(state): State<AppState>,
-  RoutePath(name): RoutePath<String>,
-  Json(request): Json<ResourceRevision>,
-) -> Result<Json<anvil_core::resources::ResourceManifest>, ApiError> {
-  let result = anvil_core::resources::ResourceManager::new(state.runtime.context.clone())
-    .sync(&name, request.revision)
-    .await
-    .map_err(resource_error)?;
-  tracing::info!(revision = result.revision, "Client mod layout synchronized");
-  Ok(Json(result))
-}
-
-async fn remove_client_resource(
-  State(state): State<AppState>,
-  RoutePath((name, sha256)): RoutePath<(String, String)>,
-  Query(query): Query<ResourceRevision>,
-) -> Result<Json<anvil_core::resources::ResourceManifest>, ApiError> {
-  let result = anvil_core::resources::ResourceManager::new(state.runtime.context.clone())
-    .change(&name, sha256, query.revision, None)
-    .await
-    .map_err(resource_error)?;
-  tracing::info!(revision = result.revision, "Local mod reference removed");
-  Ok(Json(result))
-}
-#[derive(serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-struct ResourceEnable {
-  revision: u64,
-  enabled: bool,
-}
-async fn enable_client_resource(
-  State(state): State<AppState>,
-  RoutePath((name, sha256)): RoutePath<(String, String)>,
-  Json(request): Json<ResourceEnable>,
-) -> Result<Json<anvil_core::resources::ResourceManifest>, ApiError> {
-  let result = anvil_core::resources::ResourceManager::new(state.runtime.context.clone())
-    .change(&name, sha256, request.revision, Some(request.enabled))
-    .await
-    .map_err(resource_error)?;
-  tracing::info!(
-    revision = result.revision,
-    enabled = request.enabled,
-    "Local mod reference preference changed"
-  );
-  Ok(Json(result))
 }
 
 async fn clients(State(state): State<AppState>) -> Result<Json<Vec<ClientSummary>>, ApiError> {

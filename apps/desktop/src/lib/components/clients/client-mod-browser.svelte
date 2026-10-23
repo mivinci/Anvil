@@ -2,12 +2,12 @@
 	import { Dialog } from 'bits-ui';
 	import { isTauri } from '@tauri-apps/api/core';
 	import { shell } from '../../shell';
-	import { ArrowLeft, ChevronLeft, ChevronRight, LoaderCircle, Search, X, Package, ExternalLink } from '@lucide/svelte';
+	import { ArrowLeft, ChevronLeft, ChevronRight, LoaderCircle, Search, X, Package, ExternalLink, RefreshCw } from '@lucide/svelte';
 	import SelectableList from '../ui/selectable-list.svelte';
 	import SelectableRow from '../ui/selectable-row.svelte';
 	import {
 		getCurseForgeConfiguration, searchCurseForgeProjects, listCurseForgeFiles, createCurseForgeInstallPlan,
-		type CurseForgeConfiguration, type CurseForgeProject, type CurseForgeFile, type CurseForgePage, type CurseForgeInstallPlan,
+		type CatalogOptions, type CurseForgeConfiguration, type CurseForgeProject, type CurseForgeFile, type CurseForgePage, type CurseForgeInstallPlan,
 	} from '../../runtime';
 	let { name, gameVersion, onClose }: { name: string; gameVersion: string; onClose: () => void } = $props();
 	import { getResourceInstallState } from '../../resource-install-state.svelte.js';
@@ -28,34 +28,45 @@
 	let fileHistory = $state<number[]>([]);
 	let busy = $state(false);
 	let error = $state<string | null>(null);
+	let catalogWarning = $state<string | null>(null);
 	let request: AbortController | null = null;
 	let retry: (() => void) | null = null;
 	const button = 'inline-flex h-7 items-center justify-center gap-1.5 rounded-lg px-2.5 text-xs text-muted-foreground hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40';
 	async function run(action: (signal: AbortSignal) => Promise<void>, again: () => void) {
 		request?.abort();
 		const controller = new AbortController(); request = controller;
-		busy = true; error = null; retry = again;
+		busy = true; error = null; catalogWarning = null; retry = again;
 		try { await action(AbortSignal.any([controller.signal, AbortSignal.timeout(55_000)])); }
 		catch (reason) { if (!controller.signal.aborted) error = reason instanceof Error ? reason.message : '暂时无法读取 CurseForge，请重试。'; }
 		finally { if (request === controller) { request = null; busy = false; } }
 	}
-	function search(index = 0, text = query.trim()) {
-		if (index === 0) projectHistory = [];
-		project = null; selected = null; preview = null; files = null; projects = null;
-		const target = name;
-		void run(async (signal) => {
-			const result = await searchCurseForgeProjects(target, text, index, signal);
-			signal.throwIfAborted(); projects = result; submitted = text; projectIndex = index;
-		}, () => search(index, text));
+	async function readPage<T>(fetch: (options: CatalogOptions) => Promise<CurseForgePage<T>>, publish: (page: CurseForgePage<T>) => void, signal: AbortSignal, force: boolean) {
+		catalogWarning = null;
+		let options: CatalogOptions = { refresh: force };
+		for (let attempt = 0; attempt < 2; attempt++) {
+			const page = await fetch(options);
+			signal.throwIfAborted(); publish(page); catalogWarning = page.refreshError;
+			if (!page.stale || page.refreshError || force) break;
+			options = { refresh: true, after: page.revision };
+		}
 	}
-	function versions(item: CurseForgeProject, index = 0) {
-		if (index === 0) fileHistory = [];
-		project = item; selected = null; preview = null; files = null;
+	function search(index = 0, text = query.trim(), force = false) {
+		if (index === 0 && !force) projectHistory = [];
+		project = null; selected = null; preview = null; files = null;
+		if (!force) projects = null;
 		const target = name;
-		void run(async (signal) => {
-			const result = await listCurseForgeFiles(target, item.id, index, signal);
-			signal.throwIfAborted(); files = result; fileIndex = index;
-		}, () => versions(item, index));
+		void run(async signal => {
+			await readPage(options => searchCurseForgeProjects(target, text, index, signal, options), page => { projects = page; submitted = text; projectIndex = index; }, signal, force);
+		}, () => search(index, text, true));
+	}
+	function versions(item: CurseForgeProject, index = 0, force = false) {
+		if (index === 0 && !force) fileHistory = [];
+		project = item; selected = null; preview = null;
+		if (!force) files = null;
+		const target = name;
+		void run(async signal => {
+			await readPage(options => listCurseForgeFiles(target, item.id, index, signal, options), page => { files = page; fileIndex = index; }, signal, force);
+		}, () => versions(item, index, true));
 	}
 	function plan(file: CurseForgeFile) {
 		if (!project) return;
@@ -74,8 +85,7 @@
 			const result = await getCurseForgeConfiguration(signal);
 			signal.throwIfAborted(); config = result;
 			if (result.configured) {
-				const result = await searchCurseForgeProjects(target, '', 0, signal);
-				signal.throwIfAborted(); projects = result; projectIndex = 0;
+				await readPage(options => searchCurseForgeProjects(target, '', 0, signal, options), page => { projects = page; projectIndex = 0; }, signal, false);
 			}
 		}, () => initialize(target));
 	}
@@ -94,7 +104,7 @@
 		if (await resources.start(name, preview.planId)) onClose();
 	}
 	function back() {
-		request?.abort(); request = null; busy = false; error = null;
+		request?.abort(); request = null; busy = false; error = null; catalogWarning = null;
 		if (selected) { selected = null; preview = null; }
 		else { project = null; files = null; }
 	}
@@ -120,15 +130,16 @@
 		<div class="min-h-0 overflow-y-auto overscroll-contain px-5 pb-4">
 			{#if config?.configured}
 				{#if project}
-					<div class="mb-3 flex min-w-0 items-center gap-1.5"><button type="button" onclick={back} disabled={resources.starting} class={button} aria-label={selected ? '返回版本列表' : '返回搜索结果'}><ArrowLeft size={14} aria-hidden="true" /></button><span class="truncate text-[13px] font-medium">{project.name}</span><button type="button" class={button} aria-label="打开 CurseForge 项目页面" onclick={() => project && openProject(project)}><ExternalLink size={13} aria-hidden="true" /></button>{#if selected}<span class="ml-auto shrink-0 text-[11px] text-muted-foreground">安装计划</span>{/if}</div>
+					<div class="mb-3 flex min-w-0 items-center gap-1.5"><button type="button" onclick={back} disabled={resources.starting} class={button} aria-label={selected ? '返回版本列表' : '返回搜索结果'}><ArrowLeft size={14} aria-hidden="true" /></button><span class="truncate text-[13px] font-medium">{project.name}</span><button type="button" class={button} aria-label="打开 CurseForge 项目页面" onclick={() => project && openProject(project)}><ExternalLink size={13} aria-hidden="true" /></button>{#if !selected}<button type="button" class={`${button} ml-auto`} disabled={busy} aria-label="刷新模组版本" onclick={() => project && versions(project, fileIndex, true)}><RefreshCw size={13} class={busy ? 'animate-spin motion-reduce:animate-none' : ''} /></button>{/if}{#if selected}<span class="ml-auto shrink-0 text-[11px] text-muted-foreground">安装计划</span>{/if}</div>
 				{:else}
 					<form class="mb-3 flex gap-2" onsubmit={(event) => { event.preventDefault(); search(); }}>
-						<label class="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-lg bg-chrome-hover px-2.5 focus-within:ring-1 focus-within:ring-ring"><Search size={14} class="shrink-0 text-muted-foreground" aria-hidden="true" /><input type="search" bind:value={query} maxlength={128} placeholder="搜索 CurseForge 模组" aria-label="搜索 CurseForge 模组" class="min-w-0 flex-1 bg-transparent text-xs outline-none" /></label><button type="submit" disabled={busy} class={button}>搜索</button>
+						<label class="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-lg bg-chrome-hover px-2.5 focus-within:ring-1 focus-within:ring-ring"><Search size={14} class="shrink-0 text-muted-foreground" aria-hidden="true" /><input type="search" bind:value={query} maxlength={128} placeholder="搜索 CurseForge 模组" aria-label="搜索 CurseForge 模组" class="min-w-0 flex-1 bg-transparent text-xs outline-none" /></label><button type="submit" disabled={busy} class={button}>搜索</button><button type="button" class={button} disabled={busy} aria-label="刷新模组项目" onclick={() => search(projectIndex, submitted, true)}><RefreshCw size={13} class={busy ? 'animate-spin motion-reduce:animate-none' : ''} /></button>
 					</form>
 				{/if}
 			{/if}
 			{#if error}<div role="alert" class="mb-3 rounded-lg bg-destructive/5 px-3 py-2 text-xs text-destructive"><p class="wrap-break-word">{error}</p><button type="button" onclick={() => retry?.()} disabled={busy} class="mt-1 rounded px-1 py-1 text-xs text-primary focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40">重新获取</button></div>{/if}
-			{#if busy}<div role="status" class="flex min-h-36 items-center justify-center gap-2 text-xs text-muted-foreground"><LoaderCircle size={15} class="animate-spin motion-reduce:animate-none" aria-hidden="true" />{selected ? '解析必需依赖…' : '读取资源目录…'}</div>
+			{#if catalogWarning}<p role="status" class="mb-2 text-[11px] text-muted-foreground">{catalogWarning} 已保留现有目录。</p>{/if}
+			{#if busy && (selected || (project ? !files : !projects))}<div role="status" class="flex min-h-36 items-center justify-center gap-2 text-xs text-muted-foreground"><LoaderCircle size={15} class="animate-spin motion-reduce:animate-none" aria-hidden="true" />{selected ? '解析必需依赖…' : '读取资源目录…'}</div>
 			{:else if config && !config.configured}
 				<div class="flex min-h-44 flex-col items-center justify-center gap-2.5 text-center"><Package size={25} strokeWidth={1.5} class="text-muted-foreground" aria-hidden="true" /><p class="text-[13px]">CurseForge 接入准备中</p><p class="max-w-80 text-[11px] leading-5 text-muted-foreground">{config.issue} 服务配置完成后，即可浏览适用于此实例的模组。</p></div>
 			{:else if preview}

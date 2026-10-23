@@ -402,6 +402,32 @@ impl JavaManager {
     cancel: &CancellationToken,
     progress: watch::Sender<JavaProgress>,
   ) -> Result<InstallResult> {
+    if let Some(runtime) = self.find_major(major, cancel, progress.clone()).await? {
+      return Ok(InstallResult {
+        runtime,
+        already_installed: true,
+      });
+    }
+    let platform = Platform::current()?;
+    let result = self.install(&major.to_string(), cancel, progress).await?;
+    if result.runtime.major != major
+      || result.runtime.os != platform.os
+      || result.runtime.arch != platform.arch
+    {
+      return Err(Error::Java(
+        "installed Java does not match the requested major version and platform".into(),
+      ));
+    }
+    Ok(result)
+  }
+
+  /// Find and probe a compatible managed runtime without downloading Java.
+  pub async fn find_major(
+    &self,
+    major: u32,
+    cancel: &CancellationToken,
+    progress: watch::Sender<JavaProgress>,
+  ) -> Result<Option<InstalledJava>> {
     if !(8..=99).contains(&major) {
       return Err(Error::Invalid(
         "Java major version must be between 8 and 99".into(),
@@ -420,25 +446,13 @@ impl JavaManager {
       match validate(&runtime.executable, &runtime.version, platform.arch, cancel).await {
         Ok(()) => {
           set_stage(&progress, InstallStage::Completed);
-          return Ok(InstallResult {
-            runtime,
-            already_installed: true,
-          });
+          return Ok(Some(runtime));
         }
         Err(Error::Cancelled) => return Err(Error::Cancelled),
         Err(_) => {}
       }
     }
-    let result = self.install(&major.to_string(), cancel, progress).await?;
-    if result.runtime.major != major
-      || result.runtime.os != platform.os
-      || result.runtime.arch != platform.arch
-    {
-      return Err(Error::Java(
-        "installed Java does not match the requested major version and platform".into(),
-      ));
-    }
-    Ok(result)
+    Ok(None)
   }
 
   /// Remove a managed runtime; cached archives remain available for reinstallation.

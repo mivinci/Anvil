@@ -1,4 +1,12 @@
 //! Verified client artifact downloads and atomic installation snapshots.
+pub(crate) mod classpath;
+mod crashes;
+mod install_java;
+mod logs;
+mod settings;
+pub use crashes::{ClientCrashReport, ClientCrashReportEntry, ClientCrashReports};
+pub use logs::ClientGameLog;
+pub use settings::ClientLaunchSettings;
 use std::{
   collections::{BTreeMap, HashMap, VecDeque},
   ffi::OsString,
@@ -40,6 +48,7 @@ const MAX_INSTALL_FILES: usize = 120_000;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ClientInstallStage {
+  Java,
   Resolving,
   Planning,
   Downloading,
@@ -50,6 +59,8 @@ pub enum ClientInstallStage {
 
 #[derive(Clone, Debug, Serialize)]
 pub struct ClientProgress {
+  pub java_major: Option<u32>,
+  pub java_stage: Option<crate::java::InstallStage>,
   pub stage: ClientInstallStage,
   pub completed_files: usize,
   pub total_files: Option<usize>,
@@ -62,6 +73,8 @@ impl Default for ClientProgress {
   fn default() -> Self {
     Self {
       stage: ClientInstallStage::Resolving,
+      java_major: None,
+      java_stage: None,
       completed_files: 0,
       total_files: None,
       downloaded_bytes: 0,
@@ -298,7 +311,7 @@ impl ClientInstaller {
     check_cancel(&cancel)?;
     let plan = plan_client(&version, &asset_index, target)?;
     progress.send_replace(ClientProgress {
-      stage: ClientInstallStage::Completed,
+      stage: ClientInstallStage::Planning,
       completed_files: 1,
       total_files: Some(1),
       ..ClientProgress::default()
@@ -419,6 +432,20 @@ impl ClientInstaller {
     cancel: &CancellationToken,
     java_progress: watch::Sender<JavaProgress>,
   ) -> Result<ClientRuntimePreparation> {
+    self
+      .prepare_runtime_with_java_policy(instance, plan, cancel, java_progress, true)
+      .await
+  }
+
+  /// Desktop launches may require explicit approval before acquiring missing Java.
+  pub async fn prepare_runtime_with_java_policy(
+    &self,
+    instance: &ClientInstance,
+    plan: &ClientInstallPlan,
+    cancel: &CancellationToken,
+    java_progress: watch::Sender<JavaProgress>,
+    install_java: bool,
+  ) -> Result<ClientRuntimePreparation> {
     let cancel = cancel.child_token();
     let _cancel_on_drop = CancelOnDrop(cancel.clone());
     check_cancel(&cancel)?;
@@ -485,10 +512,18 @@ impl ClientInstaller {
       })
       .await?;
 
-    let java = JavaManager::new(self.context.clone())
-      .ensure_major(java_major, &cancel, java_progress)
-      .await?
-      .runtime;
+    let manager = JavaManager::new(self.context.clone());
+    let java = if install_java {
+      manager
+        .ensure_major(java_major, &cancel, java_progress)
+        .await?
+        .runtime
+    } else {
+      manager
+        .find_major(java_major, &cancel, java_progress)
+        .await?
+        .ok_or_else(|| Error::Java(format!("managed Java {java_major} is required")))?
+    };
     validate_java_for_plan(&java, plan)?;
     check_cancel(&cancel)?;
 
@@ -528,7 +563,7 @@ impl ClientInstaller {
             ));
           }
         }
-        let _lock = storage::server_instance_lock(&context.paths.data, &id)?;
+        // Read-only snapshots remain available while the game owns the instance lock.
         let directory = instances.join(&id);
         let instance: ClientInstance =
           read_json_regular(&directory.join("instance.json"), 64 * 1024)?;
@@ -1147,6 +1182,9 @@ fn prepare_client_files(
   let session = tempfile::Builder::new()
     .prefix(&format!("{instance_id}-"))
     .tempdir_in(&sessions)?;
+  if plan.loader.is_some() {
+    classpath::prepare(paths, session.path(), installed, plan, cancel)?;
+  }
   let natives_directory = session.path().join("natives");
   fs::create_dir(&natives_directory)?;
   for archive in &plan.native_archives {
@@ -1628,6 +1666,24 @@ fn commit_instance(
     sync_directory(&instances)?;
   }
   Ok(instance)
+}
+
+fn validated_game_directory(data: &std::path::Path, id: &str) -> Result<std::path::PathBuf> {
+  let instances = data.join("instances");
+  let directory = instances.join(id);
+  let game = directory.join("game");
+  for path in [&instances, &directory, &game] {
+    let metadata = fs::symlink_metadata(path)?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+      return Err(Error::Conflict("invalid instance log directory".into()));
+    }
+  }
+  let instance: ClientInstance = read_json_regular(&directory.join("instance.json"), 64 * 1024)?;
+  validate_client_instance(&instance)?;
+  if instance.id != id {
+    return Err(Error::Conflict("client instance identity changed".into()));
+  }
+  Ok(game)
 }
 
 fn read_json_regular<T: serde::de::DeserializeOwned>(path: &Path, limit: usize) -> Result<T> {
