@@ -65,3 +65,13 @@ HTTP 依赖的详细日志被限制，避免泄漏认证请求。应用日志不
 ## 桌面版本目录缓存
 
 桌面安装面板使用窗口级内存缓存，Runtime 对官方版本目录缓存 30 分钟，并合并在途刷新。过期时先展示已有目录，再后台更新；更新失败保留缓存，搜索旁可手动刷新。没有定时轮询或磁盘缓存，重启清空对应缓存。新目录接口为鉴权的 `/client/version-catalog`，原 `/client/versions` 数组接口保持兼容；实施和验收见[客户端执行项](../../todos/desktop-client-library.md)。
+
+App manifest 可配置 `sidecar_args`（默认空数组），Shell 对包内与 override Runtime 都使用同一组参数。Anvil 使用 `["serve"]` 以启动 CLI 的桌面 Runtime 子命令；参数由验证后的 App manifest 提供，不来自页面或 override pointer。
+
+客户端详情使用鉴权的 `GET /clients/{name}` 单独读取实例与有效安装记录，概览展示游戏版本、Java 要求与记录目标平台；不联网、不触发安装或全资源完整性检查。实现与验收见[客户端资源设计](../../todos/client-resources.md)。
+
+实例模组页已支持本地 JAR 导入持久内容仓库、资源引用读取、计划启用/停用与移除；当前不写游戏 mods 目录，加载器接入后才物化。单次导入最多 64 MiB，并发资源请求最多一个；导入内容去重、revision 冲突与恢复边界见[客户端资源设计](../../todos/client-resources.md)。
+
+安装面板已接入 Fabric 官方加载器版本查询与新实例安装，复用 Core 平台计划和 q2q-http 校验下载，实例快照/列表/详情及重试保存所选 Fabric 版本。原版与 Fabric 环境不在已有实例间静默互换；其他加载器仍未开放。Fabric API 模组和资源入口物化另行实施，真实 Fabric 安装/运行尚待维护者验收。
+
+Fabric 实例启用/停用/移除本地模组时，现已同步独立副本到 game/mods；共享原件不被修改。受管布局和事务日志支持失败/下次访问恢复，外部同名文件不覆盖。资源页可显式同步，Core/CLI 启动准备也会恢复并检查；依赖/兼容性求解及真实 Fabric 加载验收仍未完成。

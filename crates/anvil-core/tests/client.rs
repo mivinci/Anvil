@@ -190,6 +190,7 @@ fn plan(url: Url, bytes: &[u8]) -> ClientInstallPlan {
     sha1: sha1_hex(bytes),
   };
   ClientInstallPlan {
+    loader: None,
     version_id: "1.21.1".into(),
     version_type: "release".into(),
     metadata_url: Url::parse("https://piston-meta.mojang.com/v1/packages/test/1.21.1.json")

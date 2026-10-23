@@ -1,6 +1,3 @@
-<script lang="ts">
-	import ClientLibrary from '#lib/components/clients/client-library.svelte';
-</script>
+<svelte:head><title>首页 · Anvil</title></svelte:head>
 
-<svelte:head><title>客户端 · Anvil</title></svelte:head>
-<ClientLibrary />
+<h1 class="sr-only">首页</h1>

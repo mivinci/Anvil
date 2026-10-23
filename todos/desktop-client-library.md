@@ -102,3 +102,15 @@ Runtime 快照新增 `downloadedBytes/totalBytes/receivedBytes`。前端按相�
 新增受现有鉴权保护的 GET /client/version-catalog，返回 versions、stale、freshForMs、revision 和 refreshError；refresh=true 强制更新，after 仅用于过期结果的后续等待。原 GET /client/versions 数组响应保持兼容，内部同样使用 Runtime 缓存。安装计划仍由 Core 解析和验证，不以缓存目录替代安装校验。
 
 检查：前端静态检查、生产静态构建、Runtime 离线编译/release 构建及 Rust 格式检查均通过；Runtime 开发基线更新。未运行自动化测试、真实版本请求或下载，未操作 dev；快速重开、手动刷新、离线保留与过期后台更新的实际交互待维护者验收。新增 Runtime 接口需要完整重启 dev。
+
+## 主导航独立路由
+
+客户端页面从 `/` 迁至 `/clients`；`/` 留作首页，新增 `/servers` 与 `/mods` 占位路由，`/settings` 保持原位置。首页、服务端、模组页仅有页面标题和无障碍标题，不引入未实现的业务内容。公共 AppShell 继续由根 layout 持有，账户、实例列表、版本目录缓存和下载任务 Provider 不随页面切换销毁。
+
+主导航各入口执行真实路由跳转，选中状态依据 pathname（客户端/服务端/模组支持子路径）；完成任务的“查看客户端”同步指向 `/clients`。现有 titlebar 前进后退继续使用路由历史。
+
+检查：前端静态检查与生产静态构建；未运行测试、真实下载或操作维护者 dev。此次仅改前端，无需重启 Runtime。
+
+## 后续：详情路由与实例资源
+
+现有只读详情弹窗将按[客户端详情与共享资源设计](client-resources.md)迁为 `/clients/[name]`；共享 mod 对象、实例引用、物化与事务规则仍处于设计阶段。该方案不代表当前已支持模组或加载器。

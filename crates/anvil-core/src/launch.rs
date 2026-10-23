@@ -187,7 +187,8 @@ fn validate_launch_inputs(
   if account.expires_at() <= SystemTime::now() {
     return Err(Error::AccountRequired);
   }
-  if runtime.installed.version_id != plan.version_id
+  if runtime.installed.loader != plan.loader
+    || runtime.installed.version_id != plan.version_id
     || runtime.installed.version_type != plan.version_type
     || runtime.installed.metadata_url != plan.metadata_url.as_str()
     || runtime.installed.metadata_sha1 != plan.metadata_sha1

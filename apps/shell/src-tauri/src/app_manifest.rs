@@ -12,6 +12,8 @@ pub struct AppManifest {
   pub target: String,
   pub page_entry: String,
   pub sidecar_entry: String,
+  #[serde(default)]
+  pub sidecar_args: Vec<String>,
   pub http_api_version: String,
   /// Semver requirement of runtime HTTP API versions the packaged UI accepts;
   /// the bundled seed's `http_api_version` must satisfy it, and so must any
@@ -81,6 +83,17 @@ impl AppManifest {
 
     validate_package_entry("page_entry", &manifest.page_entry)?;
     validate_package_entry("sidecar_entry", &manifest.sidecar_entry)?;
+    if manifest.sidecar_args.len() > 16
+      || manifest
+        .sidecar_args
+        .iter()
+        .any(|arg| arg.len() > 1024 || arg.contains('\0'))
+    {
+      return Err(
+        "sidecar_args must contain at most 16 arguments, each at most 1024 bytes without NUL"
+          .into(),
+      );
+    }
 
     Ok(manifest)
   }

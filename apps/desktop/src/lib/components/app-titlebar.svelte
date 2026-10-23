@@ -1,6 +1,10 @@
 <script lang="ts">
 	import { afterNavigate } from '$app/navigation';
-	import { ArrowLeft, ArrowRight } from '@lucide/svelte';
+	import { ArrowLeft, ArrowRight, PanelLeft } from '@lucide/svelte';
+	import { page } from '$app/state';
+	import { getClientSidebarState } from '../client-sidebar-state.svelte.js';
+	const sidebar = getClientSidebarState();
+	const hasClientSidebar = $derived(page.params.name !== undefined && page.route.id?.startsWith('/clients/'));
 	import DownloadTasks from './download-tasks.svelte';
 
 	let historyPosition = $state(0);
@@ -57,6 +61,9 @@
 		onclick={() => traverseHistory(1)}
 	><ArrowRight size={16} aria-hidden="true" />
 	</button>
+	{#if hasClientSidebar}
+		<button type="button" aria-label={sidebar.open ? '收起实例侧栏' : '展开实例侧栏'} title={sidebar.open ? '收起实例侧栏' : '展开实例侧栏'} aria-expanded={sidebar.open} aria-controls="client-detail-sidebar" onclick={() => sidebar.toggle()} class="ml-1 grid size-6 cursor-default place-items-center rounded-md text-chrome-muted/80 transition-colors hover:bg-chrome-selected hover:text-chrome-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"><PanelLeft size={16} aria-hidden="true" /></button>
+	{/if}
 	<div class="ml-auto flex items-center">
 		<DownloadTasks />
 	</div>

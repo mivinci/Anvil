@@ -57,7 +57,7 @@
 	<div><p class="text-xl font-semibold tracking-tight">Anvil</p><p class="mt-2 text-[11px] leading-5 text-muted-foreground">Minecraft Java 版启动与服务端管理工具</p></div>
 	<section aria-label="版本信息" class="divide-y divide-border rounded-lg border border-border bg-card px-3.5 text-[13px]">
 		{#each [['Shell 版本', info?.shellVersion], ['应用基线版本', info?.bundledAppVersion], ['Runtime API', runtime?.apiVersion], ['目标平台', info?.targetPlatform]] as [label, value]}
-			<div class="flex min-h-10 items-center justify-between gap-4 py-2.5"><span>{label}</span><span class="select-text text-right text-muted-foreground">{loading ? '读取中…' : value ?? (isTauri() ? '不可用' : '仅桌面端可用')}</span></div>
+			<div class="flex min-h-10 items-center justify-between gap-4 py-2"><span>{label}</span><span class="select-text text-right text-muted-foreground">{loading ? '读取中…' : value ?? (isTauri() ? '不可用' : '仅桌面端可用')}</span></div>
 		{/each}
 	</section>
 	<section aria-label="日志" class="space-y-2">
@@ -66,7 +66,7 @@
 			<button type="button" aria-label="刷新日志状态" title="刷新日志状态" disabled={!isTauri() || logsLoading} onclick={() => void loadLogs()} class="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40"><RefreshCw size={13} aria-hidden="true" /></button>
 		</div>
 		<div class="divide-y divide-border rounded-lg border border-border bg-card px-3.5 text-[13px]">
-			<div class="flex items-center justify-between gap-3 py-2.5">
+			<div class="flex items-center justify-between gap-3 py-2">
 				<div class="min-w-0"><p>日志目录</p><p class="mt-1 select-text break-all text-[11px] leading-4 text-muted-foreground">{logging?.directory ?? (logsLoading ? '读取中…' : isTauri() ? '目录不可用' : '仅桌面端可用')}</p></div>
 				<button type="button" disabled={!logging?.directory || logsOpening} onclick={() => void openLogs()} class="flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-[12px] text-muted-foreground transition-colors hover:bg-chrome-hover hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40"><FolderOpen size={14} aria-hidden="true" />{logsOpening ? '打开中…' : '打开目录'}</button>
 			</div>

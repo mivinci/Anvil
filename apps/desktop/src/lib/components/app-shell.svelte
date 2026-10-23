@@ -2,6 +2,8 @@
 	import { onMount, type Snippet } from 'svelte';
 	import { isTauri } from '@tauri-apps/api/core';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
+	import { ClientSidebarState, setClientSidebarState } from '../client-sidebar-state.svelte.js';
+	setClientSidebarState(new ClientSidebarState());
 	import AppTitlebar from './app-titlebar.svelte';
 	import ClientInstallProvider from './clients/client-install-provider.svelte';
 	import AccountProvider from './account-provider.svelte';

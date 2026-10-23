@@ -12,7 +12,9 @@ export interface GameVersion {
 	releaseTime: string;
 }
 
+export type ClientLoaderSpec = { kind: 'fabric'; version: string };
 export interface InstalledClient {
+	loader?: ClientLoaderSpec | null;
 	id: string;
 	name: string;
 	versionId: string;
@@ -65,6 +67,7 @@ export type ClientInstallStage =
 	| 'completed';
 
 export interface ClientInstallOperation {
+	loader: ClientLoaderSpec | null;
 	id: number;
 	name: string;
 	versionId: string;
@@ -79,6 +82,7 @@ export interface ClientInstallOperation {
 		receivedBytes: number;
 	};
 	result: {
+		loader: ClientLoaderSpec | null;
 		id: string;
 		name: string;
 		versionId: string;
@@ -161,11 +165,11 @@ export const listInstalledClients = (options: { signal?: AbortSignal } = {}) =>
 export const listClientInstallOperations = (options: Pick<RequestInit, 'signal'> = {}) =>
 	runtimeRequest<ClientInstallOperation[]>('/operations', options);
 
-export const startClientInstall = (name: string, versionId: string, options: Pick<RequestInit, 'signal'> = {}) =>
+export const startClientInstall = (name: string, versionId: string, options: Pick<RequestInit, 'signal'> & { loader?: ClientLoaderSpec | null } = {}) =>
 	runtimeRequest<ClientInstallOperation>('/clients/install', {
-		...options,
+		signal: options.signal ?? null,
 		method: 'POST',
-		body: JSON.stringify({ name, versionId })
+		body: JSON.stringify({ name, versionId, loader: options.loader ?? null })
 	});
 
 export const getClientInstallOperation = (id: number, options: Pick<RequestInit, 'signal'> = {}) =>
@@ -207,3 +211,85 @@ export const selectAccount = (id: string, options: AccountRequestOptions = {}) =
 
 export const logoutAccount = (id: string, options: AccountRequestOptions = {}) =>
 	runtimeRequest<AccountSummary[]>(`/accounts/${encodeURIComponent(id)}`, { method: 'DELETE', ...options });
+
+export interface ClientDetails extends InstalledClient {
+	versionType: string;
+	javaMajor: number;
+	os: string;
+	architecture: string;
+	fileCount: number;
+}
+export const getClientDetails = (name: string, signal: AbortSignal) =>
+	runtimeRequest<ClientDetails>(`/clients/${encodeURIComponent(name)}`, { signal });
+
+export interface ClientResourceEntry {
+	sha256: string;
+	filename: string;
+	size: number;
+	enabled: boolean;
+	source: 'local' | 'curseforge';
+	origin?: { projectId: number; fileId: number; projectName: string; sha1: string; direct: boolean; requiredProjects: number[]; incompatibleProjects: number[] };
+}
+export interface ClientResourceManifest {
+	schemaVersion: 1 | 2;
+	revision: number;
+	appliedRevision?: number | null;
+	mods: ClientResourceEntry[];
+}
+export const listClientResources = (name: string, signal: AbortSignal) =>
+	runtimeRequest<ClientResourceManifest>(`/clients/${encodeURIComponent(name)}/resources`, { signal });
+export const importClientMod = (name: string, file: File, revision: number, signal: AbortSignal) =>
+	runtimeRequest<ClientResourceManifest>(`/clients/${encodeURIComponent(name)}/resources?${new URLSearchParams({ filename: file.name, revision: String(revision) })}`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file, signal });
+export const changeClientMod = (name: string, sha256: string, revision: number, enabled: boolean | null, signal: AbortSignal) =>
+	runtimeRequest<ClientResourceManifest>(`/clients/${encodeURIComponent(name)}/resources/${encodeURIComponent(sha256)}${enabled === null ? `?revision=${revision}` : '/enabled'}`, enabled === null ? { method: 'DELETE', signal } : { method: 'POST', body: JSON.stringify({ revision, enabled }), signal });
+
+export interface FabricLoaderVersion { version: string; stable: boolean }
+export const listFabricVersions = (game: string, signal: AbortSignal) =>
+	runtimeRequest<FabricLoaderVersion[]>(`/client/fabric/versions/${encodeURIComponent(game)}`, { signal });
+
+export const syncClientResources = (name: string, revision: number, signal: AbortSignal) =>
+	runtimeRequest<ClientResourceManifest>(`/clients/${encodeURIComponent(name)}/resources/sync`, { method: 'POST', body: JSON.stringify({ revision }), signal });
+
+export interface CurseForgeConfiguration { configured: boolean; issue: string | null }
+export interface CurseForgeProject {
+	id: number; name: string; summary: string; authors: { name: string }[];
+	links: { websiteUrl: string | null };
+	allowModDistribution: boolean | null;
+}
+export interface CurseForgeFile {
+	id: number; modId: number; displayName: string; fileName: string; fileLength: number;
+	fileDate: string; releaseType: number; isAvailable: boolean;
+}
+export interface CurseForgePage<T> { items: T[]; nextIndex: number | null }
+export interface CurseForgePreview {
+	gameVersion: string; revision: number; totalBytes: number;
+	items: { project: CurseForgeProject; file: CurseForgeFile; direct: boolean }[];
+	optionalProjects: number[]; warnings: string[];
+}
+export const getCurseForgeConfiguration = (signal: AbortSignal) =>
+	runtimeRequest<CurseForgeConfiguration>('/resources/curseforge/configuration', { signal });
+export const searchCurseForgeProjects = (name: string, q: string, index: number, signal: AbortSignal) =>
+	runtimeRequest<CurseForgePage<CurseForgeProject>>(`/clients/${encodeURIComponent(name)}/curseforge/projects?${new URLSearchParams({ q, index: String(index) })}`, { signal });
+export const listCurseForgeFiles = (name: string, project: number, index: number, signal: AbortSignal) =>
+	runtimeRequest<CurseForgePage<CurseForgeFile>>(`/clients/${encodeURIComponent(name)}/curseforge/projects/${project}/files?index=${index}`, { signal });
+export const previewCurseForgeDependencies = (name: string, project: number, file: number, signal: AbortSignal) =>
+	runtimeRequest<CurseForgePreview>(`/clients/${encodeURIComponent(name)}/curseforge/projects/${project}/files/${file}/preview`, { signal });
+
+
+export interface CurseForgeInstallPlan extends CurseForgePreview {
+	planId: number; expiresInMs: number; downloadBytes: number;
+	files: { projectId: number; fileId: number; projectName: string; filename: string; size: number; direct: boolean; reuse: boolean }[];
+}
+export interface ResourceInstallOperation {
+	id: number; name: string; state: 'running' | 'completed' | 'failed' | 'cancelled'; cancelRequested: boolean;
+	progress: { stage: 'preparing' | 'downloading' | 'publishing' | 'completed'; completedFiles: number; totalFiles: number; downloadedBytes: number; totalBytes: number; receivedBytes: number };
+	revision: number | null; error: string | null;
+}
+export const createCurseForgeInstallPlan = (name: string, project: number, file: number, signal: AbortSignal) =>
+	runtimeRequest<CurseForgeInstallPlan>(`/clients/${encodeURIComponent(name)}/curseforge/projects/${project}/files/${file}/plan`, { method: 'POST', signal });
+export const startResourceInstall = (name: string, plan: number, signal: AbortSignal) =>
+	runtimeRequest<ResourceInstallOperation>(`/clients/${encodeURIComponent(name)}/resource-plans/${plan}/install`, { method: 'POST', signal });
+export const listResourceOperations = (signal: AbortSignal) =>
+	runtimeRequest<ResourceInstallOperation[]>('/resource-operations', { signal });
+export const cancelResourceOperation = (id: number, signal: AbortSignal) =>
+	runtimeRequest<ResourceInstallOperation>(`/resource-operations/${id}`, { method: 'DELETE', signal });

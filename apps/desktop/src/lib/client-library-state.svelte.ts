@@ -21,7 +21,7 @@ export class ClientLibraryState {
 		this.revision++;
 		this.lastCompleted = receipt;
 		this.clients = [...this.clients.filter((client) => client.id !== receipt.id), {
-			id: receipt.id, name: receipt.name, versionId: receipt.versionId,
+			id: receipt.id, name: receipt.name, versionId: receipt.versionId, loader: receipt.loader,
 		}].sort((a, b) => a.id.localeCompare(b.id));
 		this.loaded = true;
 		void this.refresh();

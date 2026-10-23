@@ -44,6 +44,7 @@ struct TransferControl {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct InstallReceipt {
+  pub loader: Option<anvil_core::fabric::ClientLoader>,
   pub id: String,
   pub name: String,
   pub version_id: String,
@@ -77,6 +78,7 @@ impl From<ClientProgress> for InstallProgress {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct InstallOperationSnapshot {
+  pub loader: Option<anvil_core::fabric::ClientLoader>,
   pub id: u64,
   pub name: String,
   pub version_id: String,
@@ -104,6 +106,8 @@ pub(super) struct RuntimeState {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct InstallRequest {
+  #[serde(default)]
+  pub loader: Option<anvil_core::fabric::ClientLoader>,
   pub name: String,
   pub version_id: String,
 }
@@ -135,8 +139,14 @@ impl RuntimeState {
       ));
     }
 
+    if let Some(loader) = &request.loader {
+      loader
+        .validate()
+        .map_err(|error| StartInstallError::Invalid(error.to_string()))?;
+    }
     let id = self.next_operation_id.fetch_add(1, Ordering::Relaxed);
     let initial = InstallOperationSnapshot {
+      loader: request.loader.clone(),
       id,
       name: request.name.clone(),
       version_id: request.version_id.clone(),
@@ -224,7 +234,13 @@ impl RuntimeState {
       let outcome = async {
         let target = ClientTarget::current()?;
         let plan = installer
-          .plan(&request.version_id, target, &cancel, &progress_tx)
+          .plan_with_loader(
+            &request.version_id,
+            target,
+            request.loader.as_ref(),
+            &cancel,
+            &progress_tx,
+          )
           .await?;
         loop {
           let attempt = {
@@ -439,6 +455,7 @@ impl RuntimeState {
 
 fn install_receipt(result: ClientInstallResult) -> InstallReceipt {
   InstallReceipt {
+    loader: result.installed.loader,
     id: result.instance.id,
     name: result.instance.name,
     version_id: result.installed.version_id,

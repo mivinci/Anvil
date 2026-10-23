@@ -25,16 +25,16 @@
 
 <nav class="flex min-h-0 flex-col items-center bg-transparent py-2" aria-label="主导航">
 	<div class="flex flex-col items-center gap-2">
-		<NavButton aria-label="首页"><House size={19} /></NavButton>
-		<NavButton aria-label="游戏" selected={page.url.pathname === resolve('/')} onclick={() => goto(resolve('/'))}>
-			{#if page.url.pathname === resolve('/')}
+		<NavButton aria-label="首页" selected={page.url.pathname === resolve('/')} onclick={() => goto(resolve('/'))}><House size={19} /></NavButton>
+		<NavButton aria-label="客户端" selected={page.url.pathname === resolve('/clients') || page.url.pathname.startsWith(`${resolve('/clients')}/`)} onclick={() => goto(resolve('/clients'))}>
+			{#if page.url.pathname === resolve('/clients') || page.url.pathname.startsWith(`${resolve('/clients')}/`)}
 				<GamepadFilled />
 			{:else}
 				<Gamepad2 size={19} />
 			{/if}
 		</NavButton>
-		<NavButton aria-label="服务端"><Server size={19} /></NavButton>
-		<NavButton aria-label="模组与整合包"><Blocks size={19} /></NavButton>
+		<NavButton aria-label="服务端" selected={page.url.pathname === resolve('/servers') || page.url.pathname.startsWith(`${resolve('/servers')}/`)} onclick={() => goto(resolve('/servers'))}><Server size={19} /></NavButton>
+		<NavButton aria-label="模组与整合包" selected={page.url.pathname === resolve('/mods') || page.url.pathname.startsWith(`${resolve('/mods')}/`)} onclick={() => goto(resolve('/mods'))}><Blocks size={19} /></NavButton>
 	</div>
 	<div class="mt-auto flex flex-col items-center gap-2.5">
 		<AccountMenu {appearance} {onAppearanceChange} />

@@ -794,7 +794,13 @@ async fn launch_client(
 
   let (client_sender, mut client_updates) = watch::channel(ClientProgress::default());
   let target = ClientTarget::current()?;
-  let planning = installer.plan(&installed.version_id, target, &cancel, &client_sender);
+  let planning = installer.plan_with_loader(
+    &installed.version_id,
+    target,
+    installed.loader.as_ref(),
+    &cancel,
+    &client_sender,
+  );
   tokio::pin!(planning);
   let mut client_progress_open = true;
   let mut last_client_stage = None;

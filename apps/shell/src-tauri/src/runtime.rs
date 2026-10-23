@@ -54,6 +54,7 @@ struct SidecarEnvironment {
 #[derive(Debug)]
 struct SidecarCandidate {
   path: PathBuf,
+  args: Vec<String>,
   api_version: String,
   /// Present only for overrides; the sidecar package version for blocking.
   version: Option<String>,
@@ -200,6 +201,7 @@ impl RuntimeSupervisor {
       match self.launch(
         &candidate.path,
         &candidate.api_version,
+        &candidate.args,
         active.environment.as_ref(),
       ) {
         Ok(()) => {
@@ -255,7 +257,12 @@ impl RuntimeSupervisor {
       if !is_executable(&executable) {
         return Err(RuntimeFailure::SidecarNotExecutable);
       }
-      self.launch(&executable, &manifest.http_api_version, None)
+      self.launch(
+        &executable,
+        &manifest.http_api_version,
+        &manifest.sidecar_args,
+        None,
+      )
     })();
     if let Err(failure) = result {
       self.mark_startup_failure(failure);
@@ -327,6 +334,7 @@ impl RuntimeSupervisor {
     &self,
     executable: &Path,
     expected_api_version: &str,
+    args: &[String],
     environment: Option<&SidecarEnvironment>,
   ) -> Result<(), RuntimeFailure> {
     self.set_status(RuntimeStatus {
@@ -336,7 +344,7 @@ impl RuntimeSupervisor {
     });
 
     tracing::info!(api_version = expected_api_version, "Runtime launch started");
-    let result = self.launch_ready(executable, expected_api_version, environment);
+    let result = self.launch_ready(executable, expected_api_version, args, environment);
     if let Err(failure) = result {
       self.set_status(RuntimeStatus {
         state: RuntimeState::Failed,
@@ -351,11 +359,13 @@ impl RuntimeSupervisor {
     &self,
     executable: &Path,
     expected_api_version: &str,
+    args: &[String],
     environment: Option<&SidecarEnvironment>,
   ) -> Result<(), RuntimeFailure> {
     let token = create_token()?;
     let mut command = Command::new(executable);
     command
+      .args(args)
       .env_clear()
       .env("ANVIL_HTTP_API_VERSION", expected_api_version)
       .env("ANVIL_LOG_STDERR", if cfg!(dev) { "1" } else { "0" })
@@ -379,6 +389,10 @@ impl RuntimeSupervisor {
     // The public App registration can be overridden for local development.
     if let Some(value) = std::env::var_os("ANVIL_MICROSOFT_CLIENT_ID") {
       command.env("ANVIL_MICROSOFT_CLIENT_ID", value);
+    }
+    // Forward only the explicitly configured provider credential; never expose it to WebView.
+    if let Some(value) = std::env::var_os("ANVIL_CURSEFORGE_API_KEY") {
+      command.env("ANVIL_CURSEFORGE_API_KEY", value);
     }
     // Self-update contract: a private writable store plus the API range the
     // packaged UI accepts, so the sidecar can publish compatible versions.
@@ -506,6 +520,7 @@ fn active_sidecars(storage: &AppStorage) -> Result<ActiveSidecars, RuntimeFailur
       .entry_path(&manifest.sidecar_entry)
       .map_err(|_| RuntimeFailure::SidecarMissing)?,
     api_version: manifest.http_api_version.clone(),
+    args: manifest.sidecar_args.clone(),
     version: None,
   };
   if !is_executable(&packaged.path) {
@@ -570,6 +585,7 @@ fn resolve_override(
   Ok(Some(SidecarCandidate {
     path,
     api_version: pointer.http_api_version,
+    args: manifest.sidecar_args.clone(),
     version: Some(pointer.version),
   }))
 }
@@ -804,7 +820,7 @@ mod tests {
       ),
     );
     let supervisor = RuntimeSupervisor::new();
-    supervisor.launch(&script, "1.0.0", None).unwrap();
+    supervisor.launch(&script, "1.0.0", &[], None).unwrap();
     assert_eq!(supervisor.status().state, RuntimeState::Ready);
     let connection = supervisor.connection().unwrap();
     assert_eq!(connection.base_url, format!("http://127.0.0.1:{port}"));
@@ -826,7 +842,7 @@ mod tests {
     );
     let supervisor = RuntimeSupervisor::new();
     assert_eq!(
-      supervisor.launch(&script, "1.0.0", None).unwrap_err(),
+      supervisor.launch(&script, "1.0.0", &[], None).unwrap_err(),
       RuntimeFailure::InvalidReadyMessage
     );
     assert_eq!(supervisor.status().state, RuntimeState::Failed);

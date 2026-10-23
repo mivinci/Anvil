@@ -1,7 +1,7 @@
 import { createContext } from 'svelte';
 import {
 	listClientInstallOperations, startClientInstall, getClientInstallOperation, cancelClientInstall,
-	RuntimeRequestError, pauseClientInstall, resumeClientInstall, type ClientInstallOperation,
+	RuntimeRequestError, pauseClientInstall, resumeClientInstall, type ClientInstallOperation, type ClientLoaderSpec,
 } from './runtime';
 
 export const installStages = {
@@ -132,7 +132,7 @@ export class ClientInstallState {
 			if (!this.disposed) { this.uncertain = true; this.error = '无法确认安装任务状态，请重新查询后再安装。'; this.errorDetail = message(error); }
 		} finally { this.syncing = false; this.schedule(); }
 	}
-	async start(name: string, versionId: string) {
+	async start(name: string, versionId: string, loader: ClientLoaderSpec | null = null) {
 		if (this.disposed || !this.canStart) return;
 		this.starting = true;
 		this.stopPolling();
@@ -143,7 +143,7 @@ export class ClientInstallState {
 		this.speedSample = null;
 		const previousId = this.latestId;
 		try {
-			const operation = await this.request((signal) => startClientInstall(name, versionId, { signal }));
+			const operation = await this.request((signal) => startClientInstall(name, versionId, { signal, loader }));
 			if (!this.disposed) { this.apply(operation); this.uncertain = false; }
 		} catch (error) {
 			if (this.disposed) return;
@@ -153,7 +153,7 @@ export class ClientInstallState {
 				try {
 					const operations = await this.request((signal) => listClientInstallOperations({ signal }));
 					if (this.disposed) return;
-					const recovered = operations.find((item) => ['running', 'pausing', 'paused', 'resuming'].includes(item.state)) ?? operations.findLast((item) => item.id > previousId && item.name === name && item.versionId === versionId);
+					const recovered = operations.find((item) => ['running', 'pausing', 'paused', 'resuming'].includes(item.state)) ?? operations.findLast((item) => item.id > previousId && item.name === name && item.versionId === versionId && JSON.stringify(item.loader ?? null) === JSON.stringify(loader));
 					if (recovered) { this.apply(recovered); this.uncertain = false; }
 					else { this.uncertain = true; this.error = '提交结果尚未确认，请重新查询，不要重复安装。'; this.errorDetail = message(error); }
 				} catch (recoveryError) {
@@ -172,7 +172,7 @@ export class ClientInstallState {
 			if (this.disposed) return;
 			this.retrying = false;
 			if (!this.canRetry || this.operation?.id !== previous.id) return;
-			await this.start(previous.name, previous.versionId);
+			await this.start(previous.name, previous.versionId, previous.loader ?? null);
 		} finally { this.retrying = false; }
 	}
 

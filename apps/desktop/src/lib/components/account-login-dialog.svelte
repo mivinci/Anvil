@@ -160,7 +160,7 @@
 			{#if error && accounts.loginErrorDetail}
 				<details class="mt-2 text-[11px] leading-4 text-chrome-muted">
 					<summary class="cursor-default rounded py-1 focus-visible:outline-2 focus-visible:outline-ring">错误详情</summary>
-					<p class="mt-1 max-h-28 overflow-y-auto rounded-lg bg-chrome-hover px-2.5 py-2 select-text whitespace-pre-wrap break-words">{accounts.loginErrorDetail}</p>
+					<p class="mt-1 max-h-28 overflow-y-auto rounded-lg bg-chrome-hover px-2.5 py-2 select-text whitespace-pre-wrap wrap-break-word">{accounts.loginErrorDetail}</p>
 				</details>
 			{/if}
 		</div>

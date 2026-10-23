@@ -152,6 +152,7 @@ pub struct ClientLoggingPlan {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ClientInstallPlan {
+  pub loader: Option<crate::fabric::ClientLoader>,
   pub version_id: String,
   pub version_type: String,
   /// Identity of the version JSON selected from Mojang's manifest chain.
@@ -219,6 +220,7 @@ pub fn plan_client(
     .transpose()?;
 
   Ok(ClientInstallPlan {
+    loader: None,
     version_id: version.version_id.clone(),
     version_type: version.version_type.clone(),
     metadata_url: version.metadata_url.clone(),

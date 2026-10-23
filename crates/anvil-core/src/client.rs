@@ -34,7 +34,7 @@ use crate::{
 
 const CLIENT_DOWNLOAD_CONCURRENCY: usize = 4;
 const MAX_ASSET_INDEX_SIZE: usize = 16 * 1024 * 1024;
-const MAX_INSTALL_RECORD_SIZE: usize = 32 * 1024 * 1024;
+pub(crate) const MAX_INSTALL_RECORD_SIZE: usize = 32 * 1024 * 1024;
 const MAX_INSTALL_FILES: usize = 120_000;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -82,6 +82,7 @@ pub struct ClientInstance {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct ClientListEntry {
+  pub loader: Option<crate::fabric::ClientLoader>,
   #[serde(flatten)]
   pub instance: ClientInstance,
   pub version_id: String,
@@ -101,6 +102,8 @@ pub struct ClientInstalledFile {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ClientInstallRecord {
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub loader: Option<crate::fabric::ClientLoader>,
   pub schema_version: u32,
   pub version_id: String,
   pub version_type: String,
@@ -303,6 +306,23 @@ impl ClientInstaller {
     Ok(plan)
   }
 
+  /// Resolve the base game and an optional Fabric profile into one atomic snapshot.
+  pub async fn plan_with_loader(
+    &self,
+    version_id: &str,
+    target: ClientTarget,
+    loader: Option<&crate::fabric::ClientLoader>,
+    cancel: &CancellationToken,
+    progress: &watch::Sender<ClientProgress>,
+  ) -> Result<ClientInstallPlan> {
+    let mut plan = self.plan(version_id, target, cancel, progress).await?;
+    if let Some(loader) = loader {
+      progress.send_modify(|state| state.stage = ClientInstallStage::Planning);
+      crate::fabric::apply(&self.context, &mut plan, loader, cancel).await?;
+    }
+    Ok(plan)
+  }
+
   /// Verify or download every planned artifact, then create or update a client
   /// instance. New instances appear with one directory rename; updates replace
   /// only `installed.json`, leaving saves and other game data untouched.
@@ -343,6 +363,14 @@ impl ClientInstaller {
         check_client_instance(&context, &check_id, &instance_name)
       })
       .await?;
+    if existing
+      .as_ref()
+      .is_some_and(|record| record.loader != installed.loader)
+    {
+      return Err(Error::Conflict(
+        "changing an existing instance loader is not supported; create a new instance".into(),
+      ));
+    }
     let same_snapshot = existing.as_ref() == Some(&installed);
 
     let (downloaded_files, reused_files) = self.download_all(artifacts, &cancel, progress).await?;
@@ -440,6 +468,12 @@ impl ClientInstaller {
               .into(),
           ));
         }
+        crate::resources::sync_for_launch(
+          &directory,
+          &paths.data,
+          installed.loader.is_some(),
+          &files_cancel,
+        )?;
         let files = prepare_client_files(
           &paths,
           &instance_id,
@@ -471,6 +505,49 @@ impl ClientInstaller {
       _session: prepared.session,
       _instance_lock: instance_lock,
     })
+  }
+
+  /// Read one instance and its validated snapshot without network or artifact hashing.
+  pub async fn details(&self, name: &str) -> Result<(ClientInstance, ClientInstallRecord)> {
+    let id = client_instance_id(name)?;
+    let context = self.context.clone();
+    self
+      .blocking(&CancellationToken::new(), move || {
+        let instances = context.paths.data.join("instances");
+        for directory in [&instances, &instances.join(&id)] {
+          let metadata = fs::symlink_metadata(directory).map_err(|error| {
+            if error.kind() == std::io::ErrorKind::NotFound {
+              Error::NotFound("Minecraft client instance".into())
+            } else {
+              error.into()
+            }
+          })?;
+          if metadata.file_type().is_symlink() || !metadata.is_dir() {
+            return Err(Error::Conflict(
+              "client instance directory is invalid".into(),
+            ));
+          }
+        }
+        let _lock = storage::server_instance_lock(&context.paths.data, &id)?;
+        let directory = instances.join(&id);
+        let instance: ClientInstance =
+          read_json_regular(&directory.join("instance.json"), 64 * 1024)?;
+        validate_client_instance(&instance)?;
+        if instance.id != id {
+          return Err(Error::Conflict(
+            "client instance identity does not match its directory".into(),
+          ));
+        }
+        let game = fs::symlink_metadata(directory.join("game"))?;
+        if game.file_type().is_symlink() || !game.is_dir() {
+          return Err(Error::Conflict("client game directory is invalid".into()));
+        }
+        let record: ClientInstallRecord =
+          read_json_regular(&directory.join("installed.json"), MAX_INSTALL_RECORD_SIZE)?;
+        validate_install_record(&record)?;
+        Ok((instance, record))
+      })
+      .await
   }
 
   /// Read the validated installation snapshot for an instance returned by `list`.
@@ -567,6 +644,7 @@ impl ClientInstaller {
             read_json_regular(&directory.join("installed.json"), MAX_INSTALL_RECORD_SIZE)?;
           validate_install_record(&installed)?;
           clients.push(ClientListEntry {
+            loader: installed.loader,
             instance,
             version_id: installed.version_id,
           });
@@ -992,6 +1070,7 @@ fn make_install_record(
   files: Vec<ClientInstalledFile>,
 ) -> Result<ClientInstallRecord> {
   Ok(ClientInstallRecord {
+    loader: plan.loader.clone(),
     schema_version: 1,
     version_id: plan.version_id.clone(),
     version_type: plan.version_type.clone(),
@@ -1385,7 +1464,11 @@ fn validate_client_instance(instance: &ClientInstance) -> Result<()> {
   Ok(())
 }
 
-fn validate_install_record(record: &ClientInstallRecord) -> Result<()> {
+pub(crate) fn validate_install_record(record: &ClientInstallRecord) -> Result<()> {
+  if let Some(loader) = &record.loader {
+    loader.validate()?;
+  }
+
   validate_version_id(&record.version_id)
     .map_err(|_| Error::Conflict("invalid client version in install record".into()))?;
   if record.schema_version != 1

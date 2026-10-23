@@ -11,8 +11,10 @@ use tokio::{io::BufReader, sync::oneshot};
 
 mod accounts;
 mod api;
+mod curseforge;
 mod operations;
 mod protocol;
+mod resource_operations;
 mod versions;
 
 mod self_update;

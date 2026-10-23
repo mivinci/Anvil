@@ -32,7 +32,17 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 #[derive(Clone)]
 pub(super) struct AppState {
   versions: Arc<super::versions::VersionCatalog>,
-  runtime: Arc<RuntimeState>,
+  fabric_versions: Arc<
+    tokio::sync::Mutex<
+      std::collections::VecDeque<(
+        String,
+        std::time::Instant,
+        Vec<anvil_core::fabric::FabricVersion>,
+      )>,
+    >,
+  >,
+  pub(super) runtime: Arc<RuntimeState>,
+  pub(super) curseforge: Arc<super::curseforge::Catalog>,
   accounts: Arc<AccountState>,
   api_version: Arc<str>,
   token: Arc<str>,
@@ -47,7 +57,9 @@ impl AppState {
     token: String,
   ) -> Self {
     Self {
+      curseforge: Arc::new(super::curseforge::Catalog::new()),
       versions: Arc::new(super::versions::VersionCatalog::default()),
+      fabric_versions: Arc::new(tokio::sync::Mutex::new(std::collections::VecDeque::new())),
       runtime,
       accounts,
       api_version: Arc::from(api_version),
@@ -60,6 +72,7 @@ impl AppState {
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ClientSummary {
+  loader: Option<anvil_core::fabric::ClientLoader>,
   id: String,
   name: String,
   version_id: String,
@@ -75,7 +88,7 @@ struct VersionSummary {
 }
 
 #[derive(Debug)]
-struct ApiError {
+pub(super) struct ApiError {
   status: StatusCode,
   message: String,
 }
@@ -98,13 +111,70 @@ pub(super) async fn serve(
     ));
   }
 
+  let resources = state.curseforge.clone();
   let runtime = state.runtime.clone();
   let account_state = state.accounts.clone();
   let app = Router::new()
     .route("/health", get(health))
+    .route(
+      "/resource-operations",
+      get(super::resource_operations::list),
+    )
+    .route(
+      "/resource-operations/{id}",
+      axum::routing::delete(super::resource_operations::cancel),
+    )
+    .route(
+      "/clients/{name}/resource-plans/{id}/install",
+      post(super::resource_operations::submit),
+    )
+    .route(
+      "/clients/{name}/curseforge/projects/{project}/files/{file}/plan",
+      post(super::curseforge::create_plan),
+    )
+    .route(
+      "/resources/curseforge/configuration",
+      get(super::curseforge::configuration),
+    )
+    .route(
+      "/clients/{name}/curseforge/projects",
+      get(super::curseforge::search),
+    )
+    .route(
+      "/clients/{name}/curseforge/projects/{project}/files",
+      get(super::curseforge::files),
+    )
+    .route(
+      "/clients/{name}/curseforge/projects/{project}/files/{file}/preview",
+      get(super::curseforge::preview),
+    )
     .route("/client/versions", get(client_versions))
+    .route("/client/fabric/versions/{game}", get(fabric_versions))
     .route("/client/version-catalog", get(client_version_catalog))
     .route("/clients", get(clients))
+    .route("/clients/{name}", get(client_details))
+    .route(
+      "/clients/{name}/resources",
+      get(client_resources)
+        .post(import_client_resource)
+        .layer(DefaultBodyLimit::max(
+          anvil_core::resources::MAX_IMPORT_BYTES,
+        ))
+        .layer(middleware::from_fn(limit_resource_requests)),
+    )
+    .route(
+      "/clients/{name}/resources/sync",
+      post(sync_client_resources).layer(middleware::from_fn(limit_resource_requests)),
+    )
+    .route(
+      "/clients/{name}/resources/{sha256}",
+      axum::routing::delete(remove_client_resource)
+        .layer(middleware::from_fn(limit_resource_requests)),
+    )
+    .route(
+      "/clients/{name}/resources/{sha256}/enabled",
+      post(enable_client_resource).layer(middleware::from_fn(limit_resource_requests)),
+    )
     .route("/clients/install", post(install_client))
     .route("/operations", get(operations))
     .route("/operations/{id}", get(operation).delete(cancel_operation))
@@ -134,6 +204,7 @@ pub(super) async fn serve(
       let _ = shutdown.await;
       tracing::info!("Runtime shutdown requested; draining operations");
       tokio::join!(
+        resources.installs.shutdown(),
         runtime.shutdown_operations(),
         account_state.shutdown_operations()
       );
@@ -238,6 +309,34 @@ async fn health(State(state): State<AppState>) -> Json<serde_json::Value> {
   }))
 }
 
+async fn fabric_versions(
+  State(state): State<AppState>,
+  RoutePath(game): RoutePath<String>,
+) -> Result<Json<Vec<anvil_core::fabric::FabricVersion>>, ApiError> {
+  let mut cache = state.fabric_versions.lock().await;
+  cache.retain(|(_, at, _)| at.elapsed() < std::time::Duration::from_secs(1800));
+  if let Some((_, _, versions)) = cache.iter().find(|(key, _, _)| key == &game) {
+    return Ok(Json(versions.clone()));
+  }
+  let versions = tokio::time::timeout(
+    std::time::Duration::from_secs(25),
+    anvil_core::fabric::versions(&state.runtime.context, &game),
+  )
+  .await
+  .map_err(|_| {
+    ApiError::new(
+      StatusCode::GATEWAY_TIMEOUT,
+      "Fabric version lookup timed out",
+    )
+  })?
+  .map_err(|error| ApiError::new(StatusCode::BAD_GATEWAY, error.to_string()))?;
+  while cache.len() >= 8 {
+    cache.pop_front();
+  }
+  cache.push_back((game, std::time::Instant::now(), versions.clone()));
+  Ok(Json(versions))
+}
+
 async fn client_versions(
   State(state): State<AppState>,
 ) -> Result<Json<Vec<VersionSummary>>, ApiError> {
@@ -287,6 +386,160 @@ async fn client_version_catalog(
   }))
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ClientDetails {
+  loader: Option<anvil_core::fabric::ClientLoader>,
+  id: String,
+  name: String,
+  version_id: String,
+  version_type: String,
+  java_major: u32,
+  os: String,
+  architecture: String,
+  file_count: usize,
+}
+
+async fn client_details(
+  State(state): State<AppState>,
+  RoutePath(name): RoutePath<String>,
+) -> Result<Json<ClientDetails>, ApiError> {
+  let (instance, record) = ClientInstaller::new(state.runtime.context.clone())
+    .details(&name)
+    .await
+    .map_err(|error| {
+      let status = match &error {
+        anvil_core::Error::Invalid(_) => StatusCode::BAD_REQUEST,
+        anvil_core::Error::NotFound(_) => StatusCode::NOT_FOUND,
+        anvil_core::Error::Busy(_) | anvil_core::Error::Conflict(_) => StatusCode::CONFLICT,
+        _ => StatusCode::INTERNAL_SERVER_ERROR,
+      };
+      ApiError::new(status, error.to_string())
+    })?;
+  Ok(Json(ClientDetails {
+    loader: record.loader,
+    id: instance.id,
+    name: instance.name,
+    version_id: record.version_id,
+    version_type: record.version_type,
+    java_major: record.java_major,
+    os: record.os,
+    architecture: record.architecture,
+    file_count: record.files.len(),
+  }))
+}
+
+// Limit uploads before body extraction: at most one 64 MiB resource request at a time.
+static RESOURCE_REQUESTS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(1);
+async fn limit_resource_requests(request: Request<Body>, next: Next) -> Response {
+  let Ok(_permit) = RESOURCE_REQUESTS.try_acquire() else {
+    return ApiError::new(
+      StatusCode::TOO_MANY_REQUESTS,
+      "resource manager is busy; retry after refreshing",
+    )
+    .into_response();
+  };
+  next.run(request).await
+}
+pub(super) fn resource_error(error: anvil_core::Error) -> ApiError {
+  let status = match &error {
+    anvil_core::Error::Invalid(_) => StatusCode::BAD_REQUEST,
+    anvil_core::Error::NotFound(_) => StatusCode::NOT_FOUND,
+    anvil_core::Error::Busy(_) | anvil_core::Error::Conflict(_) => StatusCode::CONFLICT,
+    _ => StatusCode::INTERNAL_SERVER_ERROR,
+  };
+  tracing::warn!(
+    error_code = error.code(),
+    "Client resource operation failed"
+  );
+  ApiError::new(status, error.to_string())
+}
+async fn client_resources(
+  State(state): State<AppState>,
+  RoutePath(name): RoutePath<String>,
+) -> Result<Json<anvil_core::resources::ResourceManifest>, ApiError> {
+  anvil_core::resources::ResourceManager::new(state.runtime.context.clone())
+    .list(&name)
+    .await
+    .map(Json)
+    .map_err(resource_error)
+}
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ImportResourceQuery {
+  filename: String,
+  revision: u64,
+}
+async fn import_client_resource(
+  State(state): State<AppState>,
+  RoutePath(name): RoutePath<String>,
+  Query(query): Query<ImportResourceQuery>,
+  bytes: axum::body::Bytes,
+) -> Result<Json<anvil_core::resources::ResourceManifest>, ApiError> {
+  let result = anvil_core::resources::ResourceManager::new(state.runtime.context.clone())
+    .import(&name, query.filename, bytes.to_vec(), query.revision)
+    .await
+    .map_err(resource_error)?;
+  tracing::info!(
+    revision = result.revision,
+    mod_count = result.mods.len(),
+    "Local mod reference imported"
+  );
+  Ok(Json(result))
+}
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ResourceRevision {
+  revision: u64,
+}
+async fn sync_client_resources(
+  State(state): State<AppState>,
+  RoutePath(name): RoutePath<String>,
+  Json(request): Json<ResourceRevision>,
+) -> Result<Json<anvil_core::resources::ResourceManifest>, ApiError> {
+  let result = anvil_core::resources::ResourceManager::new(state.runtime.context.clone())
+    .sync(&name, request.revision)
+    .await
+    .map_err(resource_error)?;
+  tracing::info!(revision = result.revision, "Client mod layout synchronized");
+  Ok(Json(result))
+}
+
+async fn remove_client_resource(
+  State(state): State<AppState>,
+  RoutePath((name, sha256)): RoutePath<(String, String)>,
+  Query(query): Query<ResourceRevision>,
+) -> Result<Json<anvil_core::resources::ResourceManifest>, ApiError> {
+  let result = anvil_core::resources::ResourceManager::new(state.runtime.context.clone())
+    .change(&name, sha256, query.revision, None)
+    .await
+    .map_err(resource_error)?;
+  tracing::info!(revision = result.revision, "Local mod reference removed");
+  Ok(Json(result))
+}
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ResourceEnable {
+  revision: u64,
+  enabled: bool,
+}
+async fn enable_client_resource(
+  State(state): State<AppState>,
+  RoutePath((name, sha256)): RoutePath<(String, String)>,
+  Json(request): Json<ResourceEnable>,
+) -> Result<Json<anvil_core::resources::ResourceManifest>, ApiError> {
+  let result = anvil_core::resources::ResourceManager::new(state.runtime.context.clone())
+    .change(&name, sha256, request.revision, Some(request.enabled))
+    .await
+    .map_err(resource_error)?;
+  tracing::info!(
+    revision = result.revision,
+    enabled = request.enabled,
+    "Local mod reference preference changed"
+  );
+  Ok(Json(result))
+}
+
 async fn clients(State(state): State<AppState>) -> Result<Json<Vec<ClientSummary>>, ApiError> {
   ClientInstaller::new(state.runtime.context.clone())
     .list_with_versions()
@@ -298,6 +551,7 @@ async fn clients(State(state): State<AppState>) -> Result<Json<Vec<ClientSummary
 
 fn client_summary(entry: ClientListEntry) -> ClientSummary {
   ClientSummary {
+    loader: entry.loader,
     id: entry.instance.id,
     name: entry.instance.name,
     version_id: entry.version_id,
@@ -456,7 +710,7 @@ async fn logout_account(
 }
 
 impl ApiError {
-  fn new(status: StatusCode, message: impl Into<String>) -> Self {
+  pub(super) fn new(status: StatusCode, message: impl Into<String>) -> Self {
     Self {
       status,
       message: message.into(),

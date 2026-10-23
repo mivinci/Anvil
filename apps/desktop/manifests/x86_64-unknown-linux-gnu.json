@@ -7,5 +7,8 @@
   "sidecar_entry": "runtime/anvil",
   "http_api_version": "1.0.0",
   "http_api_compatibility": "^1.0.0",
-  "shell_api_compatibility": "^1.0.0"
+  "shell_api_compatibility": "^1.0.0",
+  "sidecar_args": [
+    "serve"
+  ]
 }

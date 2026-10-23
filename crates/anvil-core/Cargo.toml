@@ -16,6 +16,7 @@ reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha1.workspace = true
+sha2 = "0.11"
 tar.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true
@@ -23,6 +24,3 @@ tokio.workspace = true
 tokio-util.workspace = true
 url.workspace = true
 zip.workspace = true
-
-[dev-dependencies]
-sha2 = "0.11"

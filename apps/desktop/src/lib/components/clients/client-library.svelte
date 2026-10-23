@@ -4,9 +4,6 @@
 	import { getClientLibraryState } from '../../client-library-state.svelte.js';
 	const library = getClientLibraryState();
 	import ClientCard from './client-card.svelte';
-	import ClientDetailsDialog from './client-details-dialog.svelte';
-	let inspectedId = $state<string | null>(null);
-	const inspectedClient = $derived(library.clients.find((client) => client.id === inspectedId) ?? null);
 	import { getClientInstallState } from '../../client-install-state.svelte.js';
 	const installs = getClientInstallState();
 	import ClientInstallDialog from './client-install-dialog.svelte';
@@ -38,11 +35,9 @@
 		{:else if library.loaded && filtered.length === 0}
 			<div class="flex min-h-56 flex-col items-center justify-center gap-3 text-muted-foreground"><SearchX size={24} strokeWidth={1.5} aria-hidden="true" /><p class="text-xs">没有匹配的客户端</p><button type="button" onclick={() => library.query = ''} class="rounded px-2 py-1 text-xs text-primary hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring">清除搜索</button></div>
 		{:else if library.loaded}
-			<ul class="grid grid-cols-1 gap-3 xl:grid-cols-2" aria-label="已安装客户端">{#each filtered as client (client.id)}<ClientCard {client} onInspect={(id) => inspectedId = id} />{/each}</ul>
+			<ul class="grid grid-cols-1 gap-3 xl:grid-cols-2" aria-label="已安装客户端">{#each filtered as client (client.id)}<ClientCard {client} />{/each}</ul>
 		{/if}
 	</div>
 </section>
 
 {#if installOpen}<ClientInstallDialog clients={library.clients} onClose={() => installOpen = false} />{/if}
-
-{#if inspectedClient}<ClientDetailsDialog client={inspectedClient} onClose={() => inspectedId = null} />{/if}

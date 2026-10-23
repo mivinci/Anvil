@@ -26,6 +26,8 @@ npm run desktop:dev
 
 桌面 Rust 日志在开发模式下同时写入终端与文件；macOS 路径为 `~/Library/Logs/Anvil`，分别保存 `shell.log` 和 `runtime.log`，按大小轮转。当前已接入日志基础设施，关键流程埋点与关于页入口待完成，见[日志执行项](todos/desktop-logging.md)。
 
+CurseForge 模组浏览、安装计划确认与校验下载已接入 Fabric 实例的“添加模组”面板，复用共享资源并通过实例事务启用；窗口下载任务可查看进度/速度与取消，资源任务暂停/恢复尚未接入。开发时在启动 Shell 的环境中配置 `ANVIL_CURSEFORGE_API_KEY`，Shell 会将其传给 Rust Runtime；未配置时显示等待申请提示，不请求上游。不要使用 `VITE_` / `PUBLIC_` 前缀，不将密钥放入前端、提交到仓库或发送到聊天；配置后需要由维护者重新启动开发进程。生产分发的凭据策略与真实联调仍待完成，详见[客户端资源设计](todos/client-resources.md)。
+
 查看游戏版本：
 
 ```bash

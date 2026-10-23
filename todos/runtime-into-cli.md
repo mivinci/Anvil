@@ -24,7 +24,7 @@
 - Shell 以环境变量传 `ANVIL_HTTP_API_VERSION`、`ANVIL_LOG_STDERR`、`ANVIL_LOG_DIRECTORY`，并透传 `RUST_LOG` 与 `ANVIL_MICROSOFT_CLIENT_ID`；凭据仍经 stdin 单行传入，ready JSON 仍写 stdout，`shutdown` 行或 stdin EOF 优雅退出。`serve` 不新增 CLI 参数。
 - 命名：`anvil serve`。帮助文本注明这是"桌面 App 的 Runtime 进程，由桌面 Shell 启动"；与 `server`（Minecraft 服务端管理）语义区分。人类直接执行会阻塞等待 stdin，属预期行为。
 - App manifest `sidecar_entry` 由 `runtime/anvil-desktop(.exe)` 改为 `runtime/anvil(.exe)`；`package-desktop-app.mjs` 改为构建并复制 `anvil` 二进制。
-- Shell 启动逻辑经 manifest 间接引用 sidecar 路径，不需要改动。
+- Shell 启动逻辑经 manifest 引用 sidecar 路径与 sidecar_args（Anvil 为 ["serve"]），开发包、包内种子和 override 统一使用这些参数；Shell 不硬编码业务子命令。
 
 ## Phase 3/4 风险与开放问题（开工前复核）
 
@@ -74,3 +74,9 @@
 - CI：`rust.yml` 的 clippy/测试纳入 `-p anvil-shell`（其 main.rs 一处 `needless_return` 即此盲区暴露，已修）。
 - 测试：self_update 9 项（签名/篡改/载荷校验、计划过滤、指针幂等、保留策略、本地 HTTP fixture 端到端安装）；三 crate 全量 143 项通过；`cargo fmt` / clippy `-D warnings` 干净；`actionlint` 干净（`macos-15-intel` label 为已知误报）。
 - 未验证边界：CI 从未真实执行一次 CLI release；发布的首个带更新器二进制（bump 到 0.2.0 起）需人工核对 4 个 target 的 `runtime-index.json` 与资产。老于密钥轮换的二进制只信任旧公钥，轮换需随版本发布新公钥。
+
+## 启动参数遗漏修复（2026-10-23）
+
+维护者实际运行 desktop:dev 时，CLI 打印顶层帮助后退出，Shell 报 InvalidReadyMessage。原因是 Runtime 合并为子命令后，打包仅改了二进制路径，Shell 仍无参数执行。现新增可选 manifest sidecar_args（默认空数组，最多 16 项，每项最多 1024 字节且无 NUL），所有 Anvil 平台 manifest 配置 ["serve"]，Shell 用 Command::args 直接传参。开发模式、包内种子和自更新 override 共用 App manifest 参数；override pointer 不新增参数来源。没有启动 shell 命令解释器。
+
+检查：Rust 格式及 Shell 开发/发行编译检查；未运行测试或重启维护者 dev。下次 desktop:dev 的打包步骤会生成含启动参数的基线 manifest，真实握手由维护者重启后确认。
