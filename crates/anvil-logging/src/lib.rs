@@ -116,8 +116,8 @@ pub fn init(process: Process, console: bool) -> LoggingGuard {
   let directory = log_directory().ok();
   let (file, lock) = match open_file(process) {
     Ok((file, lock)) => (Some(file), Some(lock)),
-    Err(error) => {
-      report_file_failure(error.kind());
+    Err((stage, error)) => {
+      report_file_failure(stage, &error);
       (None, None)
     }
   };
@@ -136,8 +136,7 @@ pub fn init(process: Process, console: bool) -> LoggingGuard {
     })
     .finish(writer);
   let dropped = writer.error_counter();
-  let fallback =
-    "warn,anvil_shell=info,anvil_desktop_runtime=info,anvil_core=info,anvil_logging=info";
+  let fallback = "warn,anvil_shell=info,anvil=info,anvil_core=info,anvil_logging=info";
   // from_env() accepts a missing variable as an empty filter (ERROR only).
   // Select our application defaults explicitly for missing or empty values.
   let directives = std::env::var("RUST_LOG")
@@ -177,18 +176,26 @@ pub fn init(process: Process, console: bool) -> LoggingGuard {
   }
 }
 
-fn open_file(process: Process) -> io::Result<(BasicRollingFileAppender, File)> {
-  let directory = log_directory()?;
-  fs::create_dir_all(&directory)?;
-  if fs::symlink_metadata(&directory)?.file_type().is_symlink() {
-    return Err(io::Error::other(
-      "log directory must not be a symbolic link",
+fn open_file(
+  process: Process,
+) -> Result<(BasicRollingFileAppender, File), (&'static str, io::Error)> {
+  let directory = log_directory().map_err(|error| ("resolve directory", error))?;
+  fs::create_dir_all(&directory).map_err(|error| ("create directory", error))?;
+  if fs::symlink_metadata(&directory)
+    .map_err(|error| ("inspect directory", error))?
+    .file_type()
+    .is_symlink()
+  {
+    return Err((
+      "validate directory",
+      io::Error::other("log directory must not be a symbolic link"),
     ));
   }
   #[cfg(unix)]
   {
     use std::os::unix::fs::PermissionsExt;
-    fs::set_permissions(&directory, fs::Permissions::from_mode(0o700))?;
+    fs::set_permissions(&directory, fs::Permissions::from_mode(0o700))
+      .map_err(|error| ("set directory permissions", error))?;
   }
   // Rotation is not multi-process safe: a second Shell/Runtime falls back to
   // stderr instead of racing another process over the same historical files.
@@ -196,11 +203,14 @@ fn open_file(process: Process) -> io::Result<(BasicRollingFileAppender, File)> {
   for suffix in ["", ".1", ".2", ".3", ".4", ".lock"] {
     match fs::symlink_metadata(directory.join(format!("{stem}{suffix}"))) {
       Ok(metadata) if !metadata.is_file() || metadata.file_type().is_symlink() => {
-        return Err(io::Error::other("invalid log file entry"));
+        return Err((
+          "validate log entry",
+          io::Error::other("invalid log file entry"),
+        ));
       }
       Ok(_) => {}
       Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-      Err(error) => return Err(error),
+      Err(error) => return Err(("inspect log entry", error)),
     }
   }
   let lock = OpenOptions::new()
@@ -208,23 +218,30 @@ fn open_file(process: Process) -> io::Result<(BasicRollingFileAppender, File)> {
     .write(true)
     .create(true)
     .truncate(false)
-    .open(directory.join(format!("{stem}.lock")))?;
+    .open(directory.join(format!("{stem}.lock")))
+    .map_err(|error| ("open lock file", error))?;
   lock.try_lock().map_err(|error| match error {
-    std::fs::TryLockError::WouldBlock => {
-      io::Error::new(io::ErrorKind::WouldBlock, "another process owns this log")
-    }
-    std::fs::TryLockError::Error(error) => error,
+    std::fs::TryLockError::WouldBlock => (
+      "lock file",
+      io::Error::new(io::ErrorKind::WouldBlock, "another process owns this log"),
+    ),
+    std::fs::TryLockError::Error(error) => ("lock file", error),
   })?;
   let file = BasicRollingFileAppender::new(
     directory.join(stem),
     RollingConditionBasic::new().max_size(FILE_BYTES),
     HISTORY_FILES,
-  )?;
+  )
+  .map_err(|error| ("open rolling log file", error))?;
   Ok((file, lock))
 }
 
-fn report_file_failure(kind: io::ErrorKind) {
-  eprintln!("Anvil logging: file output unavailable ({kind:?}); falling back to stderr");
+fn report_file_failure(stage: &str, error: &io::Error) {
+  eprintln!(
+    "Anvil logging: file output unavailable (stage={stage}, kind={:?}, os_error={:?}, detail={error}); falling back to stderr",
+    error.kind(),
+    error.raw_os_error()
+  );
 }
 
 struct Output {
@@ -233,10 +250,10 @@ struct Output {
   available: Arc<AtomicBool>,
 }
 impl Output {
-  fn failed(&mut self, error: io::Error) {
+  fn failed(&mut self, stage: &str, error: io::Error) {
     self.file = None;
     self.available.store(false, Ordering::Release);
-    report_file_failure(error.kind());
+    report_file_failure(stage, &error);
   }
 }
 impl Write for Output {
@@ -244,7 +261,7 @@ impl Write for Output {
     if let Some(file) = self.file.as_mut()
       && let Err(error) = file.write_all(bytes)
     {
-      self.failed(error);
+      self.failed("write log file", error);
     }
     if self.console || self.file.is_none() {
       let _ = io::stderr().write_all(bytes);
@@ -255,7 +272,7 @@ impl Write for Output {
     if let Some(file) = self.file.as_mut()
       && let Err(error) = file.flush()
     {
-      self.failed(error);
+      self.failed("flush log file", error);
     }
     if self.console || self.file.is_none() {
       let _ = io::stderr().flush();

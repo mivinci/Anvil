@@ -55,6 +55,18 @@ struct HttpFixture {
 
 impl HttpFixture {
   fn new(device_polls_before_success: Option<usize>, decline_device_authorization: bool) -> Self {
+    Self::with_xuid(
+      device_polls_before_success,
+      decline_device_authorization,
+      Some("2533274799999999".into()),
+    )
+  }
+
+  fn with_xuid(
+    device_polls_before_success: Option<usize>,
+    decline_device_authorization: bool,
+    xuid: Option<String>,
+  ) -> Self {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     listener.set_nonblocking(true).unwrap();
     let base_url = Url::parse(&format!("http://{}/", listener.local_addr().unwrap())).unwrap();
@@ -87,6 +99,7 @@ impl HttpFixture {
               &thread_polls,
               device_polls_before_success,
               decline_device_authorization,
+              xuid.as_deref(),
             );
             thread_requests.lock().unwrap().push(request);
             if let Err(error) = write_response(&mut stream, response)
@@ -163,6 +176,7 @@ fn respond(
   polls: &Mutex<usize>,
   device_polls_before_success: Option<usize>,
   decline_device_authorization: bool,
+  xuid: Option<&str>,
 ) -> (u16, Vec<u8>) {
   match (request.method.as_str(), request.path.as_str()) {
     ("POST", "/devicecode") => json_response(
@@ -217,13 +231,19 @@ fn respond(
         "DisplayClaims":{"xui":[{"uhs":"fixture-user-hash"}]}
       }),
     ),
-    ("POST", "/xbox/xsts") => json_response(
-      200,
-      serde_json::json!({
-        "Token":"xbox-xsts-token",
-        "DisplayClaims":{"xui":[{"uhs":"fixture-user-hash"}]}
-      }),
-    ),
+    ("POST", "/xbox/xsts") => {
+      let mut claims = serde_json::json!({"uhs":"fixture-user-hash"});
+      if let Some(xuid) = xuid {
+        claims["xid"] = serde_json::json!(xuid);
+      }
+      json_response(
+        200,
+        serde_json::json!({
+          "Token":"xbox-xsts-token",
+          "DisplayClaims":{"xui":[claims]}
+        }),
+      )
+    }
     ("POST", "/minecraft/login") => json_response(
       200,
       serde_json::json!({"access_token":"minecraft-access-token","expires_in":3600}),
@@ -283,6 +303,38 @@ fn service(
 }
 
 #[tokio::test]
+async fn microsoft_login_accepts_missing_optional_xuid() {
+  let fixture = HttpFixture::with_xuid(Some(1), false, None);
+  let session = service(&fixture, Arc::new(MemoryCredentialStore::default()))
+    .authorize(
+      CancellationToken::new(),
+      tokio::sync::mpsc::unbounded_channel().0,
+    )
+    .await
+    .unwrap();
+  assert_eq!(session.profile().xuid(), None);
+}
+
+#[tokio::test]
+async fn microsoft_login_rejects_invalid_xuid_without_storing_credentials() {
+  let fixture = HttpFixture::with_xuid(Some(1), false, Some("not-a-numeric-xuid".into()));
+  let credentials = Arc::new(MemoryCredentialStore::default());
+  let result = service(&fixture, credentials.clone())
+    .authorize(
+      CancellationToken::new(),
+      tokio::sync::mpsc::unbounded_channel().0,
+    )
+    .await;
+  assert!(matches!(result, Err(Error::Authentication(_))));
+  assert!(
+    credentials
+      .load_refresh_token(ACCOUNT_ID)
+      .unwrap()
+      .is_none()
+  );
+}
+
+#[tokio::test]
 async fn microsoft_device_flow_refreshes_through_xbox_and_minecraft_services() {
   let fixture = HttpFixture::new(Some(2), false);
   let credentials = Arc::new(MemoryCredentialStore::default());
@@ -294,6 +346,7 @@ async fn microsoft_device_flow_refreshes_through_xbox_and_minecraft_services() {
     .unwrap();
   assert_eq!(session.profile().id(), ACCOUNT_ID);
   assert_eq!(session.profile().username(), "AnvilPlayer");
+  assert_eq!(session.profile().xuid(), Some("2533274799999999"));
   assert!(!format!("{session:?}").contains("minecraft-access-token"));
   assert!(matches!(
     received.recv().await,

@@ -8,7 +8,17 @@ Anvil Shell 是原生 Tauri 宿主。Rust crate 位于 `src-tauri/`，属于仓�
 
 Rust Runtime/Core 改动后，需要退出整个 `npm run desktop:dev` 命令再重新启动。Tauri 的自动重启只重编 Shell，不会重新执行 `beforeDevCommand` 中的 App 打包步骤；页面热更新或单独重启窗口也不会重建 Runtime。
 
+开发配置使用 `app.q2q.anvil.dev` 标识，Windows WebView2 用户数据目录为 `%LOCALAPPDATA%\app.q2q.anvil.dev\EBWebView`。开发配置的 `identifier` 不得留空，否则 Tauri 会将默认 WebView 数据目录解析到 `%LOCALAPPDATA%` 根目录。
+
+Windows 若同时出现日志文件 `PermissionDenied (os error 5)` 和 WebView2 初始化失败，可先用 `icacls target\debug\anvil-shell.exe` 检查完整性标签。工作区的 Low 标签会被构建产物继承，使 exe 从普通终端启动后仍以低完整性运行，无法写入通常为 Medium 的 AppData。确认该工作区应运行普通本地程序后，由维护者授权在项目根目录执行 `icacls . /setintegritylevel "(OI)(CI)M"` 恢复工作区及继承标签，再重新构建。此项属于本机文件元数据，不随 Git 提交；Windows 的进程完整性规则见 [Microsoft 文档](https://learn.microsoft.com/en-us/windows/win32/secauthz/mandatory-integrity-control)。
+
 Windows 主窗口启用透明窗口与 Acrylic 毛玻璃（开发和发行配置均生效），透明顶栏和导航区域透出系统模糊背景，主内容卡片保留主题底色。目前试验原生窗口按钮：`windows_frame.rs` 保留系统装饰，通过 Win32 子类过程扩展顶部客户区，并裁剪 WebView 子窗口的右上角区域，让 DWM 绘制和处理最小化、最大化/还原及关闭按钮；前端只预留 138 × 32 逻辑像素。窗口调整尺寸和 DPI 变化时重新裁剪，最大化时保留系统边框补偿。空白顶栏沿用 Tauri 拖动区域与双击最大化，macOS 保留原生交通灯与原有窗口效果。前端静态检查、Windows Shell 离线编译与 Rust 格式检查通过；此原生按钮方案尚未在实际 WebView 中验收，需检查按钮绘制/悬停/点击、Windows 11 分屏菜单、毛玻璃、拖动、边缘缩放、最大化/还原和多显示器 DPI 切换。
+
+## 平台图标
+
+`docs/logo.png` 是方形原始 logo；Windows 使用独立的连续圆角图标。仓库根目录运行 `scripts/create-windows-icon.ps1` 可重新生成 `icons/windows-rounded.png` 和 Windows `icons/icon.ico`。圆角比例默认 40%，也可通过 `-CornerRadiusRatio` 调整。脚本将 Tauri CLI 的临时输出放在 `target/`，只复制 Windows ICO，不覆盖 macOS/Linux 图标。
+
+`tauri.conf.json` 将 `icons/icon.ico` 用作 Windows 应用、NSIS 安装器和卸载器图标；`icon.icns` 与 PNG 仍使用方形图稿。更换 `docs/logo.png` 后，需要先同步 `src-tauri/app-icon.png` 并重新生成方形平台图标，再运行 Windows 图标脚本。
 
 ## 构建参数与 App manifest
 

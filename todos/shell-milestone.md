@@ -37,6 +37,8 @@
 
 **验收：** `apps/shell/tests/app_protocol.rs` 的 7 项本地集成测试调用 Shell 使用的协议处理器，覆盖 fixture 页面/脚本/CSS、本地 MIME、无活动版本、损坏 manifest、缺失入口、manifest 版本不匹配、缺失资源、GET/HEAD、错误方法、路径穿越/绝对路径/错误编码和符号链接拒绝。SvelteKit 生产构建成功，生成页面资源引用均为本地路径。2026-10-22 `cargo test --locked --offline -p anvil-shell`、`cargo check --workspace --locked --offline`、Clippy、`cargo fmt --all -- --check`、`npm run build --workspace @anvil/desktop` 和 `npm run check --workspace @anvil/desktop` 通过。跨平台 Tauri WebView smoke 留待第 10 项平台验收。
 
+开发配置固定使用 `app.q2q.anvil.dev`，避免空 `identifier` 将 Windows 默认 WebView 数据目录解析到 `%LOCALAPPDATA%` 根目录。2026-10-25 Windows x64 启动故障定位为本机工作区根目录带有 Low 完整性标签，Shell、Runtime 及独立 Rust/C 探针均继承 Low；即使从普通 Git Bash 启动，进程仍为 `TokenIsSandboxed=1`，读取日志锁文件成功、以写权限打开报 OS error 5。维护者明确授权后，仅对该项目根目录恢复可继承的 Medium 标签，现有及重新构建的输出同步继承，独立探针变为 `TokenIsSandboxed=0` 且能写权限打开同一文件。未覆盖日志或 WebView2 数据目录的完整 `npm run desktop:dev` 已成功：默认 AppData 下 Shell/Runtime 文件输出可用、Runtime ready 握手完成、窗口保持响应。Computer Use 的应用授权门禁仍拒绝截图，未完成自动视觉检查或真实游戏启动。
+
 ### 5. [x] 固化并实现 Shell 原生 IPC
 
 **交付：** 实现 `shell_get_app_info`、`shell_get_update_status`、`shell_check_for_updates` 和 `shell_get_runtime_status` 四个窄命令，并在 `apps/desktop/src/lib/shell.ts` 提供 typed client。App ID 固定为构建配置中的默认 App ID；身份结果包含构建 manifest 的基线版本和本地存储中的活动版本。Tauri build 仅为这四个命令生成权限；`default` capability 只授予 `main` 窗口，且不配置远程来源。命令另校验窗口 label 与 Shell/dev origin，不接受前端指定 App ID、路径、URL 或系统操作。更新进度通过状态查询暴露；更新器与 sidecar 尚未实现时明确返回 `not_configured`。

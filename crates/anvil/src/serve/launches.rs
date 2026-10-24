@@ -225,6 +225,13 @@ impl Launches {
       .await
       .map_err(Error::from)
       .and_then(|r| r);
+      if let Err(error) = &result {
+        if let Error::Unsupported(reason) = error {
+          tracing::warn!(launch_id = id, phase = ?updates.borrow().phase, error_code = error.code(), reason = %reason, "Client launch preparation failed");
+        } else if error.code() != "cancelled" {
+          tracing::warn!(launch_id = id, phase = ?updates.borrow().phase, error_code = error.code(), "Client launch failed");
+        }
+      }
       updates.send_modify(|s| match &result {
         Ok(code) => {
           s.exit_code = Some(*code);
@@ -314,6 +321,10 @@ fn failure(error: &Error) -> (&'static str, &'static str) {
       "实例文件或模组状态存在冲突，请检查详情或重新安装游戏文件。",
     ),
     Error::NotFound(_) => ("not_found", "实例不存在，请刷新列表。"),
+    Error::Unsupported(reason) if reason.starts_with("missing Minecraft launch value ") => (
+      "missing_launch_argument",
+      "启动参数不完整，请查看启动器日志。",
+    ),
     Error::Unsupported(_) => ("unsupported", "此版本不支持当前系统或架构。"),
     Error::ClientLaunch(_) => ("spawn_failed", "无法启动 Java 进程，请检查运行环境。"),
     _ if error.code() == "cancelled" => ("cancelled", "启动已取消或游戏已结束。"),

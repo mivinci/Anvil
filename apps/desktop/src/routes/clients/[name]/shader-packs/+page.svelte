@@ -1,5 +1,10 @@
+<script lang="ts">
+	import ComingSoon from '#lib/components/ui/coming-soon.svelte';
+</script>
+
 <svelte:head><title>光影 · Anvil</title></svelte:head>
 
-<section aria-label="光影" class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 lg:px-6">
+<section aria-label="光影" class="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-5 py-5 lg:px-6">
 	<h2 class="text-base font-semibold tracking-tight">光影</h2>
+	<ComingSoon />
 </section>

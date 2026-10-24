@@ -723,7 +723,7 @@ impl crate::account::CredentialStore for LaunchCredentialStore {
   }
 }
 
-struct LaunchAuthProvider;
+struct LaunchAuthProvider(Option<String>);
 
 impl crate::account::AccountProvider for LaunchAuthProvider {
   fn authorize(
@@ -732,12 +732,13 @@ impl crate::account::AccountProvider for LaunchAuthProvider {
     _cancel: CancellationToken,
     _events: tokio::sync::mpsc::UnboundedSender<crate::account::AuthorizationEvent>,
   ) -> crate::account::AuthorizationFuture {
-    Box::pin(async {
+    let xuid = self.0.clone();
+    Box::pin(async move {
       crate::account::AuthenticatedAccount::new(
         crate::account::AccountProfile::new(
           "00112233445566778899aabbccddeeff",
           "FixturePlayer",
-          Some("2533274799999999".into()),
+          xuid,
         )?,
         crate::account::AccessToken::new("access-token-that-must-never-be-logged")?,
         crate::account::RefreshToken::new("fixture-refresh-token")?,
@@ -759,10 +760,10 @@ impl crate::account::AccountProvider for LaunchAuthProvider {
   }
 }
 
-async fn launch_account() -> crate::account::AccountSession {
+async fn launch_account(xuid: Option<String>) -> crate::account::AccountSession {
   crate::account::AccountService::new(
     crate::account::MicrosoftClientId::new("01234567-89ab-cdef-0123-456789abcdef").unwrap(),
-    Arc::new(LaunchAuthProvider),
+    Arc::new(LaunchAuthProvider(xuid)),
     Arc::new(LaunchCredentialStore),
   )
   .authorize(
@@ -775,6 +776,15 @@ async fn launch_account() -> crate::account::AccountSession {
 
 #[tokio::test]
 async fn launch_spec_expands_rules_and_preserves_argument_boundaries() {
+  assert_launch_spec(Some("2533274799999999".into())).await;
+}
+
+#[tokio::test]
+async fn launch_spec_accepts_authenticated_account_without_optional_xuid() {
+  assert_launch_spec(None).await;
+}
+
+async fn assert_launch_spec(xuid: Option<String>) {
   let root = tempfile::tempdir().unwrap();
   let base = payload();
   let url = Url::parse("https://example.invalid/payload").unwrap();
@@ -829,7 +839,7 @@ async fn launch_spec_expands_rules_and_preserves_argument_boundaries() {
   fs::create_dir_all(&runtime.natives_directory).unwrap();
   let game_directory = root.path().join("game saves");
   fs::create_dir_all(&game_directory).unwrap();
-  let account = launch_account().await;
+  let account = launch_account(xuid.clone()).await;
   let options = crate::launch::LaunchOptions {
     launcher_name: "Anvil".into(),
     launcher_version: "0.1.0".into(),
@@ -867,6 +877,8 @@ async fn launch_spec_expands_rules_and_preserves_argument_boundaries() {
   let game_directory_arg = game_directory.to_str().unwrap();
   let game_dir_index = args.iter().position(|arg| arg == "--gameDir").unwrap();
   assert_eq!(args[game_dir_index + 1], game_directory_arg);
+  let xuid_index = args.iter().position(|arg| arg == "--xuid").unwrap();
+  assert_eq!(args[xuid_index + 1], xuid.as_deref().unwrap_or_default());
   let assets_index = args.iter().position(|arg| arg == "--assetsDir").unwrap();
   assert_eq!(
     args[assets_index + 1],

@@ -276,6 +276,18 @@ impl MicrosoftAccountProvider {
         "Xbox returned inconsistent user identities".into(),
       ));
     }
+    let xuid = xsts
+      .display_claims
+      .xui
+      .first()
+      .and_then(|claims| claims.xuid.clone())
+      .or_else(|| {
+        xbox_user
+          .display_claims
+          .xui
+          .first()
+          .and_then(|claims| claims.xuid.clone())
+      });
 
     let identity_token = format!("XBL3.0 x={user_hash};{}", xsts.token);
     let minecraft_login = self
@@ -305,7 +317,7 @@ impl MicrosoftAccountProvider {
       .await?;
     let profile: MinecraftProfileResponse =
       parse_json(&profile_bytes, "Minecraft profile response")?;
-    let profile = AccountProfile::new(profile.id, profile.name, None)?;
+    let profile = AccountProfile::new(profile.id, profile.name, xuid)?;
     let access_token = AccessToken::new(minecraft_login.access_token)?;
     let expires_at = SystemTime::now()
       .checked_add(Duration::from_secs(minecraft_login.expires_in))
@@ -558,6 +570,8 @@ struct XboxDisplayClaims {
 struct XboxUserClaims {
   #[serde(rename = "uhs")]
   user_hash: String,
+  #[serde(default, rename = "xid")]
+  xuid: Option<String>,
 }
 
 #[derive(Deserialize)]

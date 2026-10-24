@@ -4,6 +4,8 @@ use crate::{
 };
 use getrandom::fill as fill_random;
 use serde::{Deserialize, Serialize};
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::{
   fs,
   io::{self, BufRead, BufReader, Read, Write},
@@ -426,6 +428,8 @@ impl RuntimeSupervisor {
       .stdin(Stdio::piped())
       .stdout(Stdio::piped())
       .stderr(Stdio::piped());
+    #[cfg(windows)]
+    command.creation_flags(0x08000000); // CREATE_NO_WINDOW
     #[cfg(windows)]
     for key in ["SystemRoot", "WINDIR", "TEMP", "TMP"] {
       if let Some(value) = std::env::var_os(key) {
@@ -882,7 +886,7 @@ fn spawn_monitor(inner: Weak<Mutex<Inner>>, stop: Arc<AtomicBool>) {
   });
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
   use super::*;
   #[cfg(unix)]

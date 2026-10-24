@@ -142,6 +142,9 @@ pub fn build_launch_spec_with_settings(
       profile.id().replace('-', "").to_ascii_lowercase(),
     ),
     ("auth_access_token", account.access_token().to_owned()),
+    // XUID is optional in the authenticated profile. Keep an empty argv value
+    // when the provider omits it; authentication still uses the real session.
+    ("auth_xuid", profile.xuid().unwrap_or_default().to_owned()),
     (
       "user_type",
       if account.is_offline_test() {
@@ -164,9 +167,6 @@ pub fn build_launch_spec_with_settings(
   if account.is_offline_test() {
     values.insert("auth_xuid", "0".into());
     values.insert("clientid", "00000000-0000-0000-0000-000000000000".into());
-  }
-  if let Some(xuid) = profile.xuid() {
-    values.insert("auth_xuid", xuid.to_owned());
   }
   if let Some(client_id) = &options.microsoft_client_id {
     values.insert("clientid", client_id.as_str().to_owned());
