@@ -173,6 +173,7 @@ jobs:
           set -euo pipefail
           version="${RELEASE_TAG#*/v}"
           runner_binary="dist/anvil-${version}-x86_64-unknown-linux-gnu"
+          chmod +x "$runner_binary"
           test "$(./"$runner_binary" --version)" = "anvil $version"
           api_version="$(./"$runner_binary" --serve-api-version)"
           python3 -m pip install --disable-pip-version-check pynacl
