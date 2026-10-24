@@ -40,7 +40,7 @@ ANVIL_UPDATE_PUBLIC_KEY=<32-byte-ed25519-public-key-in-hex> \
 
 更新清单是 JSON envelope：`payload` 是 UTF-8 发布 JSON 的十六进制编码，`signature` 是对 payload 原始字节做 Ed25519 签名后的十六进制值。发布 JSON 包含 schema 版本、`stable` 通道、App ID、SemVer 版本、目标 triple、HTTPS 包 URL、压缩包大小与 SHA-256。包是以 `manifest.json`、`web/`、`runtime/` 为根的 tar.gz。压缩包上限为 1 GiB，解包后上限为 100,000 个文件和 2 GiB。
 
-Desktop 发布由 `.github/workflows/desktop-release.yml` 负责。推送 `desktop/vX.Y.Z` 会构建并发布安装包；预发布可使用 `desktop/vX.Y.Z-alpha.N`、`desktop/vX.Y.Z-test.N` 或 `desktop/vX.Y.Z-rc.N`，仍发布到同一更新 feed。stable 客户端不会更新到任何带预发布后缀的版本；预发布客户端按 SemVer 顺序接收更新，并可更新到 stable。Windows MSI 不支持文字型预发布标识，因此 Windows 预发布只打 NSIS 包；稳定版仍打 MSI 和 NSIS。所有发布都要求 Tauri 配置和所有平台 App manifest 的版本与 tag 一致。Runtime/CLI 使用独立版本号和唯一 `runtime-updates` feed，通过 `cli/vX.Y.Z[-prerelease]` 发布。
+Desktop 发布由 `.github/workflows/desktop-release.yml` 负责。推送 `desktop/vX.Y.Z` 会构建并发布安装包；预发布可使用 `desktop/vX.Y.Z-alpha.N`、`desktop/vX.Y.Z-test.N` 或 `desktop/vX.Y.Z-rc.N`，仍发布到同一更新 feed。stable 客户端不会更新到任何带预发布后缀的版本；预发布客户端按 SemVer 顺序接收更新，并可更新到 stable。Windows MSI 不支持文字型预发布标识，因此 Windows 预发布只打 NSIS 包；Linux RPM 打包器也拒绝文字型预发布版本，因此 Linux 预发布只打 DEB 包。稳定版仍打各平台默认安装包。所有发布都要求 Tauri 配置和所有平台 App manifest 的版本与 tag 一致。Runtime/CLI 使用独立版本号和唯一 `runtime-updates` feed，通过 `cli/vX.Y.Z[-prerelease]` 发布。
 
 仓库需要配置以下 GitHub Actions 密钥和变量：
 
