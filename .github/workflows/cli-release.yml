@@ -117,7 +117,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: anvil-${{ matrix.target }}
-          path: dist/*
+          path: dist/anvil-*
           if-no-files-found: error
           retention-days: 7
 
@@ -242,7 +242,7 @@ jobs:
             fi
             gh release create "$RELEASE_TAG" --draft --verify-tag --generate-notes --title "$title"
           fi
-          gh release upload "$RELEASE_TAG" dist/* --clobber
+          gh release upload "$RELEASE_TAG" dist/anvil-* dist/SHA256SUMS dist/runtime-index.json dist/latest.json --clobber
           if [[ "$RELEASE_TAG" == cli-test/* ]]; then
             gh release edit "$RELEASE_TAG" --draft=false --prerelease
           else
