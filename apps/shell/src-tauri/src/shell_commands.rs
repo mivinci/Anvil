@@ -9,6 +9,7 @@ pub const SHELL_COMMANDS: &[&str] = &[
   "shell_get_update_status",
   "shell_check_for_updates",
   "shell_cancel_update",
+  "shell_restart_for_update",
   "shell_get_runtime_status",
   "shell_get_runtime_connection",
   "shell_confirm_app_ready",

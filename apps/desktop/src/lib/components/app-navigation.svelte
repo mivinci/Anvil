@@ -5,6 +5,7 @@
 	import { page } from '$app/state';
 	import type { AppearanceMode } from './appearance-menu.svelte';
 	import AccountMenu from './account-menu.svelte';
+	import UpdateNavButton from './update-nav-button.svelte';
 	import GamepadFilled from './icons/gamepad-filled.svelte';
 	import NavButton from './nav-button.svelte';
 
@@ -37,6 +38,7 @@
 		<NavButton aria-label="模组" selected={page.url.pathname === resolve('/mods') || page.url.pathname.startsWith(`${resolve('/mods')}/`)} onclick={() => goto(resolve('/mods'))}><Blocks size={19} /></NavButton>
 	</div>
 	<div class="mt-auto flex flex-col items-center gap-2.5">
+		<UpdateNavButton />
 		<AccountMenu {appearance} {onAppearanceChange} />
 	</div>
 </nav>

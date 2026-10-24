@@ -143,6 +143,15 @@ impl UpdateService {
 
   /// Start an update check if the configured source has not been checked in the last day.
   pub fn check_for_updates(&self) -> UpdateCheckOutcome {
+    self.start_update_check(false)
+  }
+
+  /// Start a user-requested update check, bypassing the background-check interval.
+  pub fn check_for_updates_now(&self) -> UpdateCheckOutcome {
+    self.start_update_check(true)
+  }
+
+  fn start_update_check(&self, force: bool) -> UpdateCheckOutcome {
     let Some(config) = self.inner.config.clone() else {
       return UpdateCheckOutcome::NotConfigured;
     };
@@ -169,18 +178,18 @@ impl UpdateService {
       }
     };
     let now = SystemTime::now();
-    match store.last_update_check() {
-      Ok(Some(last_check))
-        if now.duration_since(last_check).unwrap_or_default() < UPDATE_INTERVAL =>
-      {
-        return UpdateCheckOutcome::RecentlyChecked;
-      }
-      Ok(_) => {}
-      Err(_) => {
-        status.state = AppUpdateState::Failed;
-        status.failure = Some(AppUpdateFailure::StorageUnavailable);
-        tracing::warn!(failure = ?status.failure, "App update check could not access storage");
-        return UpdateCheckOutcome::Failed;
+    if !force {
+      match store.last_update_check() {
+        Ok(last_check) if should_skip_update_check(last_check, now, false) => {
+          return UpdateCheckOutcome::RecentlyChecked;
+        }
+        Ok(_) => {}
+        Err(_) => {
+          status.state = AppUpdateState::Failed;
+          status.failure = Some(AppUpdateFailure::StorageUnavailable);
+          tracing::warn!(failure = ?status.failure, "App update check could not access storage");
+          return UpdateCheckOutcome::Failed;
+        }
       }
     }
     let current_version = match store.state() {
@@ -254,6 +263,13 @@ impl UpdateService {
   pub fn shutdown(&self) {
     let _ = self.cancel();
   }
+}
+
+fn should_skip_update_check(last_check: Option<SystemTime>, now: SystemTime, force: bool) -> bool {
+  !force
+    && last_check.is_some_and(|last_check| {
+      now.duration_since(last_check).unwrap_or_default() < UPDATE_INTERVAL
+    })
 }
 
 impl Default for UpdateService {
@@ -1016,6 +1032,19 @@ mod tests {
   use tar::{Builder, EntryType, Header};
 
   const TEST_SEED: [u8; 32] = [7; 32];
+
+  #[test]
+  fn explicit_update_check_bypasses_the_background_cooldown() {
+    let now = SystemTime::now();
+    assert!(should_skip_update_check(Some(now), now, false));
+    assert!(!should_skip_update_check(Some(now), now, true));
+    assert!(!should_skip_update_check(None, now, false));
+    assert!(!should_skip_update_check(
+      Some(now - UPDATE_INTERVAL),
+      now,
+      false
+    ));
+  }
 
   fn signed_envelope(payload: &[u8]) -> (Vec<u8>, [u8; 32]) {
     let key_pair = signature::Ed25519KeyPair::from_seed_unchecked(&TEST_SEED).unwrap();

@@ -12,6 +12,7 @@
     "allow-shell-get-update-status",
     "allow-shell-check-for-updates",
     "allow-shell-cancel-update",
+    "allow-shell-restart-for-update",
     "allow-shell-get-runtime-status",
     "allow-shell-get-runtime-connection",
     "allow-shell-confirm-app-ready",

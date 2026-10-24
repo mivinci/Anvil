@@ -67,6 +67,8 @@ export interface RuntimeStatus {
 		| 'process_monitor_failed'
 		| null;
 	apiVersion: string | null;
+	runtimeVersion: string | null;
+	availableRuntimeVersion: string | null;
 }
 
 export interface RuntimeConnection {
@@ -89,6 +91,7 @@ export const shell = {
 	getUpdateStatus: () => invoke<UpdateStatus>('shell_get_update_status'),
 	checkForUpdates: () => invoke<UpdateCheckResult>('shell_check_for_updates'),
 	cancelUpdate: () => invoke<boolean>('shell_cancel_update'),
+	restartForUpdate: () => invoke<void>('shell_restart_for_update'),
 	getRuntimeStatus: () => invoke<RuntimeStatus>('shell_get_runtime_status'),
 	getRuntimeConnection: () => invoke<RuntimeConnection>('shell_get_runtime_connection'),
 	confirmAppReady: () => invoke<boolean>('shell_confirm_app_ready'),

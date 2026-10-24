@@ -43,6 +43,8 @@ pub enum AppStorageError {
   UnsupportedEntry(PathBuf),
   #[error("App data directory is unavailable")]
   DataDirectoryUnavailable,
+  #[error("ANVIL_SHELL_DATA_DIR must be an absolute path")]
+  InvalidDataDirectory,
   #[error(transparent)]
   Io(#[from] std::io::Error),
   #[error(transparent)]
@@ -74,6 +76,14 @@ impl AppStorage {
 
   /// Open the platform-specific Anvil data directory.
   pub fn for_current_user() -> Result<Self, AppStorageError> {
+    if let Some(path) = std::env::var_os("ANVIL_SHELL_DATA_DIR") {
+      let path = PathBuf::from(path);
+      if !path.is_absolute() {
+        return Err(AppStorageError::InvalidDataDirectory);
+      }
+      return Self::open(path);
+    }
+
     let project_dirs = ProjectDirs::from("com", "mivinci", "Anvil")
       .ok_or(AppStorageError::DataDirectoryUnavailable)?;
     Self::open(project_dirs.data_local_dir())

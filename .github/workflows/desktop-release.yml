@@ -32,8 +32,7 @@ jobs:
     timeout-minutes: 60
     env:
       ANVIL_UPDATE_MANIFEST_URL: https://github.com/${{ github.repository }}/releases/download/${{ startsWith(github.ref_name, 'desktop-test/') && 'desktop-updates-test' || 'desktop-updates-stable' }}/${{ matrix.target }}.json
-      ANVIL_RUNTIME_UPDATE_MANIFEST_URL: https://github.com/${{ github.repository }}/releases/download/runtime-updates/runtime-index.json
-      ANVIL_RUNTIME_UPDATE_PUBLIC_KEY: ${{ vars.ANVIL_RUNTIME_UPDATE_PUBLIC_KEY }}
+      ANVIL_RUNTIME_UPDATE_MANIFEST_URL: https://github.com/${{ github.repository }}/releases/download/${{ startsWith(github.ref_name, 'desktop-test/') && 'runtime-updates-test' || 'runtime-updates' }}/runtime-index.json
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -42,28 +41,35 @@ jobs:
       - name: Select channel update public key
         env:
           RELEASE_TAG: ${{ github.ref_name }}
-          STABLE_PUBLIC_KEY: ${{ vars.ANVIL_DESKTOP_UPDATE_PUBLIC_KEY }}
-          TEST_PUBLIC_KEY: ${{ vars.ANVIL_DESKTOP_TEST_UPDATE_PUBLIC_KEY }}
+          STABLE_APP_PUBLIC_KEY: ${{ vars.ANVIL_DESKTOP_UPDATE_PUBLIC_KEY }}
+          TEST_APP_PUBLIC_KEY: ${{ vars.ANVIL_DESKTOP_TEST_UPDATE_PUBLIC_KEY }}
+          STABLE_RUNTIME_PUBLIC_KEY: ${{ vars.ANVIL_RUNTIME_UPDATE_PUBLIC_KEY }}
+          TEST_RUNTIME_PUBLIC_KEY: ${{ vars.ANVIL_RUNTIME_TEST_UPDATE_PUBLIC_KEY }}
         shell: bash
         run: |
           set -euo pipefail
           if [[ "$RELEASE_TAG" == desktop-test/* ]]; then
-            public_key="$TEST_PUBLIC_KEY"
-            key_name=ANVIL_DESKTOP_TEST_UPDATE_PUBLIC_KEY
+            app_public_key="$TEST_APP_PUBLIC_KEY"
+            runtime_public_key="$TEST_RUNTIME_PUBLIC_KEY"
+            app_key_name=ANVIL_DESKTOP_TEST_UPDATE_PUBLIC_KEY
+            runtime_key_name=ANVIL_RUNTIME_TEST_UPDATE_PUBLIC_KEY
           else
-            public_key="$STABLE_PUBLIC_KEY"
-            key_name=ANVIL_DESKTOP_UPDATE_PUBLIC_KEY
+            app_public_key="$STABLE_APP_PUBLIC_KEY"
+            runtime_public_key="$STABLE_RUNTIME_PUBLIC_KEY"
+            app_key_name=ANVIL_DESKTOP_UPDATE_PUBLIC_KEY
+            runtime_key_name=ANVIL_RUNTIME_UPDATE_PUBLIC_KEY
           fi
-          test -n "$public_key" || { echo "$key_name is required for this release channel." >&2; exit 1; }
-          printf 'ANVIL_UPDATE_PUBLIC_KEY=%s\n' "$public_key" >> "$GITHUB_ENV"
+          test -n "$app_public_key" || { echo "$app_key_name is required for this release channel." >&2; exit 1; }
+          test -n "$runtime_public_key" || { echo "$runtime_key_name is required for this release channel." >&2; exit 1; }
+          printf 'ANVIL_UPDATE_PUBLIC_KEY=%s\nANVIL_RUNTIME_UPDATE_PUBLIC_KEY=%s\n' \
+            "$app_public_key" "$runtime_public_key" >> "$GITHUB_ENV"
       - name: Validate tag and update configuration
         env:
           RELEASE_TAG: ${{ github.ref_name }}
-          RUNTIME_PUBLIC_KEY: ${{ vars.ANVIL_RUNTIME_UPDATE_PUBLIC_KEY }}
         run: |
           set -euo pipefail
           python .github/scripts/validate_desktop_release.py "$RELEASE_TAG"
-          python -c 'import os, sys; missing = [name for name in ("ANVIL_UPDATE_PUBLIC_KEY", "RUNTIME_PUBLIC_KEY") if not os.environ.get(name)]; print("missing required public key variable(s): " + ", ".join(missing), file=sys.stderr) if missing else None; sys.exit(bool(missing))'
+          python -c 'import os, sys; missing = [name for name in ("ANVIL_UPDATE_PUBLIC_KEY", "ANVIL_RUNTIME_UPDATE_PUBLIC_KEY") if not os.environ.get(name)]; print("missing required public key variable(s): " + ", ".join(missing), file=sys.stderr) if missing else None; sys.exit(bool(missing))'
         shell: bash
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'

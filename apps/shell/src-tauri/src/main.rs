@@ -132,6 +132,7 @@ fn main() {
       anvil_shell::shell_ipc::shell_get_update_status,
       anvil_shell::shell_ipc::shell_check_for_updates,
       anvil_shell::shell_ipc::shell_cancel_update,
+      anvil_shell::shell_ipc::shell_restart_for_update,
       anvil_shell::shell_ipc::shell_get_runtime_status,
       anvil_shell::shell_ipc::shell_get_runtime_connection,
       anvil_shell::shell_ipc::shell_confirm_app_ready,

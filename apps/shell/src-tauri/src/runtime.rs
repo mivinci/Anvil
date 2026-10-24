@@ -100,6 +100,8 @@ pub struct RuntimeStatus {
   pub state: RuntimeState,
   pub failure: Option<RuntimeFailure>,
   pub api_version: Option<String>,
+  pub runtime_version: Option<String>,
+  pub available_runtime_version: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -125,6 +127,7 @@ struct Inner {
   child: Option<Child>,
   child_stdin: Option<ChildStdin>,
   stop_monitor: Option<Arc<AtomicBool>>,
+  storage: Option<AppStorage>,
 }
 
 #[derive(Debug, Clone)]
@@ -140,11 +143,14 @@ impl RuntimeSupervisor {
           state: RuntimeState::NotInstalled,
           failure: None,
           api_version: None,
+          runtime_version: None,
+          available_runtime_version: None,
         },
         connection: None,
         child: None,
         child_stdin: None,
         stop_monitor: None,
+        storage: None,
       })),
     }
   }
@@ -155,6 +161,8 @@ impl RuntimeSupervisor {
       state: RuntimeState::Starting,
       failure: None,
       api_version: None,
+      runtime_version: None,
+      available_runtime_version: None,
     });
 
     let Ok(storage) = AppStorage::for_current_user() else {
@@ -162,6 +170,8 @@ impl RuntimeSupervisor {
         state: RuntimeState::Failed,
         failure: Some(RuntimeFailure::StorageUnavailable),
         api_version: None,
+        runtime_version: None,
+        available_runtime_version: None,
       });
       return;
     };
@@ -171,6 +181,9 @@ impl RuntimeSupervisor {
   /// Resolve sidecar candidates from `storage` and launch the first one that
   /// reaches the ready handshake, falling back through the list on failure.
   fn start_from_storage(&self, storage: &AppStorage) {
+    if let Ok(mut inner) = self.inner.lock() {
+      inner.storage = Some(storage.clone());
+    }
     let active = match active_sidecars(storage) {
       Ok(active) => active,
       Err(failure) => {
@@ -178,6 +191,8 @@ impl RuntimeSupervisor {
           state: RuntimeState::Failed,
           failure: Some(failure),
           api_version: None,
+          runtime_version: None,
+          available_runtime_version: None,
         });
         return;
       }
@@ -187,6 +202,8 @@ impl RuntimeSupervisor {
         state: RuntimeState::NotInstalled,
         failure: None,
         api_version: None,
+        runtime_version: None,
+        available_runtime_version: None,
       });
       return;
     }
@@ -198,9 +215,14 @@ impl RuntimeSupervisor {
         .as_deref()
         .map(|version| format!("override {version}"))
         .unwrap_or_else(|| "packaged seed".to_owned());
+      let runtime_version = candidate
+        .version
+        .as_deref()
+        .unwrap_or(env!("CARGO_PKG_VERSION"));
       match self.launch(
         &candidate.path,
         &candidate.api_version,
+        runtime_version,
         &candidate.args,
         active.environment.as_ref(),
       ) {
@@ -223,19 +245,34 @@ impl RuntimeSupervisor {
       state: RuntimeState::Failed,
       failure: last_failure,
       api_version: None,
+      runtime_version: None,
+      available_runtime_version: None,
     });
   }
 
   pub fn status(&self) -> RuntimeStatus {
-    self
+    let (mut status, storage) = self
       .inner
       .lock()
-      .map(|inner| inner.status.clone())
-      .unwrap_or(RuntimeStatus {
-        state: RuntimeState::Failed,
-        failure: Some(RuntimeFailure::ProcessMonitorFailed),
-        api_version: None,
-      })
+      .map(|inner| (inner.status.clone(), inner.storage.clone()))
+      .unwrap_or((
+        RuntimeStatus {
+          state: RuntimeState::Failed,
+          failure: Some(RuntimeFailure::ProcessMonitorFailed),
+          api_version: None,
+          runtime_version: None,
+          available_runtime_version: None,
+        },
+        None,
+      ));
+    status.available_runtime_version = if status.state == RuntimeState::Ready {
+      storage
+        .as_ref()
+        .and_then(|storage| available_runtime_version(storage, status.runtime_version.as_deref()))
+    } else {
+      None
+    };
+    status
   }
 
   /// Use the freshly built source package during `tauri dev`, without installing it.
@@ -260,6 +297,7 @@ impl RuntimeSupervisor {
       self.launch(
         &executable,
         &manifest.http_api_version,
+        env!("CARGO_PKG_VERSION"),
         &manifest.sidecar_args,
         None,
       )
@@ -282,6 +320,8 @@ impl RuntimeSupervisor {
       state: RuntimeState::Failed,
       failure: Some(failure),
       api_version: None,
+      runtime_version: None,
+      available_runtime_version: None,
     });
   }
 
@@ -327,6 +367,8 @@ impl RuntimeSupervisor {
       state: RuntimeState::Stopped,
       failure: None,
       api_version: None,
+      runtime_version: None,
+      available_runtime_version: None,
     });
   }
 
@@ -334,6 +376,7 @@ impl RuntimeSupervisor {
     &self,
     executable: &Path,
     expected_api_version: &str,
+    runtime_version: &str,
     args: &[String],
     environment: Option<&SidecarEnvironment>,
   ) -> Result<(), RuntimeFailure> {
@@ -341,15 +384,25 @@ impl RuntimeSupervisor {
       state: RuntimeState::Starting,
       failure: None,
       api_version: Some(expected_api_version.to_owned()),
+      runtime_version: Some(runtime_version.to_owned()),
+      available_runtime_version: None,
     });
 
     tracing::info!(api_version = expected_api_version, "Runtime launch started");
-    let result = self.launch_ready(executable, expected_api_version, args, environment);
+    let result = self.launch_ready(
+      executable,
+      expected_api_version,
+      runtime_version,
+      args,
+      environment,
+    );
     if let Err(failure) = result {
       self.set_status(RuntimeStatus {
         state: RuntimeState::Failed,
         failure: Some(failure),
         api_version: None,
+        runtime_version: None,
+        available_runtime_version: None,
       });
     }
     result
@@ -359,6 +412,7 @@ impl RuntimeSupervisor {
     &self,
     executable: &Path,
     expected_api_version: &str,
+    runtime_version: &str,
     args: &[String],
     environment: Option<&SidecarEnvironment>,
   ) -> Result<(), RuntimeFailure> {
@@ -485,6 +539,8 @@ impl RuntimeSupervisor {
         state: RuntimeState::Ready,
         failure: None,
         api_version: Some(ready.api_version),
+        runtime_version: Some(runtime_version.to_owned()),
+        available_runtime_version: None,
       };
       inner.stop_monitor = Some(stop_monitor.clone());
     }
@@ -556,6 +612,15 @@ fn active_sidecars(storage: &AppStorage) -> Result<ActiveSidecars, RuntimeFailur
     candidates,
     environment: Some(environment),
   })
+}
+
+fn available_runtime_version(
+  storage: &AppStorage,
+  running_version: Option<&str>,
+) -> Option<String> {
+  let active = active_sidecars(storage).ok()?;
+  let version = active.candidates.first()?.version.as_deref()?;
+  (Some(version) != running_version).then(|| version.to_owned())
 }
 
 /// Read and validate the sidecar override pointer. `Ok(None)` means no valid
@@ -795,6 +860,8 @@ fn spawn_monitor(inner: Weak<Mutex<Inner>>, stop: Arc<AtomicBool>) {
             state: RuntimeState::Failed,
             failure: Some(RuntimeFailure::ProcessExited),
             api_version: None,
+            runtime_version: None,
+            available_runtime_version: None,
           };
           return;
         }
@@ -805,6 +872,8 @@ fn spawn_monitor(inner: Weak<Mutex<Inner>>, stop: Arc<AtomicBool>) {
             state: RuntimeState::Failed,
             failure: Some(RuntimeFailure::ProcessMonitorFailed),
             api_version: None,
+            runtime_version: None,
+            available_runtime_version: None,
           };
           return;
         }
@@ -836,7 +905,9 @@ mod tests {
       ),
     );
     let supervisor = RuntimeSupervisor::new();
-    supervisor.launch(&script, "1.0.0", &[], None).unwrap();
+    supervisor
+      .launch(&script, "1.0.0", "0.1.0", &[], None)
+      .unwrap();
     assert_eq!(supervisor.status().state, RuntimeState::Ready);
     let connection = supervisor.connection().unwrap();
     assert_eq!(connection.base_url, format!("http://127.0.0.1:{port}"));
@@ -858,7 +929,9 @@ mod tests {
     );
     let supervisor = RuntimeSupervisor::new();
     assert_eq!(
-      supervisor.launch(&script, "1.0.0", &[], None).unwrap_err(),
+      supervisor
+        .launch(&script, "1.0.0", "0.1.0", &[], None)
+        .unwrap_err(),
       RuntimeFailure::InvalidReadyMessage
     );
     assert_eq!(supervisor.status().state, RuntimeState::Failed);
@@ -965,6 +1038,41 @@ mod tests {
   #[cfg(unix)]
   fn pointer_path(fixture: &OverrideFixture) -> PathBuf {
     fixture.store_dir.join(OVERRIDE_POINTER_ENTRY)
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn reports_a_published_runtime_update_until_the_new_binary_is_running() {
+    let fixture = override_fixture();
+    write_override(&fixture, "2.0.0", "1.0.0", "#!/bin/sh\nexit 0\n");
+
+    assert_eq!(
+      available_runtime_version(&fixture.storage, Some("1.0.0")),
+      Some("2.0.0".into())
+    );
+    assert_eq!(
+      available_runtime_version(&fixture.storage, Some("2.0.0")),
+      None
+    );
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn runtime_status_detects_an_update_published_while_the_seed_is_running() {
+    let fixture = override_fixture();
+    let supervisor = RuntimeSupervisor::new();
+    supervisor.start_from_storage(&fixture.storage);
+    assert_eq!(supervisor.status().state, RuntimeState::Ready);
+
+    write_override(&fixture, "2.0.0", "1.0.0", "#!/bin/sh\nexit 0\n");
+
+    let status = supervisor.status();
+    assert_eq!(
+      status.runtime_version.as_deref(),
+      Some(env!("CARGO_PKG_VERSION"))
+    );
+    assert_eq!(status.available_runtime_version.as_deref(), Some("2.0.0"));
+    supervisor.shutdown();
   }
 
   #[cfg(unix)]

@@ -4,7 +4,7 @@ use crate::app_storage::AppStorage;
 use crate::runtime::{RuntimeConnection, RuntimeStatus, RuntimeSupervisor};
 #[cfg(test)]
 use crate::shell_commands::SHELL_COMMANDS;
-use crate::updater::{AppUpdateStatus, UpdateCheckOutcome, UpdateService};
+use crate::updater::{AppUpdateState, AppUpdateStatus, UpdateCheckOutcome, UpdateService};
 use serde::Serialize;
 use tauri::{Url, WebviewWindow};
 
@@ -146,8 +146,24 @@ pub fn shell_check_for_updates(
 ) -> Result<UpdateCheckResult, String> {
   ensure_authorized_window(&window)?;
   Ok(UpdateCheckResult {
-    outcome: updates.check_for_updates(),
+    outcome: updates.check_for_updates_now(),
   })
+}
+
+#[tauri::command]
+pub fn shell_restart_for_update(
+  window: WebviewWindow,
+  app: tauri::AppHandle,
+  updates: tauri::State<'_, UpdateService>,
+  runtime: tauri::State<'_, RuntimeSupervisor>,
+) -> Result<(), String> {
+  ensure_authorized_window(&window)?;
+  if updates.status().state != AppUpdateState::Staged
+    && runtime.status().available_runtime_version.is_none()
+  {
+    return Err("there is no staged App or Runtime update".into());
+  }
+  app.restart();
 }
 
 #[tauri::command]

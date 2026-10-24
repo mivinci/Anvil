@@ -2,13 +2,15 @@ name: CLI release
 
 on:
   push:
-    tags: ['cli/v*']
+    tags:
+      - 'cli/v*'
+      - 'cli-test/v*'
 
 permissions:
   contents: read
 
 concurrency:
-  group: cli-release
+  group: cli-release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -30,19 +32,35 @@ jobs:
     timeout-minutes: 30
     env:
       RELEASE_TAG: ${{ github.ref_name }}
-      # Every released Runtime reads the mutable, signed pointer updated below.
-      ANVIL_RUNTIME_UPDATE_MANIFEST_URL: https://github.com/${{ github.repository }}/releases/download/runtime-updates/runtime-index.json
-      ANVIL_RUNTIME_UPDATE_PUBLIC_KEY: ${{ vars.ANVIL_RUNTIME_UPDATE_PUBLIC_KEY }}
+      # Each Runtime reads only the signed pointer for its release channel.
+      ANVIL_RUNTIME_UPDATE_MANIFEST_URL: https://github.com/${{ github.repository }}/releases/download/${{ startsWith(github.ref_name, 'cli-test/') && 'runtime-updates-test' || 'runtime-updates' }}/runtime-index.json
     steps:
       - uses: actions/checkout@v4
+      - name: Select Runtime update public key
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          STABLE_PUBLIC_KEY: ${{ vars.ANVIL_RUNTIME_UPDATE_PUBLIC_KEY }}
+          TEST_PUBLIC_KEY: ${{ vars.ANVIL_RUNTIME_TEST_UPDATE_PUBLIC_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$RELEASE_TAG" == cli-test/* ]]; then
+            public_key="$TEST_PUBLIC_KEY"
+            key_name=ANVIL_RUNTIME_TEST_UPDATE_PUBLIC_KEY
+          else
+            public_key="$STABLE_PUBLIC_KEY"
+            key_name=ANVIL_RUNTIME_UPDATE_PUBLIC_KEY
+          fi
+          test -n "$public_key" || { echo "$key_name is required for this release channel." >&2; exit 1; }
+          printf 'ANVIL_RUNTIME_UPDATE_PUBLIC_KEY=%s\n' "$public_key" >> "$GITHUB_ENV"
       - name: Verify workspace version matches release tag
         shell: bash
         run: |
           set -euo pipefail
-          version="${RELEASE_TAG#cli/v}"
+          version="${RELEASE_TAG#*/v}"
           manifest_version="$(sed -n '/^\[workspace\.package\]/,/^\[/p' Cargo.toml | sed -n 's/^version = "\(.*\)"/\1/p')"
           if [ -z "$manifest_version" ] || [ "$manifest_version" != "$version" ]; then
-            echo "Release tag cli/v$version does not match workspace version '${manifest_version}'" >&2
+            echo "Release tag '$RELEASE_TAG' does not match workspace version '${manifest_version}'" >&2
             exit 1
           fi
       - uses: dtolnay/rust-toolchain@stable
@@ -52,21 +70,16 @@ jobs:
         with:
           key: release-${{ matrix.target }}
       - name: Build CLI
-        env:
-          UPDATE_PUBLIC_KEY: ${{ vars.ANVIL_RUNTIME_UPDATE_PUBLIC_KEY }}
         shell: bash
         run: |
           set -euo pipefail
-          test -n "$UPDATE_PUBLIC_KEY" || {
-            echo "ANVIL_RUNTIME_UPDATE_PUBLIC_KEY is required for Runtime release builds." >&2
-            exit 1
-          }
+          test -n "$ANVIL_RUNTIME_UPDATE_PUBLIC_KEY"
           cargo build --locked --release -p anvil --target ${{ matrix.target }}
       - name: Verify binary version
         shell: bash
         run: |
           set -euo pipefail
-          version="${RELEASE_TAG#cli/v}"
+          version="${RELEASE_TAG#*/v}"
           if [ "${{ runner.os }}" = "Windows" ]; then
             binary="target/${{ matrix.target }}/release/anvil.exe"
           else
@@ -82,7 +95,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          version="${RELEASE_TAG#cli/v}"
+          version="${RELEASE_TAG#*/v}"
           name="anvil-${version}-${{ matrix.target }}"
           mkdir -p dist/staging
           cp "target/${{ matrix.target }}/release/anvil" dist/staging/
@@ -93,7 +106,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $version = $env:RELEASE_TAG.Substring(5)
+          $version = $env:RELEASE_TAG -replace '^cli(-test)?/v', ''
           $name = "anvil-$version-${{ matrix.target }}"
           New-Item -ItemType Directory -Path dist/staging -Force | Out-Null
           Copy-Item "target/${{ matrix.target }}/release/anvil.exe" dist/staging/
@@ -128,17 +141,37 @@ jobs:
           merge-multiple: true
       - name: Create checksums
         run: cd dist && sha256sum anvil-* > SHA256SUMS
-      - name: Create signed runtime index
+      - name: Select Runtime update signing keys
         env:
-          GH_TOKEN: ${{ github.token }}
-          SIGNING_KEY: ${{ secrets.ANVIL_RUNTIME_SIGNING_KEY }}
-          UPDATE_PUBLIC_KEY: ${{ vars.ANVIL_RUNTIME_UPDATE_PUBLIC_KEY }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          STABLE_SIGNING_KEY: ${{ secrets.ANVIL_RUNTIME_SIGNING_KEY }}
+          TEST_SIGNING_KEY: ${{ secrets.ANVIL_RUNTIME_TEST_UPDATE_SIGNING_KEY }}
+          STABLE_PUBLIC_KEY: ${{ vars.ANVIL_RUNTIME_UPDATE_PUBLIC_KEY }}
+          TEST_PUBLIC_KEY: ${{ vars.ANVIL_RUNTIME_TEST_UPDATE_PUBLIC_KEY }}
         shell: bash
         run: |
           set -euo pipefail
-          test -n "$SIGNING_KEY" || { echo "ANVIL_RUNTIME_SIGNING_KEY is required." >&2; exit 1; }
-          test -n "$UPDATE_PUBLIC_KEY" || { echo "ANVIL_RUNTIME_UPDATE_PUBLIC_KEY is required." >&2; exit 1; }
-          version="${RELEASE_TAG#cli/v}"
+          if [[ "$RELEASE_TAG" == cli-test/* ]]; then
+            signing_key="$TEST_SIGNING_KEY"
+            public_key="$TEST_PUBLIC_KEY"
+            signing_key_name=ANVIL_RUNTIME_TEST_UPDATE_SIGNING_KEY
+            public_key_name=ANVIL_RUNTIME_TEST_UPDATE_PUBLIC_KEY
+          else
+            signing_key="$STABLE_SIGNING_KEY"
+            public_key="$STABLE_PUBLIC_KEY"
+            signing_key_name=ANVIL_RUNTIME_SIGNING_KEY
+            public_key_name=ANVIL_RUNTIME_UPDATE_PUBLIC_KEY
+          fi
+          test -n "$signing_key" || { echo "$signing_key_name is required for this release channel." >&2; exit 1; }
+          test -n "$public_key" || { echo "$public_key_name is required for this release channel." >&2; exit 1; }
+          printf 'SIGNING_KEY=%s\nUPDATE_PUBLIC_KEY=%s\n' "$signing_key" "$public_key" >> "$GITHUB_ENV"
+      - name: Create signed runtime index
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#*/v}"
           runner_binary="dist/anvil-${version}-x86_64-unknown-linux-gnu"
           test "$(./"$runner_binary" --version)" = "anvil $version"
           api_version="$(./"$runner_binary" --serve-api-version)"
@@ -155,7 +188,7 @@ jobs:
           from urllib.parse import quote
 
           tag = os.environ["RELEASE_TAG"]
-          version = tag.removeprefix("cli/v")
+          version = tag.split("/v", 1)[1]
           repo = os.environ["GITHUB_REPOSITORY"]
           entries = sorted(os.listdir("dist"))
           targets = {}
@@ -201,24 +234,39 @@ jobs:
               exit 1
             }
           else
-            version="${RELEASE_TAG#cli/v}"
-            gh release create "$RELEASE_TAG" --draft --verify-tag --generate-notes --title "Anvil CLI v$version"
+            version="${RELEASE_TAG#*/v}"
+            title="Anvil CLI v$version"
+            if [[ "$RELEASE_TAG" == cli-test/* ]]; then
+              title="Anvil CLI test v$version"
+            fi
+            gh release create "$RELEASE_TAG" --draft --verify-tag --generate-notes --title "$title"
           fi
           gh release upload "$RELEASE_TAG" dist/* --clobber
-          gh release edit "$RELEASE_TAG" --draft=false --latest
-      - name: Update stable Runtime feed
+          if [[ "$RELEASE_TAG" == cli-test/* ]]; then
+            gh release edit "$RELEASE_TAG" --draft=false --prerelease
+          else
+            gh release edit "$RELEASE_TAG" --draft=false --latest
+          fi
+      - name: Update selected Runtime feed
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          if ! gh release view runtime-updates >/dev/null 2>&1; then
-            gh release create runtime-updates \
+          if [[ "$RELEASE_TAG" == cli-test/* ]]; then
+            feed_tag=runtime-updates-test
+            title="Anvil Runtime test update feed"
+          else
+            feed_tag=runtime-updates
+            title="Anvil Runtime update feed"
+          fi
+          if ! gh release view "$feed_tag" >/dev/null 2>&1; then
+            gh release create "$feed_tag" \
               --draft \
               --prerelease \
               --target "$GITHUB_SHA" \
-              --title "Anvil Runtime update feed" \
+              --title "$title" \
               --notes "Mutable signed Runtime update index. Do not use as an installer release."
           fi
-          gh release upload runtime-updates dist/runtime-index.json --clobber
-          gh release edit runtime-updates --draft=false --prerelease
+          gh release upload "$feed_tag" dist/runtime-index.json --clobber
+          gh release edit "$feed_tag" --draft=false --prerelease
