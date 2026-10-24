@@ -44,7 +44,7 @@ def main() -> int:
 
     signing_key = SigningKey(bytes.fromhex(signing_key_hex))
     if signing_key.verify_key.encode().hex() != public_key_hex.lower():
-        raise SystemExit("Desktop update signing key does not match ANVIL_DESKTOP_UPDATE_PUBLIC_KEY")
+        raise SystemExit("Desktop update signing key does not match the selected channel public key")
 
     manifests_dir = dist / "update-manifests"
     manifests_dir.mkdir(parents=True, exist_ok=True)

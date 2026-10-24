@@ -44,10 +44,11 @@ Desktop 发布由 `.github/workflows/desktop-release.yml` 负责。推送 `deskt
 
 仓库需要配置以下 GitHub Actions 密钥和变量：
 
-- Secret `ANVIL_DESKTOP_SIGNING_KEY` 与 Variable `ANVIL_DESKTOP_UPDATE_PUBLIC_KEY`：Desktop App 更新签名密钥对。
+- Secret `ANVIL_DESKTOP_UPDATE_SIGNING_KEY` 与 Variable `ANVIL_DESKTOP_UPDATE_PUBLIC_KEY`：Desktop stable 更新签名密钥对。
 - Secret `ANVIL_RUNTIME_SIGNING_KEY` 与 Variable `ANVIL_RUNTIME_UPDATE_PUBLIC_KEY`：Runtime 更新签名密钥对。
+- Secret `ANVIL_DESKTOP_TEST_UPDATE_SIGNING_KEY` 与 Variable `ANVIL_DESKTOP_TEST_UPDATE_PUBLIC_KEY`：Desktop 测试版专用密钥对；测试发布只读写 `desktop-updates-test` feed。
 
-每个产品分别生成 Ed25519 密钥对（`cargo run -p anvil --example gen_update_key`），私钥只存 GitHub Actions Secret，公钥存 Variable；不要把私钥写入仓库或日志。
+生成 Runtime 密钥对可运行 `cargo run -p anvil --example gen_update_key`。其他通道可将 Secret 和 Variable 名称作为参数传入，例如 `cargo run -p anvil --example gen_update_key -- ANVIL_DESKTOP_TEST_UPDATE_SIGNING_KEY ANVIL_DESKTOP_TEST_UPDATE_PUBLIC_KEY`。私钥只存 GitHub Actions Secret，公钥存 Variable；不要把私钥写入仓库或日志。
 
 `cli/vX.Y.Z` 发布会将签名的 Runtime 索引更新到固定的 `runtime-updates` feed。发布脚本在签名前检查私钥与公钥匹配；缺少配置时会让发行失败，不会悄悄生成无法自更新的正式包。默认本地构建仍不注入发行密钥，更新状态会显示 `not_configured`。更新状态、进度、检查与取消均通过受限 Shell IPC 暴露。
 

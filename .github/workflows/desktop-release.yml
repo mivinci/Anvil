@@ -32,7 +32,6 @@ jobs:
     timeout-minutes: 60
     env:
       ANVIL_UPDATE_MANIFEST_URL: https://github.com/${{ github.repository }}/releases/download/${{ startsWith(github.ref_name, 'desktop-test/') && 'desktop-updates-test' || 'desktop-updates-stable' }}/${{ matrix.target }}.json
-      ANVIL_UPDATE_PUBLIC_KEY: ${{ vars.ANVIL_DESKTOP_UPDATE_PUBLIC_KEY }}
       ANVIL_RUNTIME_UPDATE_MANIFEST_URL: https://github.com/${{ github.repository }}/releases/download/runtime-updates/runtime-index.json
       ANVIL_RUNTIME_UPDATE_PUBLIC_KEY: ${{ vars.ANVIL_RUNTIME_UPDATE_PUBLIC_KEY }}
     steps:
@@ -40,15 +39,31 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Select channel update public key
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          STABLE_PUBLIC_KEY: ${{ vars.ANVIL_DESKTOP_UPDATE_PUBLIC_KEY }}
+          TEST_PUBLIC_KEY: ${{ vars.ANVIL_DESKTOP_TEST_UPDATE_PUBLIC_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$RELEASE_TAG" == desktop-test/* ]]; then
+            public_key="$TEST_PUBLIC_KEY"
+            key_name=ANVIL_DESKTOP_TEST_UPDATE_PUBLIC_KEY
+          else
+            public_key="$STABLE_PUBLIC_KEY"
+            key_name=ANVIL_DESKTOP_UPDATE_PUBLIC_KEY
+          fi
+          test -n "$public_key" || { echo "$key_name is required for this release channel." >&2; exit 1; }
+          printf 'ANVIL_UPDATE_PUBLIC_KEY=%s\n' "$public_key" >> "$GITHUB_ENV"
       - name: Validate tag and update configuration
         env:
           RELEASE_TAG: ${{ github.ref_name }}
-          APP_PUBLIC_KEY: ${{ vars.ANVIL_DESKTOP_UPDATE_PUBLIC_KEY }}
           RUNTIME_PUBLIC_KEY: ${{ vars.ANVIL_RUNTIME_UPDATE_PUBLIC_KEY }}
         run: |
           set -euo pipefail
           python .github/scripts/validate_desktop_release.py "$RELEASE_TAG"
-          python -c 'import os, sys; missing = [name for name in ("APP_PUBLIC_KEY", "RUNTIME_PUBLIC_KEY") if not os.environ.get(name)]; print("missing required public key variable(s): " + ", ".join(missing), file=sys.stderr) if missing else None; sys.exit(bool(missing))'
+          python -c 'import os, sys; missing = [name for name in ("ANVIL_UPDATE_PUBLIC_KEY", "RUNTIME_PUBLIC_KEY") if not os.environ.get(name)]; print("missing required public key variable(s): " + ", ".join(missing), file=sys.stderr) if missing else None; sys.exit(bool(missing))'
         shell: bash
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'
@@ -96,8 +111,6 @@ jobs:
       contents: write
     env:
       RELEASE_TAG: ${{ github.ref_name }}
-      SIGNING_KEY: ${{ secrets.ANVIL_DESKTOP_SIGNING_KEY }}
-      UPDATE_PUBLIC_KEY: ${{ vars.ANVIL_DESKTOP_UPDATE_PUBLIC_KEY }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
@@ -110,11 +123,33 @@ jobs:
           merge-multiple: true
       - name: Install signing dependency
         run: python -m pip install --disable-pip-version-check pynacl
+      - name: Select channel update signing keys
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          STABLE_SIGNING_KEY: ${{ secrets.ANVIL_DESKTOP_UPDATE_SIGNING_KEY }}
+          TEST_SIGNING_KEY: ${{ secrets.ANVIL_DESKTOP_TEST_UPDATE_SIGNING_KEY }}
+          STABLE_PUBLIC_KEY: ${{ vars.ANVIL_DESKTOP_UPDATE_PUBLIC_KEY }}
+          TEST_PUBLIC_KEY: ${{ vars.ANVIL_DESKTOP_TEST_UPDATE_PUBLIC_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$RELEASE_TAG" == desktop-test/* ]]; then
+            signing_key="$TEST_SIGNING_KEY"
+            public_key="$TEST_PUBLIC_KEY"
+            key_name=ANVIL_DESKTOP_TEST_UPDATE
+          else
+            signing_key="$STABLE_SIGNING_KEY"
+            public_key="$STABLE_PUBLIC_KEY"
+            key_name=ANVIL_DESKTOP_UPDATE
+          fi
+          test -n "$signing_key" || { echo "${key_name}_SIGNING_KEY is required for this release channel." >&2; exit 1; }
+          test -n "$public_key" || { echo "${key_name}_PUBLIC_KEY is required for this release channel." >&2; exit 1; }
+          printf 'SIGNING_KEY=%s\nUPDATE_PUBLIC_KEY=%s\n' "$signing_key" "$public_key" >> "$GITHUB_ENV"
       - name: Validate release signing key
         shell: bash
         run: |
           set -euo pipefail
-          test -n "$SIGNING_KEY" || { echo "ANVIL_DESKTOP_SIGNING_KEY is required." >&2; exit 1; }
+          test -n "$SIGNING_KEY" || { echo "Desktop update signing key is required for this release channel." >&2; exit 1; }
           test -n "$UPDATE_PUBLIC_KEY" || { echo "ANVIL_DESKTOP_UPDATE_PUBLIC_KEY is required." >&2; exit 1; }
       - name: Create checksums
         shell: bash
