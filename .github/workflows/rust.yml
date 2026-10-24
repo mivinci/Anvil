@@ -49,8 +49,18 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
       - name: Shell tests and clippy (need the Tauri system libraries)
         run: |
-          cargo test --locked -p anvil-shell
+          cargo test --locked -p anvil-shell -- --test-threads=1
           cargo clippy --locked -p anvil-shell --all-targets -- -D warnings
       - run: npm ci
       - run: npm run desktop:check
-      - run: npm run desktop:build
+      - name: Build Desktop bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./apps/shell/src-tauri/tauri.conf.json').version")"
+          if [[ "$version" == *-* ]]; then
+            cd apps/shell
+            npx tauri build --bundles deb
+          else
+            npm run desktop:build
+          fi
