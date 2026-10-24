@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-shell-report-app-startup-failure"
+description = "Enables the shell_report_app_startup_failure command without any pre-configured scope."
+commands.allow = ["shell_report_app_startup_failure"]
+
+[[permission]]
+identifier = "deny-shell-report-app-startup-failure"
+description = "Denies the shell_report_app_startup_failure command without any pre-configured scope."
+commands.deny = ["shell_report_app_startup_failure"]

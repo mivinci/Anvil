@@ -1,0 +1,240 @@
+name: CLI release
+
+on:
+  push:
+    tags:
+      - 'cli/v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cli-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+          - os: macos-15
+            target: aarch64-apple-darwin
+          - os: windows-2022
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      RELEASE_TAG: ${{ github.ref_name }}
+      ANVIL_RUNTIME_UPDATE_MANIFEST_URL: https://github.com/${{ github.repository }}/releases/download/runtime-updates/runtime-index.json
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure Runtime update public key
+        env:
+          PUBLIC_KEY: ${{ vars.ANVIL_RUNTIME_UPDATE_PUBLIC_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$PUBLIC_KEY" || { echo "ANVIL_RUNTIME_UPDATE_PUBLIC_KEY is required." >&2; exit 1; }
+          printf 'ANVIL_RUNTIME_UPDATE_PUBLIC_KEY=%s\n' "$PUBLIC_KEY" >> "$GITHUB_ENV"
+      - name: Verify workspace version matches release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#cli/v}"
+          manifest_version="$(sed -n '/^\[workspace\.package\]/,/^\[/p' Cargo.toml | sed -n 's/^version = "\(.*\)"/\1/p')"
+          if [ -z "$manifest_version" ] || [ "$manifest_version" != "$version" ]; then
+            echo "Release tag '$RELEASE_TAG' does not match workspace version '${manifest_version}'" >&2
+            exit 1
+          fi
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.target }}
+      - name: Build CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$ANVIL_RUNTIME_UPDATE_PUBLIC_KEY"
+          cargo build --locked --release -p anvil --target ${{ matrix.target }}
+      - name: Verify binary version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#cli/v}"
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            binary="target/${{ matrix.target }}/release/anvil.exe"
+          else
+            binary="target/${{ matrix.target }}/release/anvil"
+          fi
+          actual="$("$binary" --version)"
+          if [ "$actual" != "anvil $version" ]; then
+            echo "Binary reports '$actual', expected 'anvil $version'" >&2
+            exit 1
+          fi
+      - name: Package Unix archive
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#*/v}"
+          name="anvil-${version}-${{ matrix.target }}"
+          mkdir -p dist/staging
+          cp "target/${{ matrix.target }}/release/anvil" dist/staging/
+          cp LICENSE README.md dist/staging/
+          tar -czf "dist/${name}.tar.gz" -C dist/staging .
+          cp "target/${{ matrix.target }}/release/anvil" "dist/${name}"
+      - name: Package Windows archive
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = $env:RELEASE_TAG -replace '^cli/v', ''
+          $name = "anvil-$version-${{ matrix.target }}"
+          New-Item -ItemType Directory -Path dist/staging -Force | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/anvil.exe" dist/staging/
+          Copy-Item LICENSE dist/staging/
+          Copy-Item README.md dist/staging/
+          Compress-Archive -Path dist/staging/* -DestinationPath "dist/$name.zip"
+          Copy-Item "target/${{ matrix.target }}/release/anvil.exe" "dist/$name.exe"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: anvil-${{ matrix.target }}
+          path: dist/anvil-*
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Publish GitHub release
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Create checksums
+        run: cd dist && sha256sum anvil-* > SHA256SUMS
+      - name: Select Runtime update signing key
+        env:
+          SIGNING_KEY: ${{ secrets.ANVIL_RUNTIME_SIGNING_KEY }}
+          PUBLIC_KEY: ${{ vars.ANVIL_RUNTIME_UPDATE_PUBLIC_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$SIGNING_KEY" || { echo "ANVIL_RUNTIME_SIGNING_KEY is required." >&2; exit 1; }
+          test -n "$PUBLIC_KEY" || { echo "ANVIL_RUNTIME_UPDATE_PUBLIC_KEY is required." >&2; exit 1; }
+          printf 'SIGNING_KEY=%s\nUPDATE_PUBLIC_KEY=%s\n' "$SIGNING_KEY" "$PUBLIC_KEY" >> "$GITHUB_ENV"
+      - name: Create signed runtime index
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#cli/v}"
+          runner_binary="dist/anvil-${version}-x86_64-unknown-linux-gnu"
+          chmod +x "$runner_binary"
+          test "$(./"$runner_binary" --version)" = "anvil $version"
+          api_version="$(./"$runner_binary" --serve-api-version)"
+          python3 -m pip install --disable-pip-version-check pynacl
+          SIGNING_KEY="$SIGNING_KEY" RELEASE_VERSION="$version" API_VERSION="$api_version" \
+          UPDATE_PUBLIC_KEY="$UPDATE_PUBLIC_KEY" \
+          python3 .github/scripts/sign_runtime_index.py dist
+      - name: Create latest index
+        shell: python3 {0}
+        run: |
+          import hashlib
+          import json
+          import os
+          from urllib.parse import quote
+
+          tag = os.environ["RELEASE_TAG"]
+          version = tag.split("/v", 1)[1]
+          repo = os.environ["GITHUB_REPOSITORY"]
+          entries = sorted(os.listdir("dist"))
+          targets = {}
+          for name in entries:
+              if not name.startswith(f"anvil-{version}-"):
+                  continue
+              target = None
+              archive_format = None
+              for suffix in (".tar.gz", ".zip"):
+                  if name.endswith(suffix):
+                      target = name[: -len(suffix)].removeprefix(f"anvil-{version}-")
+                      archive_format = suffix.removeprefix(".")
+                      break
+              if target is None:
+                  continue
+              with open(os.path.join("dist", name), "rb") as f:
+                  digest = hashlib.sha256(f.read()).hexdigest()
+              targets[target] = {
+                  "archive": name,
+                  "archive_format": archive_format,
+                  "sha256": digest,
+                  "url": f"https://github.com/{repo}/releases/download/{quote(tag, safe='')}/{name}",
+              }
+          if not targets:
+              raise SystemExit("no archives found for latest index")
+          index = {
+              "version": version,
+              "tag": tag,
+              "targets": targets,
+          }
+          with open("dist/latest.json", "w", encoding="utf-8") as f:
+              json.dump(index, f, indent=2, sort_keys=True)
+              f.write("\n")
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#cli/v}"
+          title="Anvil CLI v$version"
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            test "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = true || {
+              echo "Release already published; assets are immutable."
+              exit 1
+            }
+          else
+            gh release create "$RELEASE_TAG" --draft --verify-tag --generate-notes --title "$title"
+          fi
+          gh release upload "$RELEASE_TAG" dist/anvil-* dist/SHA256SUMS dist/runtime-index.json dist/latest.json --clobber
+          if [[ "$version" == *-* ]]; then
+            gh release edit "$RELEASE_TAG" --draft=false --prerelease
+          else
+            gh release edit "$RELEASE_TAG" --draft=false --latest
+          fi
+      - name: Update Runtime feed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          feed_tag=runtime-updates
+          title="Anvil Runtime update feed"
+          if ! gh release view "$feed_tag" >/dev/null 2>&1; then
+            gh release create "$feed_tag" \
+              --draft \
+              --prerelease \
+              --target "$GITHUB_SHA" \
+              --title "$title" \
+              --notes "Mutable signed Runtime update index. Do not use as an installer release."
+          fi
+          gh release upload "$feed_tag" dist/runtime-index.json --clobber
+          gh release edit "$feed_tag" --draft=false --prerelease

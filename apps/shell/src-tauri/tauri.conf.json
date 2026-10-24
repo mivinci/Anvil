@@ -1,0 +1,66 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Anvil",
+  "version": "0.1.4-alpha.1",
+  "identifier": "app.q2q.anvil",
+  "build": {
+    "beforeDevCommand": "npm run desktop:package && npm run dev --workspace @anvil/desktop",
+    "beforeBuildCommand": "npm run desktop:package",
+    "devUrl": "http://127.0.0.1:5173",
+    "frontendDist": "../bootstrap"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Anvil",
+        "url": "anvil-app://localhost/",
+        "width": 900,
+        "height": 620,
+        "minWidth": 900,
+        "minHeight": 620,
+				"windowEffects": {
+          "effects": ["liquidGlassRegular", "underWindowBackground"],
+					"state": "followsWindowActiveState"
+				}
+      }
+    ],
+    "security": {
+      "csp": {
+        "default-src": "'self'",
+        "base-uri": "'self'",
+        "connect-src": "ipc: http://ipc.localhost http://127.0.0.1:*",
+        "font-src": "'self' asset: http://asset.localhost data:",
+        "img-src": "'self' asset: http://asset.localhost data: blob: https:",
+        "object-src": "'none'",
+        "script-src": "'self'",
+        "style-src": "'self' 'unsafe-inline'",
+        "form-action": "'self'"
+      },
+      "devCsp": {
+        "default-src": "'self'",
+        "base-uri": "'self'",
+        "connect-src": "ipc: http://ipc.localhost http://127.0.0.1:5173 ws://127.0.0.1:5173 http://127.0.0.1:*",
+        "font-src": "'self' asset: http://asset.localhost data:",
+        "img-src": "'self' asset: http://asset.localhost data: blob: https:",
+        "object-src": "'none'",
+        "script-src": "'self'",
+        "style-src": "'self' 'unsafe-inline'",
+        "form-action": "'self'"
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": {
+      "../../desktop/baseline/": "baseline/"
+    }
+  }
+}
