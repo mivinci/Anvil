@@ -64,7 +64,7 @@ sequenceDiagram
 
 ### Shell IPC
 
-前端在 `apps/desktop/src/lib/shell.ts` 集中封装 `shell_get_app_info`、`shell_get_update_status`、`shell_check_for_updates`、`shell_get_runtime_status` 和 `shell_get_runtime_connection`。更新状态使用明确的状态查询；更新器尚未实现时返回 `not_configured`。连接引导只在 Runtime ready 时返回 loopback 地址、当前 API 版本和本次会话凭据；它只提供连接信息，不代理业务方法。
+前端在 `apps/desktop/src/lib/shell.ts` 集中封装 `shell_get_app_info`、`shell_get_update_status`、`shell_check_for_updates`、`shell_get_runtime_status` 和 `shell_get_runtime_connection`。`shell_check_for_updates` 同时触发 Desktop 包与 Shell 版本检查，默认未配置对应 feed 的更新状态返回 `not_configured`。Shell 更新只暴露经签名清单验证的 release page，点击后由用户选取本机安装器重新安装。连接引导只在 Runtime ready 时返回 loopback 地址、当前 API 版本和本次会话凭据；它只提供连接信息，不代理业务方法。
 
 五个 Shell 命令只允许主 WebView 调用：构建时为命令生成 ACL 权限，并通过只匹配 `main` 且没有远程 URL 的 capability 授权；命令也校验窗口 label 和本地 Shell/dev origin。Shell IPC 不接受页面指定的 App ID、程序路径、URL 或任意系统操作。命令按创建该 WebView 时绑定的 App 身份工作；IPC 类型与兼容范围属于 Shell Runtime API。
 
@@ -133,7 +133,7 @@ Shell 与 App 包是两个更新单元：
 
 每个 App 包内的 manifest 包含 schema 版本、稳定 App ID、App 版本、目标平台、页面入口、sidecar 相对路径、App HTTP API 版本和 Shell IPC 兼容范围。独立的签名发布清单包含 stable 通道、目标版本、包 HTTPS URL、压缩包大小和 SHA-256；Shell 构建时嵌入发行公钥，只接受 Ed25519 签名。下载器复用锁定版本的 `q2q-http`，将压缩包和恢复记录保存在 `staging/update-<version>/`。摘要通过后，Shell 将 tar.gz 解包到临时版本目录，拒绝绝对路径、路径穿越、大小写冲突、符号链接、其他非普通文件和超预算文件，再校验包内 manifest、目标平台、API 兼容范围及入口。只有验证完整后才发布不可变版本并在 `state.json` 中原子设置待启用版本；活动版本保持不变。
 
-发行构建用 `ANVIL_UPDATE_MANIFEST_URL` 与 `ANVIL_UPDATE_PUBLIC_KEY` 配置 HTTPS 更新清单和 32 字节 Ed25519 公钥，必须同时提供。发布 JSON 的 envelope 使用 `payload`（发布 JSON 原始 UTF-8 字节的十六进制编码）和 `signature`（对这些原始字节的 Ed25519 签名十六进制编码）。默认仓库构建未配置这两个值，更新功能会返回 `not_configured`。目前通道固定为 stable；beta 通道、密钥轮换与撤销策略待正式发布流程确定。
+发行构建用 `ANVIL_UPDATE_MANIFEST_URL` 与 `ANVIL_UPDATE_PUBLIC_KEY` 配置 HTTPS 更新清单和 32 字节 Ed25519 公钥，必须同时提供。发布 JSON 的 envelope 使用 `payload`（发布 JSON 原始 UTF-8 字节的十六进制编码）和 `signature`（对这些原始字节的 Ed25519 签名十六进制编码）。默认仓库构建未配置这两个值，更新功能会返回 `not_configured`。所有发行共用一个更新 feed；alpha/test/rc 以 SemVer 预发布后缀区分，稳定客户端拒绝预发布版本，预发布客户端按 SemVer 顺序更新并可升级到稳定版。密钥轮换与撤销策略仍待正式发布流程确定。
 
 更新按以下流程生效：
 

@@ -40,19 +40,26 @@ ANVIL_UPDATE_PUBLIC_KEY=<32-byte-ed25519-public-key-in-hex> \
 
 更新清单是 JSON envelope：`payload` 是 UTF-8 发布 JSON 的十六进制编码，`signature` 是对 payload 原始字节做 Ed25519 签名后的十六进制值。发布 JSON 包含 schema 版本、`stable` 通道、App ID、SemVer 版本、目标 triple、HTTPS 包 URL、压缩包大小与 SHA-256。包是以 `manifest.json`、`web/`、`runtime/` 为根的 tar.gz。压缩包上限为 1 GiB，解包后上限为 100,000 个文件和 2 GiB。
 
-Desktop 发布由 `.github/workflows/desktop-release.yml` 负责。推送 `desktop/vX.Y.Z` 会构建并发布 stable 安装包，推送 `desktop-test/vX.Y.Z` 会发布隔离的测试版及测试更新源；两者都要求 Tauri 配置和所有平台 App manifest 的版本与 tag 一致。工作流将 stable/test 的更新清单分别维护在 `desktop-updates-stable`、`desktop-updates-test` release tag 下，测试包只读取测试清单。Runtime/CLI 使用独立版本号和 `cli/vX.Y.Z` 发布流程。
+Desktop 发布由 `.github/workflows/desktop-release.yml` 负责。推送 `desktop/vX.Y.Z` 会构建并发布安装包；预发布可使用 `desktop/vX.Y.Z-alpha.N`、`desktop/vX.Y.Z-test.N` 或 `desktop/vX.Y.Z-rc.N`，仍发布到同一更新 feed。stable 客户端不会更新到任何带预发布后缀的版本；预发布客户端按 SemVer 顺序接收更新，并可更新到 stable。Windows MSI 不支持文字型预发布标识，因此 Windows 预发布只打 NSIS 包；稳定版仍打 MSI 和 NSIS。所有发布都要求 Tauri 配置和所有平台 App manifest 的版本与 tag 一致。Runtime/CLI 使用独立版本号和唯一 `runtime-updates` feed，通过 `cli/vX.Y.Z[-prerelease]` 发布。
 
 仓库需要配置以下 GitHub Actions 密钥和变量：
 
-- Secret `ANVIL_DESKTOP_UPDATE_SIGNING_KEY` 与 Variable `ANVIL_DESKTOP_UPDATE_PUBLIC_KEY`：Desktop stable 更新签名密钥对。
+- Secret `ANVIL_DESKTOP_TEST_UPDATE_SIGNING_KEY` 与 Variable `ANVIL_DESKTOP_TEST_UPDATE_PUBLIC_KEY`：当前唯一的 Desktop 与 Shell 更新签名密钥对（名称沿用此前测试版配置；不再区分 stable/test）。
 - Secret `ANVIL_RUNTIME_SIGNING_KEY` 与 Variable `ANVIL_RUNTIME_UPDATE_PUBLIC_KEY`：Runtime 更新签名密钥对。
-- Secret `ANVIL_DESKTOP_TEST_UPDATE_SIGNING_KEY` 与 Variable `ANVIL_DESKTOP_TEST_UPDATE_PUBLIC_KEY`：Desktop 测试版专用密钥对；测试发布只读写 `desktop-updates-test` feed。
 
-生成 Runtime 密钥对可运行 `cargo run -p anvil --example gen_update_key`。其他通道可将 Secret 和 Variable 名称作为参数传入，例如 `cargo run -p anvil --example gen_update_key -- ANVIL_DESKTOP_TEST_UPDATE_SIGNING_KEY ANVIL_DESKTOP_TEST_UPDATE_PUBLIC_KEY`。私钥只存 GitHub Actions Secret，公钥存 Variable；不要把私钥写入仓库或日志。
+生成 Runtime 密钥对可运行 `cargo run -p anvil --example gen_update_key`。私钥只存 GitHub Actions Secret，公钥存 Variable；不要把私钥写入仓库或日志。
 
-`cli/vX.Y.Z` 发布会将签名的 Runtime 索引更新到固定的 `runtime-updates` feed。发布脚本在签名前检查私钥与公钥匹配；缺少配置时会让发行失败，不会悄悄生成无法自更新的正式包。默认本地构建仍不注入发行密钥，更新状态会显示 `not_configured`。更新状态、进度、检查与取消均通过受限 Shell IPC 暴露。
+`cli/vX.Y.Z` 发布会将签名的 Runtime 索引更新到固定的 `runtime-updates` feed。发布脚本在签名前检查私钥与公钥匹配；缺少配置时会让发行失败，不会悄悄生成无法自更新的正式包。默认本地构建仍不注入发行密钥，Runtime/App 更新状态会显示 `not_configured`。Desktop 包更新的状态、下载进度、检查与取消通过受限 Shell IPC 暴露；Shell 安装更新只查询版本并打开发布页，不在运行中替换宿主文件。
 
-测试发布时，先将 `tauri.conf.json` 和 `apps/desktop/manifests/*.json` 的 App 版本同步到新版本，确认对应的 Desktop Actions Variables/Secrets 已设置，再从包含这些改动的提交创建并推送 `desktop-test/vX.Y.Z` tag。验收测试包时使用隔离的数据目录；测试包只读写 `desktop-updates-test` feed，不会推进 stable feed。验证通过后，可从同一提交发布 `desktop/vX.Y.Z`。
+## Shell 重装更新
+
+发行 Shell 在启动时检查按 target 签名的 Shell 更新清单，运行期间每小时尝试一次，持久时间戳限制周期检查为每 24 小时最多请求一次；About 页面可手动立即检查。Dev 启动不自动检查，默认也没有发行 feed；只有显式配置 URL 和公钥后，About 的手动检查才会请求该 feed。所有版本共用 `shell-updates-stable` feed，清单由唯一 Desktop 更新签名密钥签署，并固定 Shell 产品 ID、Tauri 包版本、目标 triple 与 GitHub release 页面。稳定版本忽略带预发布后缀的更新；预发布版本按 SemVer 顺序接收更新。前端只能打开经签名清单验证的版本页面。
+
+用户点击 nav 的 Shell 更新按钮后，系统浏览器会打开该发行版页面。用户下载与原安装方式匹配的 Windows MSI/NSIS、macOS DMG 或 Linux 软件包并重新安装；安装完成后重新打开 Anvil。Shell 不会自行选择安装器或执行特权安装。默认本地构建未配置 Shell 更新 feed 时显示 `not_configured`。
+
+Shell 更新构建使用 `ANVIL_SHELL_UPDATE_MANIFEST_URL` 和 `ANVIL_SHELL_UPDATE_PUBLIC_KEY`；release workflow 始终注入唯一 feed 与 Desktop 更新公钥。
+
+预发布时，先将 `tauri.conf.json` 和 `apps/desktop/manifests/*.json` 的 App 版本同步到新 SemVer（例如 `0.1.4-alpha.0`），本地构建可指向 `shell-updates-stable` 检查；再将发行版本递增（例如 `0.1.4-alpha.1`），从包含这些改动的提交创建并推送 `desktop/v0.1.4-alpha.1`。正式版本去掉预发布后缀（例如 `0.1.4`），仍使用同一 feed。稳定安装不会收到 alpha/test/rc 更新。
 
 ## Shell IPC
 

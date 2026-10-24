@@ -1,6 +1,6 @@
 # Anvil Shell 执行清单
 
-状态：第 1–9 项已完成。第 10 项已恢复推进：跨平台 Desktop 发行工作流和 stable/test 签名更新 feed 已加入，尚未完成本地发行构建、真实 GitHub 测试发布和各平台 WebView/回滚 smoke。设计决策见 [Anvil Shell 设计草案](shell-design.md)。
+状态：第 1–9 项已完成。第 10 项已恢复推进：跨平台 Desktop 发行工作流和签名更新 feed 已加入，正在收敛为单 feed + SemVer 预发布版本，待完成 alpha 自测发布及各平台 WebView/回滚 smoke。设计决策见 [Anvil Shell 设计草案](shell-design.md)。
 
 ## 范围与既定约定
 
@@ -27,7 +27,7 @@
 
 ### 3. [x] 实现本地 App 存储与版本状态
 
-**交付：** `anvil-shell::app_storage` 使用系统应用数据目录，并可按 App ID 隔离版本目录与 schema 2 状态文件；可读取并迁移 schema 1 状态。状态原子记录活动版本、待启用版本、上一个健康版本、启动确认标记和失败版本。版本先写入同一 App 目录下的 staging，再原子发布到版本目录；发布后的版本不可由存储 API 覆盖，并通过只读文件句柄解析包内文件。
+**交付：** `anvil-shell::app_storage` 使用系统应用数据目录（由 Tauri `identifier` 派生），首次启动将旧 `mivinci/Anvil` 根目录安全迁入；并可按 App ID 隔离版本目录与 schema 2 状态文件，可读取并迁移 schema 1 状态。状态原子记录活动版本、待启用版本、上一个健康版本、启动确认标记和失败版本。版本先写入同一 App 目录下的 staging，再原子发布到版本目录；发布后的版本不可由存储 API 覆盖，并通过只读文件句柄解析包内文件。
 
 **验收：** 当前 `apps/shell/tests/app_storage.rs` 的 13 项本地集成测试覆盖初次无状态与 App 隔离、活动/待启用/上一个健康版本解析、schema 1 迁移、损坏和缺失版本状态拒绝、原子写入失败、版本不可覆盖、路径穿越/绝对路径拒绝，以及发布与读取期间的符号链接和越界路径拒绝。第 4 项的本地协议现已读取活动版本；首次安装内置包仍属于第 7 项。
 
@@ -69,10 +69,16 @@
 
 ### 10. [ ] 完成桌面发行与平台验收
 
-**交付：** `.github/workflows/desktop-release.yml` 以 `desktop/v*` 和 `desktop-test/v*` 触发 Windows x64、macOS Intel/Apple Silicon 与 Linux x64 构建，打包 Shell、默认 App 和 signed update metadata；stable 与 test 使用不同的固定更新 feed。Runtime `cli/v*` 发布同步维护 `runtime-updates` 签名索引。发行前检查 Tauri/App manifest 版本与 tag 一致，并验证签名私钥/公钥配对。
+**交付：** `.github/workflows/desktop-release.yml` 以 `desktop/v*` 触发 Windows x64、macOS Intel/Apple Silicon 与 Linux x64 构建，打包 Shell、默认 App 和 signed update metadata；Desktop 与 Shell 共用唯一更新 feed。稳定版本使用 `X.Y.Z`，预发布使用 SemVer 后缀（如 `X.Y.Z-alpha.N`、`X.Y.Z-test.N`、`X.Y.Z-rc.N`），同样发布到该 feed。Runtime `cli/v*` 发布同步维护唯一 `runtime-updates` 签名索引。稳定版本拒绝自动更新到预发布版本；预发布版本按 SemVer 顺序更新，并可升级到 stable。发行前检查产品版本与 tag 一致，并验证签名密钥配对。
 
-**验收：** 2026-10-24 本机 Windows `npm run desktop:check` 通过（0 errors/0 warnings），`npm run desktop:package` 成功生成 `x86_64-pc-windows-msvc` 基线包；打包脚本重复生成得到相同 SHA-256，tar.gz 含 74 个文件及 `manifest.json`、静态页面和 sidecar。为验证从 0.1.0 升级，Tauri 与全部 6 份 App manifest 已同步准备为 Desktop 0.1.1。`npm run desktop:build` 成功生成 0.1.1 MSI（11.28 MiB）和 NSIS 安装器（7.68 MiB）；安装器收集脚本已识别两个产物。完整 `cargo test --locked --offline -p anvil-shell -p anvil` 通过（58 项；测试期间有 4 条既有 unused-import 警告）。真实 GitHub 测试发布 [Actions run 40080512492](https://github.com/mivinci/Anvil/actions/runs/40080512492) 成功构建并发布 Windows x64、macOS Intel/Apple Silicon 与 Linux x64 产物；四个平台更新清单的 Ed25519 签名均通过验证，且通过清单中的发布 URL 下载包后，大小与 SHA-256 均匹配。测试发布只更新 `desktop-updates-test` feed。仍待在隔离数据目录执行 Windows 安装升级、待启用/重启激活与失败回滚 smoke；未实测的平台只记录为待验证，不标记为已支持。Desktop stable 更新使用 Secret `ANVIL_DESKTOP_UPDATE_SIGNING_KEY` 与 Variable `ANVIL_DESKTOP_UPDATE_PUBLIC_KEY`；测试版使用隔离的 `ANVIL_DESKTOP_TEST_UPDATE_SIGNING_KEY` / `ANVIL_DESKTOP_TEST_UPDATE_PUBLIC_KEY`；Runtime 更新使用 Secret `ANVIL_RUNTIME_SIGNING_KEY` 与 Variable `ANVIL_RUNTIME_UPDATE_PUBLIC_KEY`。
+**验收：** 2026-10-24 本机 Windows `npm run desktop:check` 通过（0 errors/0 warnings），`npm run desktop:package` 和 `npm run desktop:build` 成功；0.1.3 MSI 为 11.31 MiB，NSIS 为 7.70 MiB。`cargo test --locked --offline -p anvil-shell` 通过（38 项；有 4 条既有 unused-import 警告）。测试发布 [Actions run 40091697113](https://github.com/mivinci/Anvil/actions/runs/40091697113) 成功构建并发布 Windows x64、macOS Intel/Apple Silicon 与 Linux x64 产物；历史版本 `desktop-test/v0.1.3` 曾更新独立测试 feed。Windows 更新包的签名清单 Ed25519 验证通过，下载包大小和 SHA-256 与清单匹配，包内 manifest 为 `anvil.desktop` 0.1.3。已在隔离 Windows 数据目录完成实际双重更新 smoke：Shell 重启后从包内 Runtime 0.1.0 切换到签名 feed 的 Runtime 0.1.4（API 1.0.0）；随后 Desktop 0.1.2 更新到 0.1.3，状态记录 `previous_healthy_version=0.1.2`、`pending_version=null`、`activation_in_progress=false` 且无失败，窗口响应正常，Runtime 仍运行于 sidecar-store 0.1.4。未实测的平台仍待平台 smoke，不据此宣称已支持；失败回滚仍待单独 smoke。当前发布流程已简化为单 feed，稳定版本不接收 SemVer 预发布，旧 test feed 仅作为历史产物保留。
+
+### 11. [ ] 实现 Shell 重装更新提示
+
+**交付：** Shell 的显示版本来自 Tauri 安装包版本。Shell 启动时检查按 target 签名的版本清单，运行期间每小时尝试、持久限频 24 小时；About 页面可手动立即检查。所有版本共用单一 `shell-updates-stable` feed，使用 Desktop 更新密钥并由 release workflow 自动签名发布。稳定 Shell 不显示 alpha/test/rc 预发布更新；预发布 Shell 按 SemVer 顺序更新，并可更新到稳定版本。清单绑定 `anvil-shell`、SemVer、target 和该版本 GitHub release 页面。更新按钮显示无文字的向上箭头，点击打开发布页；用户选择匹配原安装方式的平台安装器并重新安装。
+
+**验收：** Shell 更新清单拒绝错误签名、错误产品/target、非规范版本及非受信任 release URL；24 小时冷却与手动强制检查分离。默认本地构建显示 `not_configured`。Desktop release CI 为各平台生成并发布签名 Shell 清单；稳定版不提示任何预发布版本，预发布构建可提示较新的 SemVer 版本。Windows 隔离 smoke 确认新版提示、发布页打开及重装后 Shell 版本更新，用户数据与已激活 Desktop/Runtime 保持可用。未执行的其他平台安装 smoke 单独记录。
 
 ## 不纳入本轮
 
-移动端 App、第三方 App、多个 App 同时运行、Shell 自身的自动更新、账户与 Minecraft 业务接口、远程页面加载。桌面 sidecar 的产品业务实现按客户端/服务端自己的执行清单推进；本清单只要求 Shell 能托管和连接它。
+移动端 App、第三方 App、多个 App 同时运行、账户与 Minecraft 业务接口、远程页面加载。Shell 重装更新见第 11 项；桌面 sidecar 的产品业务实现按客户端/服务端自己的执行清单推进，本清单只要求 Shell 能托管和连接它。

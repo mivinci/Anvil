@@ -1,18 +1,25 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { isTauri } from '@tauri-apps/api/core';
-	import { Download } from '@lucide/svelte';
-	import { shell, type AppUpdateStatus } from '../shell';
+	import { ArrowUp, LoaderCircle } from '@lucide/svelte';
+	import NavButton from './nav-button.svelte';
+	import { shell, type AppUpdateStatus, type ShellUpdateStatus } from '../shell';
 
 	let status = $state<AppUpdateStatus | null>(null);
+	let shellUpdate = $state<ShellUpdateStatus | null>(null);
 	let runtimeVersion = $state<string | null>(null);
 	let restarting = $state(false);
 	let restartError = $state(false);
 	let refreshTimer: ReturnType<typeof setTimeout> | undefined;
 
-	const busy = $derived(status?.state === 'checking' || status?.state === 'downloading' || status?.state === 'verifying');
-	const updateReady = $derived(status?.state === 'staged' || runtimeVersion !== null);
-	const targetVersion = $derived(status?.state === 'staged' ? status.availableVersion : runtimeVersion);
+	const shellUpdateAvailable = $derived(shellUpdate?.state === 'available' && shellUpdate.releaseUrl !== null);
+	const busy = $derived(status?.state === 'checking' || status?.state === 'downloading' || status?.state === 'verifying' || shellUpdate?.state === 'checking');
+	const updateReady = $derived(status?.state === 'staged' || runtimeVersion !== null || shellUpdateAvailable);
+	const targetVersion = $derived(shellUpdateAvailable ? shellUpdate?.availableVersion : status?.state === 'staged' ? status.availableVersion : runtimeVersion);
+	const buttonTitle = $derived(restartError
+		? shellUpdateAvailable ? '无法打开 Shell 更新页，请重试' : '更新已准备好，重启失败，请重试'
+		: shellUpdateAvailable ? `Shell ${targetVersion ?? ''} 可用，打开发布页重新安装`
+		: `重启以更新到 ${targetVersion ?? '新版本'}`);
 	const progress = $derived(status?.totalBytes ? Math.min(100, status.downloadedBytes / status.totalBytes * 100) : 0);
 
 	async function refresh() {
@@ -20,9 +27,11 @@
 		try {
 			const [updates, runtime] = await Promise.all([shell.getUpdateStatus(), shell.getRuntimeStatus()]);
 			status = updates.app;
+			shellUpdate = updates.shell;
 			runtimeVersion = runtime.availableRuntimeVersion;
 		} catch {
 			status = null;
+			shellUpdate = null;
 			runtimeVersion = null;
 		}
 		refreshTimer = setTimeout(() => void refresh(), busy ? 900 : 60_000);
@@ -33,6 +42,11 @@
 		restarting = true;
 		restartError = false;
 		try {
+			if (shellUpdateAvailable && shellUpdate?.releaseUrl) {
+				await shell.openExternalUrl(shellUpdate.releaseUrl);
+				restarting = false;
+				return;
+			}
 			await shell.restartForUpdate();
 		} catch {
 			restartError = true;
@@ -49,22 +63,18 @@
 </script>
 
 {#if updateReady}
-	<button
-		type="button"
+	<NavButton
 		disabled={restarting}
-		aria-label={restartError ? '更新已准备好，重启失败，请重试' : `重启以更新到 ${targetVersion ?? '新版本'}`}
-		title={restartError ? '重启失败，请重试' : `重启以更新到 ${targetVersion ?? '新版本'}`}
+		aria-label={buttonTitle}
+		title={buttonTitle}
 		onclick={() => void restartForUpdate()}
-		class="relative flex w-10 flex-col items-center justify-center gap-0.5 rounded-lg border border-primary/25 bg-primary/10 px-1 py-1.5 text-primary shadow-sm transition-colors hover:bg-primary/15 focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-60"
+		class="border border-primary/25 bg-primary/10 text-primary shadow-sm hover:bg-primary/15 disabled:opacity-60"
 	>
-		<Download size={15} strokeWidth={1.9} aria-hidden="true" />
-		<span class="text-[9px] leading-3 font-semibold">{restarting ? '重启中' : '更新'}</span>
+		<ArrowUp size={18} strokeWidth={1.9} aria-hidden="true" />
 		<span class="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-primary ring-2 ring-background" aria-hidden="true"></span>
-	</button>
+	</NavButton>
 {:else if busy}
-	<div class="grid size-10 place-items-center rounded-lg text-primary" role="status" aria-label="正在准备应用更新" title="正在准备应用更新">
-		<div class="h-5 w-5 overflow-hidden rounded-md border border-primary/20 bg-primary/5">
-			<div class="h-full bg-primary/25 transition-[width]" style={`width:${progress}%`}></div>
-		</div>
+	<div class="grid size-9 place-items-center text-primary" role="status" aria-label={`正在准备更新${status?.totalBytes ? ` ${Math.round(progress)}%` : ''}`} title={`正在准备更新${status?.totalBytes ? ` ${Math.round(progress)}%` : ''}`}>
+		<LoaderCircle size={17} strokeWidth={1.8} class="animate-spin motion-reduce:animate-none" aria-hidden="true" />
 	</div>
 {/if}

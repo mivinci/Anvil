@@ -1,7 +1,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use anvil_shell::app_protocol::AppPageProtocol;
-use anvil_shell::{activation::AppActivation, runtime::RuntimeSupervisor, updater::UpdateService};
+use anvil_shell::{
+  activation::AppActivation, runtime::RuntimeSupervisor, shell_updater::ShellUpdateService,
+  updater::UpdateService,
+};
 #[cfg(not(dev))]
 use anvil_shell::{
   app_storage::{ActivationFailureReason, AppStorage},
@@ -44,6 +47,7 @@ fn main() {
     )
     .manage(RuntimeSupervisor::new())
     .manage(UpdateService::new())
+    .manage(ShellUpdateService::new())
     .setup(|app| {
       #[cfg(target_os = "windows")]
       if let Some(window) = app.get_webview_window("main") {
@@ -52,6 +56,10 @@ fn main() {
       let runtime = app.state::<RuntimeSupervisor>();
       #[cfg(not(dev))]
       let updates = app.state::<UpdateService>();
+      #[cfg(not(dev))]
+      let shell_updates = app.state::<ShellUpdateService>();
+      #[cfg(not(dev))]
+      shell_updates.start_background_checks();
       let activation = AppActivation::for_current_user();
       app.manage(activation.clone());
       // The Vite page and sidecar must come from the same source build. Installed
@@ -150,6 +158,7 @@ fn main() {
     if matches!(event, tauri::RunEvent::Exit) {
       app.state::<RuntimeSupervisor>().shutdown();
       app.state::<UpdateService>().shutdown();
+      app.state::<ShellUpdateService>().shutdown();
       tracing::info!(target: "anvil_shell", "Shell shutdown complete");
       // Tauri exits with process::exit after this callback, so RAII at the end
       // of main alone cannot guarantee flushing the asynchronous writer.

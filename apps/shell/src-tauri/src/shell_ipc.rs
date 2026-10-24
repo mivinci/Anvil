@@ -4,6 +4,7 @@ use crate::app_storage::AppStorage;
 use crate::runtime::{RuntimeConnection, RuntimeStatus, RuntimeSupervisor};
 #[cfg(test)]
 use crate::shell_commands::SHELL_COMMANDS;
+use crate::shell_updater::{ShellUpdateCheckOutcome, ShellUpdateService, ShellUpdateStatus};
 use crate::updater::{AppUpdateState, AppUpdateStatus, UpdateCheckOutcome, UpdateService};
 use serde::Serialize;
 use tauri::{Url, WebviewWindow};
@@ -11,6 +12,7 @@ use tauri::{Url, WebviewWindow};
 const DEFAULT_APP_ID: &str = env!("ANVIL_DEFAULT_APP_ID");
 const BUNDLED_APP_VERSION: &str = env!("ANVIL_BUNDLED_APP_VERSION");
 const TARGET_PLATFORM: &str = env!("ANVIL_TARGET_PLATFORM");
+const SHELL_VERSION: &str = env!("ANVIL_SHELL_VERSION");
 const SHELL_API_VERSION: &str = env!("ANVIL_SHELL_API_VERSION");
 
 #[derive(Debug, Clone, Serialize)]
@@ -26,15 +28,9 @@ pub struct AppInfo {
 }
 
 #[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ShellUpdateState {
-  NotConfigured,
-}
-
-#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateStatus {
-  pub shell: ShellUpdateState,
+  pub shell: ShellUpdateStatus,
   pub app: AppUpdateStatus,
 }
 
@@ -42,6 +38,7 @@ pub struct UpdateStatus {
 #[serde(rename_all = "camelCase")]
 pub struct UpdateCheckResult {
   pub outcome: UpdateCheckOutcome,
+  pub shell_outcome: ShellUpdateCheckOutcome,
 }
 
 #[derive(Serialize)]
@@ -122,7 +119,7 @@ pub fn shell_get_app_info(window: WebviewWindow) -> Result<AppInfo, String> {
     app_version,
     bundled_app_version: BUNDLED_APP_VERSION.to_owned(),
     target_platform: TARGET_PLATFORM.to_owned(),
-    shell_version: env!("CARGO_PKG_VERSION").to_owned(),
+    shell_version: SHELL_VERSION.to_owned(),
     shell_api_version: SHELL_API_VERSION.to_owned(),
   })
 }
@@ -131,10 +128,11 @@ pub fn shell_get_app_info(window: WebviewWindow) -> Result<AppInfo, String> {
 pub fn shell_get_update_status(
   window: WebviewWindow,
   updates: tauri::State<'_, UpdateService>,
+  shell_updates: tauri::State<'_, ShellUpdateService>,
 ) -> Result<UpdateStatus, String> {
   ensure_authorized_window(&window)?;
   Ok(UpdateStatus {
-    shell: ShellUpdateState::NotConfigured,
+    shell: shell_updates.status(),
     app: updates.status(),
   })
 }
@@ -143,10 +141,12 @@ pub fn shell_get_update_status(
 pub fn shell_check_for_updates(
   window: WebviewWindow,
   updates: tauri::State<'_, UpdateService>,
+  shell_updates: tauri::State<'_, ShellUpdateService>,
 ) -> Result<UpdateCheckResult, String> {
   ensure_authorized_window(&window)?;
   Ok(UpdateCheckResult {
     outcome: updates.check_for_updates_now(),
+    shell_outcome: shell_updates.check_for_updates_now(),
   })
 }
 

@@ -57,6 +57,10 @@ Shell 与 Runtime 入口共用 `anvil-logging`，开发模式写终端和文件�
 - Shell 给 sidecar 传 `ANVIL_SIDECAR_STORE_DIR` 与 `ANVIL_HTTP_API_COMPAT`；`serve` 的自更新器在编译期注入索引 URL 与 Ed25519 公钥（`ANVIL_RUNTIME_UPDATE_MANIFEST_URL`/`ANVIL_RUNTIME_UPDATE_PUBLIC_KEY`，缺失即禁用），24 小时限频拉取签名 `runtime-index.json`，按版本、API 范围、拉黑列表过滤，下载裸二进制经 sha256 与 `--version`/`--serve-api-version` 门禁后发布到 `versions/<ver>/` 并原子写 `current.json`，下次启动生效。
 - 校验强度与 Shell 的 App 更新通道对齐：Ed25519 签名索引 + HTTPS + 签名载荷钉死的 SHA-256。密钥经 `cargo run -p anvil --example gen_update_key` 生成，私钥存仓库 secret `ANVIL_RUNTIME_SIGNING_KEY`，公钥存仓库变量并在 release 构建时注入。
 
+## Shell 重装更新
+
+Shell 版本以 Tauri 安装包的 `tauri.conf.json` 版本为准，不使用 Rust crate 版本。Shell 数据根目录取 Tauri `identifier`（当前 `app.q2q.anvil`），并在首次启动时将旧 `mivinci/Anvil` 目录迁入；Desktop、Shell 与 Runtime 各使用唯一签名更新 feed。预发布通过 SemVer 后缀发布到同一 feed，stable 版本拒绝自动更新到预发布，预发布按 SemVer 顺序更新并可升级到 stable。清单绑定产品、SemVer、目标 triple 和对应 GitHub release 页面。Shell 只展示新版本并打开发布页，用户选择与当前安装方式匹配的安装器重新安装；Shell 不自动执行 MSI、NSIS、DMG、AppImage 或系统包。发行版每次启动检查，运行期间每小时尝试并由持久时间戳限频为 24 小时，About 页面允许手动检查；Dev 启动不自动检查。
+
 ## 下载与文件安全
 
 - Anvil 通过 git 分支依赖的 `q2q-http` 复用 Q2Q 提供的 HTTP Executor、并发下载、哈希校验和恢复能力（`Cargo.lock` 锁定精确提交）。不要另写 Range worker、重试队列或下载恢复格式。

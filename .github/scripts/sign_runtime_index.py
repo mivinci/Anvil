@@ -52,7 +52,7 @@ def main() -> int:
         print("GITHUB_REPOSITORY is not set", file=sys.stderr)
         return 1
     tag = os.environ.get("RELEASE_TAG", f"cli/v{version}")
-    if tag not in {f"cli/v{version}", f"cli-test/v{version}"}:
+    if tag != f"cli/v{version}":
         print(f"release tag does not match Runtime version {version}: {tag}", file=sys.stderr)
         return 1
 

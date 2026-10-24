@@ -279,6 +279,24 @@ fn update_check_timestamp_survives_reopening_the_store() -> Result<(), AppStorag
 }
 
 #[test]
+fn shell_update_check_timestamp_is_independent_and_survives_reopening()
+-> Result<(), AppStorageError> {
+  let temp = TempDir::new()?;
+  let store = store(&temp)?;
+  let checked_at = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_800_000_100);
+  assert_eq!(store.last_shell_update_check()?, None);
+  assert_eq!(store.last_update_check()?, None);
+  store.record_shell_update_check(checked_at)?;
+  assert_eq!(store.last_shell_update_check()?, Some(checked_at));
+  assert_eq!(store.last_update_check()?, None);
+
+  let reopened = AppStorage::open(temp.path().join("data"))?.app("anvil.desktop")?;
+  assert_eq!(reopened.last_shell_update_check()?, Some(checked_at));
+  assert_eq!(reopened.last_update_check()?, None);
+  Ok(())
+}
+
+#[test]
 fn update_download_staging_is_stable_until_cleared() -> Result<(), AppStorageError> {
   let temp = TempDir::new()?;
   let store = store(&temp)?;

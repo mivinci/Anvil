@@ -7,4 +7,5 @@ pub mod runtime;
 #[cfg(test)]
 pub(crate) mod shell_commands;
 pub mod shell_ipc;
+pub mod shell_updater;
 pub mod updater;

@@ -42,12 +42,23 @@ export interface AppUpdateStatus {
 }
 
 export interface UpdateStatus {
-	shell: 'not_configured';
+	shell: ShellUpdateStatus;
 	app: AppUpdateStatus;
+}
+
+export type ShellUpdateState = 'not_configured' | 'idle' | 'checking' | 'available' | 'up_to_date' | 'failed';
+
+export interface ShellUpdateStatus {
+	state: ShellUpdateState;
+	failure: 'storage_unavailable' | 'network' | 'invalid_signature' | 'invalid_release' | 'cancelled' | null;
+	currentVersion: string;
+	availableVersion: string | null;
+	releaseUrl: string | null;
 }
 
 export interface UpdateCheckResult {
 	outcome: 'started' | 'already_running' | 'recently_checked' | 'not_configured' | 'failed';
+	shellOutcome: 'started' | 'already_running' | 'recently_checked' | 'not_configured' | 'failed';
 }
 
 export interface RuntimeStatus {

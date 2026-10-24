@@ -12,7 +12,7 @@ def main() -> int:
         raise SystemExit("usage: validate_desktop_release.py RELEASE_TAG")
 
     tag = sys.argv[1]
-    match = re.fullmatch(r"desktop(?:-test)?/v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)", tag)
+    match = re.fullmatch(r"desktop/v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)", tag)
     if not match:
         raise SystemExit(f"invalid Desktop release tag: {tag}")
     tag_version = match.group(1)

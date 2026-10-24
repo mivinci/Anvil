@@ -24,6 +24,8 @@ fn configure_build() -> Result<(), String> {
     "ANVIL_APP_MANIFEST",
     "ANVIL_UPDATE_MANIFEST_URL",
     "ANVIL_UPDATE_PUBLIC_KEY",
+    "ANVIL_SHELL_UPDATE_MANIFEST_URL",
+    "ANVIL_SHELL_UPDATE_PUBLIC_KEY",
   ] {
     println!("cargo:rerun-if-env-changed={name}");
   }
@@ -43,6 +45,37 @@ fn configure_build() -> Result<(), String> {
 
   let default_app_id = env::var("ANVIL_DEFAULT_APP_ID").unwrap_or_else(|_| "anvil.desktop".into());
   let shell_api_version = env::var("ANVIL_SHELL_API_VERSION").unwrap_or_else(|_| "1.0.0".into());
+  let tauri_config_path = shell_manifest_dir.join("tauri.conf.json");
+  println!("cargo:rerun-if-changed={}", tauri_config_path.display());
+  let tauri_config: serde_json::Value =
+    serde_json::from_slice(&fs::read(&tauri_config_path).map_err(|error| {
+      format!(
+        "cannot read Tauri config {}: {error}",
+        tauri_config_path.display()
+      )
+    })?)
+    .map_err(|error| {
+      format!(
+        "invalid Tauri config {}: {error}",
+        tauri_config_path.display()
+      )
+    })?;
+  let shell_version = tauri_config
+    .get("version")
+    .and_then(serde_json::Value::as_str)
+    .ok_or_else(|| "Tauri config is missing a string version".to_owned())?;
+  let parsed_shell_version = semver::Version::parse(shell_version)
+    .map_err(|error| format!("invalid Shell version {shell_version}: {error}"))?;
+  if parsed_shell_version.to_string() != shell_version {
+    return Err(format!(
+      "Shell version is not canonical SemVer: {shell_version}"
+    ));
+  }
+  let shell_identifier = tauri_config
+    .get("identifier")
+    .and_then(serde_json::Value::as_str)
+    .filter(|identifier| !identifier.trim().is_empty())
+    .ok_or_else(|| "Tauri config is missing a non-empty identifier".to_owned())?;
   let manifest_path = env::var_os("ANVIL_APP_MANIFEST")
     .map(PathBuf::from)
     .unwrap_or_else(|| shell_manifest_dir.join(format!("../../desktop/manifests/{target}.json")));
@@ -70,9 +103,47 @@ fn configure_build() -> Result<(), String> {
   );
   println!("cargo:rustc-env=ANVIL_TARGET_PLATFORM={target}");
   println!("cargo:rustc-env=ANVIL_SHELL_API_VERSION={shell_api_version}");
+  println!("cargo:rustc-env=ANVIL_SHELL_VERSION={shell_version}");
+  println!("cargo:rustc-env=ANVIL_SHELL_IDENTIFIER={shell_identifier}");
   configure_update_source()?;
+  configure_shell_update_source()?;
 
   Ok(())
+}
+
+fn configure_shell_update_source() -> Result<(), String> {
+  let manifest_url = env::var("ANVIL_SHELL_UPDATE_MANIFEST_URL").ok();
+  let public_key = env::var("ANVIL_SHELL_UPDATE_PUBLIC_KEY").ok();
+  match (manifest_url, public_key) {
+    (None, None) => Ok(()),
+    (Some(manifest_url), Some(public_key)) => {
+      let parsed = url::Url::parse(&manifest_url)
+        .map_err(|error| format!("invalid ANVIL_SHELL_UPDATE_MANIFEST_URL: {error}"))?;
+      if parsed.scheme() != "https"
+        || parsed.host_str().is_none()
+        || !parsed.username().is_empty()
+        || parsed.password().is_some()
+        || parsed.fragment().is_some()
+      {
+        return Err(
+          "ANVIL_SHELL_UPDATE_MANIFEST_URL must be HTTPS without credentials or a fragment"
+            .into(),
+        );
+      }
+      if public_key.len() != 64 || !public_key.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(
+          "ANVIL_SHELL_UPDATE_PUBLIC_KEY must be a 32-byte Ed25519 public key in hex".into(),
+        );
+      }
+      println!("cargo:rustc-env=ANVIL_SHELL_UPDATE_MANIFEST_URL={manifest_url}");
+      println!("cargo:rustc-env=ANVIL_SHELL_UPDATE_PUBLIC_KEY={public_key}");
+      Ok(())
+    }
+    _ => Err(
+      "ANVIL_SHELL_UPDATE_MANIFEST_URL and ANVIL_SHELL_UPDATE_PUBLIC_KEY must be configured together"
+        .into(),
+    ),
+  }
 }
 
 fn configure_update_source() -> Result<(), String> {

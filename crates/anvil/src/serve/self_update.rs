@@ -148,7 +148,7 @@ pub(super) fn plan_update(
     .map_err(|_| "the runtime cannot parse its own version".to_owned())?;
   let candidate = Version::parse(&index.version)
     .map_err(|_| format!("index version {:?} is invalid", index.version))?;
-  if candidate <= current {
+  if !should_offer_update(&current, &candidate) {
     return Ok(None);
   }
   if !environment
@@ -186,6 +186,10 @@ pub(super) fn plan_update(
     sha256: target.sha256.to_ascii_lowercase(),
     size: target.size,
   }))
+}
+
+fn should_offer_update(current: &Version, candidate: &Version) -> bool {
+  candidate > current && (!current.pre.is_empty() || candidate.pre.is_empty())
 }
 
 // --- installation ---
@@ -729,6 +733,27 @@ mod tests {
     )
     .unwrap();
     assert!(plan_update(&environment, &index).unwrap().is_none());
+  }
+
+  #[test]
+  fn stable_runtimes_skip_prereleases_and_prereleases_follow_semver() {
+    let parse = |version: &str| Version::parse(version).unwrap();
+    assert!(!should_offer_update(
+      &parse("0.1.0"),
+      &parse("0.2.0-alpha.1")
+    ));
+    assert!(should_offer_update(
+      &parse("0.2.0-alpha.1"),
+      &parse("0.2.0-alpha.2")
+    ));
+    assert!(should_offer_update(
+      &parse("0.2.0-alpha.2"),
+      &parse("0.2.0")
+    ));
+    assert!(!should_offer_update(
+      &parse("0.2.0-alpha.2"),
+      &parse("0.2.0-alpha.1")
+    ));
   }
 
   #[test]

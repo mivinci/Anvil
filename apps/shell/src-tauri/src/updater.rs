@@ -413,7 +413,7 @@ async fn run_update_check(
   let initial_state = store.state().map_err(|_| UpdateError::Storage)?;
   let current_version = initial_state.active_version.clone();
   update_status(&inner, |status| {
-    status.available_version = Some(release.version.to_string());
+    status.available_version = None;
     status.current_version = current_version.as_ref().map(ToString::to_string);
   });
 
@@ -451,6 +451,20 @@ async fn run_update_check(
     });
     return Ok(());
   }
+  let policy_current_version = current_version.as_ref().cloned().unwrap_or_else(|| {
+    Version::parse(env!("ANVIL_BUNDLED_APP_VERSION")).expect("validated by build")
+  });
+  if !should_offer_update(&policy_current_version, &release.version) {
+    update_status(&inner, |status| {
+      status.state = AppUpdateState::UpToDate;
+      status.available_version = None;
+      status.failure = None;
+    });
+    return Ok(());
+  }
+  update_status(&inner, |status| {
+    status.available_version = Some(release.version.to_string());
+  });
   update_status(&inner, |status| {
     status.state = AppUpdateState::Downloading;
     status.failure = None;
@@ -533,6 +547,10 @@ async fn run_update_check(
     status.failure = None;
   });
   Ok(())
+}
+
+fn should_offer_update(current: &Version, candidate: &Version) -> bool {
+  candidate > current && (!current.pre.is_empty() || candidate.pre.is_empty())
 }
 
 async fn download_package(
@@ -1043,6 +1061,27 @@ mod tests {
       Some(now - UPDATE_INTERVAL),
       now,
       false
+    ));
+  }
+
+  #[test]
+  fn stable_apps_skip_prereleases_and_prereleases_follow_semver() {
+    let parse = |version: &str| Version::parse(version).unwrap();
+    assert!(!should_offer_update(
+      &parse("0.1.0"),
+      &parse("0.2.0-alpha.1")
+    ));
+    assert!(should_offer_update(
+      &parse("0.2.0-alpha.1"),
+      &parse("0.2.0-alpha.2")
+    ));
+    assert!(should_offer_update(
+      &parse("0.2.0-alpha.2"),
+      &parse("0.2.0")
+    ));
+    assert!(!should_offer_update(
+      &parse("0.2.0-alpha.2"),
+      &parse("0.2.0-alpha.1")
     ));
   }
 

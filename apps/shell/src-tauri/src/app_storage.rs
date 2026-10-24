@@ -1,5 +1,5 @@
 use crate::app_manifest::validate_app_id;
-use directories::ProjectDirs;
+use directories::{BaseDirs, ProjectDirs};
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
@@ -43,6 +43,8 @@ pub enum AppStorageError {
   UnsupportedEntry(PathBuf),
   #[error("App data directory is unavailable")]
   DataDirectoryUnavailable,
+  #[error("legacy and current App data directories conflict at {0}")]
+  DataDirectoryMigrationConflict(PathBuf),
   #[error("ANVIL_SHELL_DATA_DIR must be an absolute path")]
   InvalidDataDirectory,
   #[error(transparent)]
@@ -84,9 +86,17 @@ impl AppStorage {
       return Self::open(path);
     }
 
-    let project_dirs = ProjectDirs::from("com", "mivinci", "Anvil")
-      .ok_or(AppStorageError::DataDirectoryUnavailable)?;
-    Self::open(project_dirs.data_local_dir())
+    let base_dirs = BaseDirs::new().ok_or(AppStorageError::DataDirectoryUnavailable)?;
+    let data_dir = base_dirs
+      .data_local_dir()
+      .join(env!("ANVIL_SHELL_IDENTIFIER"));
+    if let Some(legacy_dirs) = ProjectDirs::from("com", "mivinci", "Anvil") {
+      let legacy_dir = legacy_dirs.data_local_dir();
+      if legacy_dir != data_dir {
+        migrate_legacy_data_directory(legacy_dir, &data_dir)?;
+      }
+    }
+    Self::open(data_dir)
   }
 
   pub fn data_dir(&self) -> &Path {
@@ -110,6 +120,73 @@ impl AppStorage {
       app_dir,
     })
   }
+}
+
+fn migrate_legacy_data_directory(
+  legacy_dir: &Path,
+  data_dir: &Path,
+) -> Result<(), AppStorageError> {
+  let legacy_metadata = match fs::symlink_metadata(legacy_dir) {
+    Ok(metadata) => metadata,
+    Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+    Err(error) => return Err(error.into()),
+  };
+  if legacy_metadata.file_type().is_symlink() {
+    return Err(AppStorageError::SymbolicLink(legacy_dir.to_path_buf()));
+  }
+  if !legacy_metadata.is_dir() {
+    return Err(AppStorageError::NotDirectory(legacy_dir.to_path_buf()));
+  }
+
+  match fs::symlink_metadata(data_dir) {
+    Ok(metadata) if metadata.file_type().is_symlink() => {
+      return Err(AppStorageError::SymbolicLink(data_dir.to_path_buf()));
+    }
+    Ok(metadata) if !metadata.is_dir() => {
+      return Err(AppStorageError::NotDirectory(data_dir.to_path_buf()));
+    }
+    Ok(_) => merge_directory_contents(legacy_dir, data_dir),
+    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+      if let Some(parent) = data_dir.parent() {
+        fs::create_dir_all(parent)?;
+      }
+      fs::rename(legacy_dir, data_dir)?;
+      Ok(())
+    }
+    Err(error) => Err(error.into()),
+  }
+}
+
+fn merge_directory_contents(source: &Path, destination: &Path) -> Result<(), AppStorageError> {
+  for entry in fs::read_dir(source)? {
+    let entry = entry?;
+    let source_path = entry.path();
+    let destination_path = destination.join(entry.file_name());
+    let source_metadata = fs::symlink_metadata(&source_path)?;
+    if source_metadata.file_type().is_symlink() {
+      return Err(AppStorageError::SymbolicLink(source_path));
+    }
+
+    match fs::symlink_metadata(&destination_path) {
+      Ok(destination_metadata) if destination_metadata.file_type().is_symlink() => {
+        return Err(AppStorageError::SymbolicLink(destination_path));
+      }
+      Ok(destination_metadata) if source_metadata.is_dir() && destination_metadata.is_dir() => {
+        merge_directory_contents(&source_path, &destination_path)?;
+      }
+      Ok(_) => {
+        return Err(AppStorageError::DataDirectoryMigrationConflict(
+          destination_path,
+        ));
+      }
+      Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+        fs::rename(&source_path, &destination_path)?;
+      }
+      Err(error) => return Err(error.into()),
+    }
+  }
+  fs::remove_dir(source)?;
+  Ok(())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -155,8 +232,17 @@ impl AppVersionStore {
 
   /// Return the timestamp of the most recent update check, if one was recorded.
   pub fn last_update_check(&self) -> Result<Option<SystemTime>, AppStorageError> {
+    self.last_update_check_at("update-check.json")
+  }
+
+  /// Return the timestamp of the most recent Shell update check, if one was recorded.
+  pub fn last_shell_update_check(&self) -> Result<Option<SystemTime>, AppStorageError> {
+    self.last_update_check_at("shell-update-check.json")
+  }
+
+  fn last_update_check_at(&self, file_name: &str) -> Result<Option<SystemTime>, AppStorageError> {
     ensure_directory(&self.data_dir, &self.app_dir)?;
-    let path = self.app_dir.join("update-check.json");
+    let path = self.app_dir.join(file_name);
     let bytes = match read_regular_file(&path) {
       Ok(bytes) => bytes,
       Err(AppStorageError::EntryNotFound(_)) => return Ok(None),
@@ -178,6 +264,19 @@ impl AppVersionStore {
 
   /// Persist the start of a check so restarts cannot bypass the 24-hour limit.
   pub fn record_update_check(&self, checked_at: SystemTime) -> Result<(), AppStorageError> {
+    self.record_update_check_at("update-check.json", checked_at)
+  }
+
+  /// Persist the start of a Shell update check independently from Desktop App checks.
+  pub fn record_shell_update_check(&self, checked_at: SystemTime) -> Result<(), AppStorageError> {
+    self.record_update_check_at("shell-update-check.json", checked_at)
+  }
+
+  fn record_update_check_at(
+    &self,
+    file_name: &str,
+    checked_at: SystemTime,
+  ) -> Result<(), AppStorageError> {
     let last_check_unix_seconds = checked_at
       .duration_since(UNIX_EPOCH)
       .map_err(|_| AppStorageError::InvalidState("update-check time predates Unix epoch".into()))?
@@ -187,11 +286,7 @@ impl AppVersionStore {
       last_check_unix_seconds,
     };
     let bytes = serde_json::to_vec(&document)?;
-    atomic_replace(
-      &self.data_dir,
-      &self.app_dir.join("update-check.json"),
-      &bytes,
-    )?;
+    atomic_replace(&self.data_dir, &self.app_dir.join(file_name), &bytes)?;
     Ok(())
   }
 
@@ -699,4 +794,58 @@ fn validate_package_tree(root: &Path) -> Result<(), AppStorageError> {
     }
   }
   Ok(())
+}
+
+#[cfg(test)]
+mod migration_tests {
+  use super::*;
+
+  #[test]
+  fn migrates_old_store_into_an_existing_tauri_data_directory() {
+    let root = tempfile::tempdir().unwrap();
+    let legacy = root.path().join("mivinci/Anvil");
+    let current = root.path().join("app.q2q.anvil");
+    fs::create_dir_all(legacy.join("apps/anvil.desktop/versions/0.1.0")).unwrap();
+    fs::create_dir_all(current.join("WebView2/EBWebView")).unwrap();
+    fs::write(
+      legacy.join("apps/anvil.desktop/versions/0.1.0/manifest.json"),
+      b"existing app data",
+    )
+    .unwrap();
+    fs::write(
+      current.join("WebView2/EBWebView/profile.dat"),
+      b"webview data",
+    )
+    .unwrap();
+
+    migrate_legacy_data_directory(&legacy, &current).unwrap();
+
+    assert!(!legacy.exists());
+    assert_eq!(
+      fs::read(current.join("apps/anvil.desktop/versions/0.1.0/manifest.json")).unwrap(),
+      b"existing app data"
+    );
+    assert_eq!(
+      fs::read(current.join("WebView2/EBWebView/profile.dat")).unwrap(),
+      b"webview data"
+    );
+  }
+
+  #[test]
+  fn leaves_both_directories_untouched_on_file_conflict() {
+    let root = tempfile::tempdir().unwrap();
+    let legacy = root.path().join("legacy");
+    let current = root.path().join("current");
+    fs::create_dir_all(&legacy).unwrap();
+    fs::create_dir_all(&current).unwrap();
+    fs::write(legacy.join("state.json"), b"old").unwrap();
+    fs::write(current.join("state.json"), b"new").unwrap();
+
+    assert!(matches!(
+      migrate_legacy_data_directory(&legacy, &current),
+      Err(AppStorageError::DataDirectoryMigrationConflict(_))
+    ));
+    assert_eq!(fs::read(legacy.join("state.json")).unwrap(), b"old");
+    assert_eq!(fs::read(current.join("state.json")).unwrap(), b"new");
+  }
 }
