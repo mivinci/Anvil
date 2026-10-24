@@ -205,7 +205,9 @@ fn decode_feed(
       return Err(Error::Metadata("UTF-16 RSS Feed 长度无效".into()));
     }
     let units: Vec<u16> = payload
-      .chunks_exact(2)
+      .as_chunks::<2>()
+      .0
+      .iter()
       .map(|pair| {
         if little_endian {
           u16::from_le_bytes([pair[0], pair[1]])
