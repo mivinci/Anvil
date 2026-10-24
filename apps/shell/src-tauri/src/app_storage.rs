@@ -140,10 +140,10 @@ fn migrate_legacy_data_directory(
 
   match fs::symlink_metadata(data_dir) {
     Ok(metadata) if metadata.file_type().is_symlink() => {
-      return Err(AppStorageError::SymbolicLink(data_dir.to_path_buf()));
+      Err(AppStorageError::SymbolicLink(data_dir.to_path_buf()))
     }
     Ok(metadata) if !metadata.is_dir() => {
-      return Err(AppStorageError::NotDirectory(data_dir.to_path_buf()));
+      Err(AppStorageError::NotDirectory(data_dir.to_path_buf()))
     }
     Ok(_) => merge_directory_contents(legacy_dir, data_dir),
     Err(error) if error.kind() == std::io::ErrorKind::NotFound => {

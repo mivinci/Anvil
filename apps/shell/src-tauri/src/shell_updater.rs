@@ -231,10 +231,10 @@ impl ShellUpdateService {
   }
 
   pub fn shutdown(&self) {
-    if let Ok(slot) = self.inner.cancellation.lock() {
-      if let Some(cancellation) = slot.as_ref() {
-        cancellation.cancel();
-      }
+    if let Ok(slot) = self.inner.cancellation.lock()
+      && let Some(cancellation) = slot.as_ref()
+    {
+      cancellation.cancel();
     }
   }
 }
@@ -367,11 +367,11 @@ fn should_offer_update(current: &Version, candidate: &Version) -> bool {
 }
 
 fn decode_variable_hex(source: &str) -> Result<Vec<u8>, ShellUpdateError> {
-  if source.len() % 2 != 0 || !source.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+  if !source.len().is_multiple_of(2) || !source.bytes().all(|byte| byte.is_ascii_hexdigit()) {
     return Err(ShellUpdateError::InvalidRelease);
   }
   let mut decoded = Vec::with_capacity(source.len() / 2);
-  for pair in source.as_bytes().chunks_exact(2) {
+  for pair in source.as_bytes().as_chunks::<2>().0 {
     let high = decode_nibble(pair[0]).ok_or(ShellUpdateError::InvalidRelease)?;
     let low = decode_nibble(pair[1]).ok_or(ShellUpdateError::InvalidRelease)?;
     decoded.push((high << 4) | low);
