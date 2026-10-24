@@ -51,7 +51,10 @@ def main() -> int:
     if not repo:
         print("GITHUB_REPOSITORY is not set", file=sys.stderr)
         return 1
-    tag = f"cli/v{version}"
+    tag = os.environ.get("RELEASE_TAG", f"cli/v{version}")
+    if tag not in {f"cli/v{version}", f"cli-test/v{version}"}:
+        print(f"release tag does not match Runtime version {version}: {tag}", file=sys.stderr)
+        return 1
 
     signing_key = SigningKey(seed)
     if signing_key.verify_key.encode().hex() != expected_public_key:
