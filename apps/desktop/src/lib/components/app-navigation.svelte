@@ -34,7 +34,7 @@
 			{/if}
 		</NavButton>
 		<NavButton aria-label="服务端" selected={page.url.pathname === resolve('/servers') || page.url.pathname.startsWith(`${resolve('/servers')}/`)} onclick={() => goto(resolve('/servers'))}><Server size={19} /></NavButton>
-		<NavButton aria-label="模组与整合包" selected={page.url.pathname === resolve('/mods') || page.url.pathname.startsWith(`${resolve('/mods')}/`)} onclick={() => goto(resolve('/mods'))}><Blocks size={19} /></NavButton>
+		<NavButton aria-label="模组" selected={page.url.pathname === resolve('/mods') || page.url.pathname.startsWith(`${resolve('/mods')}/`)} onclick={() => goto(resolve('/mods'))}><Blocks size={19} /></NavButton>
 	</div>
 	<div class="mt-auto flex flex-col items-center gap-2.5">
 		<AccountMenu {appearance} {onAppearanceChange} />

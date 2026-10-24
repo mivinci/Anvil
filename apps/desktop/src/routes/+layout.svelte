@@ -4,6 +4,7 @@
 	import AppShell from '#lib/components/app-shell.svelte';
 
 	let { children }: { children: Snippet } = $props();
+
 </script>
 
 <svelte:head>

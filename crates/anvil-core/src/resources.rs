@@ -19,7 +19,9 @@ const MAX_RECORD_BYTES: usize = 1024 * 1024;
 
 mod packs;
 pub use packs::{PackFormat, PackMetadata, ResourcePackEntry};
+mod modrinth;
 mod platform;
+pub use modrinth::{ModrinthInstallPlan, ModrinthOrigin, ModrinthPlanFile};
 mod transfer;
 pub use platform::{
   ResourceInstallPlan, ResourceInstallProgress, ResourceInstallStage, ResourcePlanFile,
@@ -33,6 +35,7 @@ use transaction::{read_layout, recover, transact};
 pub enum ResourceSource {
   Local,
   Curseforge,
+  Modrinth,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -51,6 +54,8 @@ pub struct CurseForgeOrigin {
 pub struct ResourceEntry {
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub origin: Option<CurseForgeOrigin>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub modrinth_origin: Option<Box<ModrinthOrigin>>,
   pub source: ResourceSource,
   pub sha256: String,
   pub filename: String,
@@ -134,6 +139,7 @@ impl ResourceManager {
         publish_object(data, &sha256, &bytes)?;
         manifest.mods.push(ResourceEntry {
           origin: None,
+          modrinth_origin: None,
           source: ResourceSource::Local,
           sha256,
           filename,
@@ -260,7 +266,7 @@ fn read_manifest(directory: &Path) -> Result<ResourceManifest> {
   Ok(manifest)
 }
 fn validate_manifest(manifest: &ResourceManifest) -> Result<()> {
-  if !matches!(manifest.schema_version, 1..=3)
+  if !matches!(manifest.schema_version, 1..=4)
     || manifest.mods.len() + manifest.resource_packs.len() > MAX_ENTRIES
     || manifest.revision > 9_007_199_254_740_990
     || manifest
@@ -275,6 +281,7 @@ fn validate_manifest(manifest: &ResourceManifest) -> Result<()> {
   for entry in &manifest.mods {
     match (&entry.source, &entry.origin) {
       (ResourceSource::Local, None) => {}
+      (ResourceSource::Modrinth, None) if manifest.schema_version >= 4 => {}
       (ResourceSource::Curseforge, Some(origin)) if manifest.schema_version >= 2 => {
         platform::validate_origin(origin)?;
         if !projects.insert(origin.project_id) {
@@ -339,7 +346,7 @@ fn commit_cancel(
   cancel: &crate::CancellationToken,
 ) -> Result<()> {
   let before = read_manifest(directory)?;
-  manifest.schema_version = 3;
+  manifest.schema_version = 4;
   validate_manifest(manifest)?;
   if cancel.is_cancelled() {
     return Err(Error::Cancelled);

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { RefreshCw } from '@lucide/svelte';
+	import ClientDelete from '#lib/components/clients/client-delete.svelte';
 	import { getClientDetailState } from '#lib/client-detail-state.svelte.js';
 	import { getClientLaunchSettings, saveClientLaunchSettings, getDeviceMemory, RuntimeRequestError, type ClientLaunchSettings } from '#lib/runtime.js';
 	const detail = getClientDetailState();
@@ -97,4 +98,5 @@
 		{#if validation && saved}<p role="status" class="text-[12px] text-destructive">{validation}</p>{/if}
 		<div class="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3"><p role="status" class="text-[11px] text-muted-foreground">{saving ? '正在保存…' : dirty ? '有未保存的修改' : notice ?? '当前实例独立保存'}</p><div class="flex items-center gap-2"><button type="button" disabled={disabled || uncertain} onclick={reset} class="h-7 rounded-lg px-2.5 text-[12px] text-muted-foreground hover:bg-chrome-hover disabled:opacity-40">恢复默认</button><button type="submit" disabled={disabled || uncertain || !dirty || !!validation} class="h-7 rounded-lg bg-primary px-3 text-[12px] font-medium text-primary-foreground hover:opacity-90 disabled:opacity-40">保存</button></div></div>
 	</form>
+	{#if detail.client}<ClientDelete name={detail.client.name} disabled={saving} />{/if}
 </section>

@@ -3,6 +3,46 @@ use super::*;
 use crate::{CancellationToken, curseforge::ModFile};
 use q2q_http::{Checksum, DownloadRequest};
 use tokio::sync::watch;
+#[derive(Clone)]
+pub(super) struct DownloadFile {
+  pub filename: String,
+  pub size: u64,
+  pub sha1: String,
+  pub url: String,
+}
+impl DownloadFile {
+  pub fn from_curseforge(file: &ModFile) -> Result<Self> {
+    Ok(Self {
+      filename: file.file_name.clone(),
+      size: file.file_length,
+      sha1: upstream_hash(file)?,
+      url: file.download_url.clone().expect("validated URL"),
+    })
+  }
+  fn validate(&self) -> Result<()> {
+    validate_filename(&self.filename)?;
+    if self.size == 0
+      || self.size > MAX_IMPORT_BYTES as u64
+      || self.sha1.len() != 40
+      || !self
+        .sha1
+        .bytes()
+        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    {
+      return Err(Error::Metadata("invalid resource download identity".into()));
+    }
+    let url =
+      url::Url::parse(&self.url).map_err(|_| Error::Metadata("invalid download URL".into()))?;
+    if url.scheme() != "https"
+      || !url.username().is_empty()
+      || url.password().is_some()
+      || url.port().is_some()
+    {
+      return Err(Error::Metadata("invalid download URL".into()));
+    }
+    Ok(())
+  }
+}
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ObjectIndex {
@@ -13,9 +53,10 @@ struct ObjectIndex {
 fn index_path(data: &Path, sha1: &str) -> PathBuf {
   data.join("resources/sha1").join(format!("{sha1}.json"))
 }
-pub(super) fn lookup(data: &Path, file: &ModFile) -> Result<Option<(String, u64)>> {
-  let sha1 = upstream_hash(file)?;
-  let path = index_path(data, &sha1);
+pub(super) fn lookup(data: &Path, file: &DownloadFile) -> Result<Option<(String, u64)>> {
+  file.validate()?;
+  let sha1 = &file.sha1;
+  let path = index_path(data, sha1);
   match fs::symlink_metadata(&path) {
     Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
     Err(error) => return Err(error.into()),
@@ -25,7 +66,7 @@ pub(super) fn lookup(data: &Path, file: &ModFile) -> Result<Option<(String, u64)
   regular_file(&path, 1024)?;
   let index: ObjectIndex = storage::read_json_bounded(&path, 1024)?;
   validate_hash(&index.sha256)?;
-  if index.size != file.file_length {
+  if index.size != file.size {
     return Err(Error::Conflict(
       "shared resource identity has conflicting sizes".into(),
     ));
@@ -33,7 +74,7 @@ pub(super) fn lookup(data: &Path, file: &ModFile) -> Result<Option<(String, u64)
   let path = object_path(data, &index.sha256);
   verify_object(&path, &index.sha256, index.size)?;
   let bytes = read_jar(&path, index.size)?;
-  verify_upstream(&bytes, &sha1)?;
+  verify_upstream(&bytes, sha1)?;
   Ok(Some((index.sha256, index.size)))
 }
 pub(super) fn upstream_hash(file: &ModFile) -> Result<String> {
@@ -88,11 +129,12 @@ impl ResourceManager {
   }
   pub(super) async fn prepare_shared(
     &self,
-    file: &ModFile,
+    file: &DownloadFile,
     cancel: &CancellationToken,
     progress: &watch::Sender<ResourceInstallProgress>,
   ) -> Result<String> {
-    let sha1 = upstream_hash(file)?;
+    file.validate()?;
+    let sha1 = file.sha1.clone();
     let _memory = self
       .context
       .cache_lock(format!("resource-{sha1}"), cancel)
@@ -142,8 +184,8 @@ impl ResourceManager {
       || PathBuf::from(format!("{}.q2q-http.resume", target.display())).try_exists()?
       || PathBuf::from(format!("{}.q2q-http.part", target.display())).try_exists()?;
     let request = DownloadRequest::new(&target)
-      .mirrors([file.download_url.as_ref().expect("validated URL").as_str()])
-      .expected_size(file.file_length)
+      .mirrors([file.url.as_str()])
+      .expected_size(file.size)
       .checksum(Checksum::sha1(&sha1)?);
     if cancel.is_cancelled() {
       return Err(Error::Cancelled);
@@ -164,7 +206,7 @@ impl ResourceManager {
         p.received_bytes = base.received_bytes.saturating_add(state.received_bytes);
         p.downloaded_bytes = base
           .downloaded_bytes
-          .saturating_add(state.staged_bytes.min(file.file_length));
+          .saturating_add(state.staged_bytes.min(file.size));
       });
       if state.state.is_terminal() {
         break;
@@ -182,7 +224,7 @@ impl ResourceManager {
       }
     }
     let downloaded = task.wait().await?;
-    if downloaded != target {
+    if !same_download_location(&downloaded, &target)? {
       return Err(Error::Conflict("unexpected resource download path".into()));
     }
     if cancel.is_cancelled() {
@@ -192,7 +234,7 @@ impl ResourceManager {
     let spec = file.clone();
     self
       .blocking(move || {
-        let bytes = read_jar(&target, spec.file_length)?;
+        let bytes = read_jar(&target, spec.size)?;
         verify_upstream(&bytes, &sha1)?;
         let hash = hex(&Sha256::digest(&bytes));
         let _store = storage::client_cache_lock(&data, "resources-store")?;
@@ -202,7 +244,7 @@ impl ResourceManager {
           &index_path(&data, &sha1),
           &ObjectIndex {
             sha256: hash.clone(),
-            size: spec.file_length,
+            size: spec.size,
           },
         )?;
         fs::remove_file(target)?;
@@ -211,3 +253,21 @@ impl ResourceManager {
       .await
   }
 }
+
+// q2q-http canonicalizes its destination parent (including the Windows verbatim
+// prefix). Compare normalized regular files, not the spelling of their paths.
+fn same_download_location(left: &Path, right: &Path) -> Result<bool> {
+  for path in [left, right] {
+    match fs::symlink_metadata(path) {
+      Ok(metadata) if metadata.is_file() && !metadata.file_type().is_symlink() => {}
+      Ok(_) => return Ok(false),
+      Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+      Err(error) => return Err(error.into()),
+    }
+  }
+  Ok(fs::canonicalize(left)? == fs::canonicalize(right)?)
+}
+
+#[cfg(test)]
+#[path = "../../tests/resource_transfer.rs"]
+mod tests;

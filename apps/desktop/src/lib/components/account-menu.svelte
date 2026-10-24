@@ -11,6 +11,7 @@
 	import { getAccountState } from '../account-state.svelte.js';
 	import type { AccountSummary } from '../runtime';
 	import { shell } from '../shell';
+	import AccountAvatar from './account-avatar.svelte';
 
 	let { appearance, onAppearanceChange }: {
 		appearance: AppearanceMode;
@@ -78,7 +79,7 @@
 		title="账户"
 	>
 		{#if currentAccount}
-			<span class="flex size-6 items-center justify-center rounded-full bg-chrome-selected text-xs font-medium text-foreground">{currentAccount.username.slice(0, 1).toUpperCase()}</span>
+			<AccountAvatar account={currentAccount} size={24} />
 		{:else}
 			<UserRound size={19} aria-hidden="true" />
 		{/if}
@@ -94,7 +95,7 @@
 		<div class="flex min-w-0 items-center gap-2.5 px-2 py-2">
 			<div class="flex size-7 shrink-0 items-center justify-center rounded-full bg-chrome-selected text-chrome-muted">
 				{#if currentAccount}
-					<span class="text-sm font-medium text-foreground">{currentAccount.username.slice(0, 1).toUpperCase()}</span>
+					<AccountAvatar account={currentAccount} />
 				{:else}
 					<UserRound size={17} strokeWidth={1.75} aria-hidden="true" />
 				{/if}
@@ -126,7 +127,7 @@
 			<DropdownMenu.SubContent sideOffset={4} collisionPadding={8} class={subContentClass}>
 				{#each accounts as account (account.id)}
 					<DropdownMenu.Item class={itemClass} onSelect={(event) => { event.preventDefault(); void changeAccount(account); }}>
-						<UserRound size={14} strokeWidth={1.75} aria-hidden="true" /><span class="max-w-40 flex-1 truncate">{account.username}</span>
+						<AccountAvatar {account} size={20} /><span class="max-w-40 flex-1 truncate">{account.username}</span>
 						{#if account.selected}<Check size={14} aria-label="当前账户" />{/if}
 					</DropdownMenu.Item>
 				{/each}

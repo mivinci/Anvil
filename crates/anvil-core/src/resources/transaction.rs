@@ -136,7 +136,7 @@ fn sync_directory(_path: &Path) -> Result<()> {
 }
 fn validate_layout(layout: &Layout) -> Result<()> {
   let manifest = ResourceManifest {
-    schema_version: 3,
+    schema_version: 4,
     revision: 0,
     applied_revision: None,
     mods: layout.mods.clone(),

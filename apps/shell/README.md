@@ -8,6 +8,8 @@ Anvil Shell 是原生 Tauri 宿主。Rust crate 位于 `src-tauri/`，属于仓�
 
 Rust Runtime/Core 改动后，需要退出整个 `npm run desktop:dev` 命令再重新启动。Tauri 的自动重启只重编 Shell，不会重新执行 `beforeDevCommand` 中的 App 打包步骤；页面热更新或单独重启窗口也不会重建 Runtime。
 
+Windows 主窗口启用透明窗口与 Acrylic 毛玻璃（开发和发行配置均生效），透明顶栏和导航区域透出系统模糊背景，主内容卡片保留主题底色。目前试验原生窗口按钮：`windows_frame.rs` 保留系统装饰，通过 Win32 子类过程扩展顶部客户区，并裁剪 WebView 子窗口的右上角区域，让 DWM 绘制和处理最小化、最大化/还原及关闭按钮；前端只预留 138 × 32 逻辑像素。窗口调整尺寸和 DPI 变化时重新裁剪，最大化时保留系统边框补偿。空白顶栏沿用 Tauri 拖动区域与双击最大化，macOS 保留原生交通灯与原有窗口效果。前端静态检查、Windows Shell 离线编译与 Rust 格式检查通过；此原生按钮方案尚未在实际 WebView 中验收，需检查按钮绘制/悬停/点击、Windows 11 分屏菜单、毛玻璃、拖动、边缘缩放、最大化/还原和多显示器 DPI 切换。
+
 ## 构建参数与 App manifest
 
 Shell 构建使用 Cargo 的 target triple 作为目标平台。`ANVIL_DEFAULT_APP_ID` 默认为 `anvil.desktop`，`ANVIL_SHELL_API_VERSION` 默认为 `1.0.0`；`ANVIL_APP_MANIFEST` 可指定与目标平台匹配的 manifest，默认按 target 读取 `apps/desktop/manifests/<target>.json`。manifest 的页面和 sidecar 入口相对于 App 包根目录；`apps/desktop/app-manifest.json` 是 schema 示例。
@@ -38,7 +40,18 @@ ANVIL_UPDATE_PUBLIC_KEY=<32-byte-ed25519-public-key-in-hex> \
 
 更新清单是 JSON envelope：`payload` 是 UTF-8 发布 JSON 的十六进制编码，`signature` 是对 payload 原始字节做 Ed25519 签名后的十六进制值。发布 JSON 包含 schema 版本、`stable` 通道、App ID、SemVer 版本、目标 triple、HTTPS 包 URL、压缩包大小与 SHA-256。包是以 `manifest.json`、`web/`、`runtime/` 为根的 tar.gz。压缩包上限为 1 GiB，解包后上限为 100,000 个文件和 2 GiB。
 
-目前仓库没有配置正式更新 URL 或发行公钥；默认构建的更新状态会显示 `not_configured`。首版只支持 stable 通道。更新状态、进度、检查与取消均通过受限 Shell IPC 暴露。
+Desktop 发布由 `.github/workflows/desktop-release.yml` 负责。推送 `desktop/vX.Y.Z` 会构建并发布 stable 安装包，推送 `desktop-test/vX.Y.Z` 会发布隔离的测试版及测试更新源；两者都要求 Tauri 配置和所有平台 App manifest 的版本与 tag 一致。工作流将 stable/test 的更新清单分别维护在 `desktop-updates-stable`、`desktop-updates-test` release tag 下，测试包只读取测试清单。Runtime/CLI 使用独立版本号和 `cli/vX.Y.Z` 发布流程。
+
+仓库需要配置以下 GitHub Actions 密钥和变量：
+
+- Secret `ANVIL_DESKTOP_SIGNING_KEY` 与 Variable `ANVIL_DESKTOP_UPDATE_PUBLIC_KEY`：Desktop App 更新签名密钥对。
+- Secret `ANVIL_RUNTIME_SIGNING_KEY` 与 Variable `ANVIL_RUNTIME_UPDATE_PUBLIC_KEY`：Runtime 更新签名密钥对。
+
+每个产品分别生成 Ed25519 密钥对（`cargo run -p anvil --example gen_update_key`），私钥只存 GitHub Actions Secret，公钥存 Variable；不要把私钥写入仓库或日志。
+
+`cli/vX.Y.Z` 发布会将签名的 Runtime 索引更新到固定的 `runtime-updates` feed。发布脚本在签名前检查私钥与公钥匹配；缺少配置时会让发行失败，不会悄悄生成无法自更新的正式包。默认本地构建仍不注入发行密钥，更新状态会显示 `not_configured`。更新状态、进度、检查与取消均通过受限 Shell IPC 暴露。
+
+测试发布时，先将 `tauri.conf.json` 和 `apps/desktop/manifests/*.json` 的 App 版本同步到新版本，确认对应的 Desktop Actions Variables/Secrets 已设置，再从包含这些改动的提交创建并推送 `desktop-test/vX.Y.Z` tag。验收测试包时使用隔离的数据目录；测试包只读写 `desktop-updates-test` feed，不会推进 stable feed。验证通过后，可从同一提交发布 `desktop/vX.Y.Z`。
 
 ## Shell IPC
 
@@ -64,7 +77,7 @@ HTTP 依赖的详细日志被限制，避免泄漏认证请求。应用日志不
 
 ## 桌面版本目录缓存
 
-桌面安装面板使用窗口级内存缓存，Runtime 对官方版本目录缓存 30 分钟，并合并在途刷新。过期时先展示已有目录，再后台更新；更新失败保留缓存，搜索旁可手动刷新。没有定时轮询或磁盘缓存，重启清空对应缓存。新目录接口为鉴权的 `/client/version-catalog`，原 `/client/versions` 数组接口保持兼容；实施和验收见[客户端执行项](../../todos/desktop-client-library.md)。
+桌面安装面板使用窗口级内存状态，Core/Runtime 对 Minecraft 与 Fabric 目录持久缓存 30 分钟，对 Modrinth 与 CurseForge 浏览目录持久缓存 5 分钟，并合并在途刷新。重启沿用磁盘快照原获取时间，过期先显示已有目录再更新；更新失败保留缓存，搜索旁可手动刷新。Modrinth 兼容版本整表按项目/游戏版本缓存，翻页不重新请求上游；两种模组来源各最多 16 个缓存键，文件下载另按内容哈希复用。没有定时轮询。Minecraft 目录接口为鉴权的 `/client/version-catalog`，原 `/client/versions` 数组接口保持兼容；实施和验收见[客户端执行项](../../todos/desktop-client-library.md)及[资源管理](../../todos/client-resources.md)。
 
 App manifest 可配置 `sidecar_args`（默认空数组），Shell 对包内与 override Runtime 都使用同一组参数。Anvil 使用 `["serve"]` 以启动 CLI 的桌面 Runtime 子命令；参数由验证后的 App manifest 提供，不来自页面或 override pointer。
 
@@ -75,3 +88,5 @@ App manifest 可配置 `sidecar_args`（默认空数组），Shell 对包内与 
 安装面板已接入 Fabric 官方加载器版本查询与新实例安装，复用 Core 平台计划和 q2q-http 校验下载，实例快照/列表/详情及重试保存所选 Fabric 版本。原版与 Fabric 环境不在已有实例间静默互换；其他加载器仍未开放。Fabric API 模组和资源入口物化另行实施，真实 Fabric 安装/运行尚待维护者验收。
 
 Fabric 实例启用/停用/移除本地模组时，现已同步独立副本到 game/mods；共享原件不被修改。受管布局和事务日志支持失败/下次访问恢复，外部同名文件不覆盖。资源页可显式同步，Core/CLI 启动准备也会恢复并检查；依赖/兼容性求解及真实 Fabric 加载验收仍未完成。
+
+WebView 的开发及发行 CSP 允许 HTTPS 图片用于 App 的远程公开图标；其他远程脚本和网络连接策略保持现有范围。具体图片来源、URL 校验与缺失占位由 App 负责，Shell 不识别模组平台。CSP 变更需要重新构建并启动 Shell 后生效。

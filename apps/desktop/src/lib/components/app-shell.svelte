@@ -2,9 +2,11 @@
 	import { onMount, type Snippet } from 'svelte';
 	import { isTauri } from '@tauri-apps/api/core';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
-	import { ClientSidebarState, setClientSidebarState } from '../client-sidebar-state.svelte.js';
-	setClientSidebarState(new ClientSidebarState());
+	import { PageSidebarState, setPageSidebarState } from '../page-sidebar-state.svelte.js';
+	setPageSidebarState(new PageSidebarState());
 	import AppTitlebar from './app-titlebar.svelte';
+	import AppStartup from './app-startup.svelte';
+	import OverlayScrollbars from './overlay-scrollbars.svelte';
 	import ClientInstallProvider from './clients/client-install-provider.svelte';
 	import AccountProvider from './account-provider.svelte';
 	import AppNavigation from './app-navigation.svelte';
@@ -71,6 +73,7 @@
 	data-theme={appearance}
 	style={themeStyle(colors, resolvedMode)}
 >
+	<AppStartup>
 	<AccountProvider>
 	<ClientInstallProvider>
 		<AppTitlebar />
@@ -84,4 +87,6 @@
 		</div>
 	</ClientInstallProvider>
 	</AccountProvider>
+	</AppStartup>
+	<OverlayScrollbars />
 </div>

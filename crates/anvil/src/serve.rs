@@ -18,8 +18,12 @@ mod curseforge;
 mod discovery_catalog;
 mod fabric_catalog;
 mod launches;
+mod modrinth;
+mod modrinth_catalog;
+mod news;
 mod operations;
 mod protocol;
+mod resource_discovery;
 mod resource_operations;
 mod versions;
 

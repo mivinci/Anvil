@@ -41,6 +41,9 @@ pub(super) struct AppState {
   fabric_versions: Arc<super::fabric_catalog::FabricCatalog>,
   pub(super) runtime: Arc<RuntimeState>,
   pub(super) curseforge: Arc<super::curseforge::Catalog>,
+  pub(super) modrinth: Arc<super::modrinth::Catalog>,
+  news: Arc<super::news::NewsCatalog>,
+  pub(super) resources: Arc<super::resource_operations::ResourceOperations>,
   pub(super) accounts: Arc<AccountState>,
   api_version: Arc<str>,
   token: Arc<str>,
@@ -57,6 +60,9 @@ impl AppState {
     Self {
       launches: Arc::new(super::launches::Launches::new()),
       curseforge: Arc::new(super::curseforge::Catalog::new()),
+      modrinth: Arc::new(super::modrinth::Catalog::new()),
+      news: Arc::new(super::news::NewsCatalog::default()),
+      resources: Arc::new(super::resource_operations::ResourceOperations::new()),
       versions: Arc::new(super::versions::VersionCatalog::default()),
       fabric_versions: Arc::new(super::fabric_catalog::FabricCatalog::default()),
       runtime,
@@ -111,11 +117,32 @@ pub(super) async fn serve(
   }
 
   let launches = state.launches.clone();
-  let resources = state.curseforge.clone();
+  let resources = state.resources.clone();
   let runtime = state.runtime.clone();
   let account_state = state.accounts.clone();
   let app = Router::new()
+    .route(
+      "/resources/{source}/projects",
+      get(super::resource_discovery::search),
+    )
+    .route(
+      "/resources/{source}/projects/{project}",
+      get(super::resource_discovery::project),
+    )
+    .route(
+      "/clients/{name}/modrinth/projects",
+      get(super::modrinth::search),
+    )
+    .route(
+      "/clients/{name}/modrinth/projects/{project}/files",
+      get(super::modrinth::files),
+    )
+    .route(
+      "/clients/{name}/modrinth/projects/{project}/files/{file}/plan",
+      post(super::modrinth::create_plan),
+    )
     .route("/health", get(health))
+    .route("/news", get(news_feed))
     .route("/client-launches", get(super::launches::list))
     .route(
       "/client-launches/{id}",
@@ -158,7 +185,7 @@ pub(super) async fn serve(
     .route("/client/fabric/versions/{game}", get(fabric_versions))
     .route("/client/version-catalog", get(client_version_catalog))
     .route("/clients", get(clients))
-    .route("/clients/{name}", get(client_details))
+    .route("/clients/{name}", get(client_details).delete(delete_client))
     .route(
       "/clients/{name}/launch-settings",
       get(super::client_settings::get).put(super::client_settings::save),
@@ -222,6 +249,7 @@ pub(super) async fn serve(
     )
     .route("/accounts/{id}", axum::routing::delete(logout_account))
     .route("/accounts/{id}/select", post(select_account))
+    .route("/accounts/{id}/skin", get(account_skin))
     .route("/account-operations/active", get(active_account_operation))
     .route(
       "/account-operations/{id}",
@@ -240,7 +268,7 @@ pub(super) async fn serve(
       tracing::info!("Runtime shutdown requested; draining operations");
       tokio::join!(
         launches.shutdown(),
-        resources.installs.shutdown(),
+        resources.shutdown(),
         runtime.shutdown_operations(),
         account_state.shutdown_operations()
       );
@@ -405,6 +433,34 @@ async fn client_version_catalog(
     .map_err(|error| ApiError::new(StatusCode::BAD_GATEWAY, error))?;
   Ok(Json(VersionCatalogResponse {
     versions: catalog.value.into_iter().map(version_summary).collect(),
+    stale: catalog.stale,
+    fresh_for_ms: catalog.fresh_for_ms,
+    revision: catalog.revision,
+    refresh_error: catalog.refresh_error,
+  }))
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NewsResponse {
+  items: Vec<anvil_core::news::NewsItem>,
+  stale: bool,
+  fresh_for_ms: u64,
+  revision: u64,
+  refresh_error: Option<String>,
+}
+
+async fn news_feed(
+  State(state): State<AppState>,
+  Query(query): Query<VersionQuery>,
+) -> Result<Json<NewsResponse>, ApiError> {
+  let catalog = state
+    .news
+    .get(state.runtime.context.clone(), query.refresh, query.after)
+    .await
+    .map_err(|error| ApiError::new(StatusCode::BAD_GATEWAY, error))?;
+  Ok(Json(NewsResponse {
+    items: catalog.value,
     stale: catalog.stale,
     fresh_for_ms: catalog.fresh_for_ms,
     revision: catalog.revision,
@@ -609,6 +665,66 @@ async fn accounts(State(state): State<AppState>) -> Result<Json<Vec<AccountSumma
     .await
     .map(Json)
     .map_err(|error| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, error))
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DeleteClientRequest {
+  confirmation: String,
+}
+static CLIENT_DELETIONS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(1);
+async fn delete_client(
+  State(state): State<AppState>,
+  RoutePath(name): RoutePath<String>,
+  Json(request): Json<DeleteClientRequest>,
+) -> Result<Json<anvil_core::client::ClientRemoval>, ApiError> {
+  ClientInstaller::validate_name(&name).map_err(resource_error)?;
+  if !request.confirmation.eq_ignore_ascii_case(&name) {
+    return Err(ApiError::new(
+      StatusCode::BAD_REQUEST,
+      "删除确认与实例不匹配。",
+    ));
+  }
+  let _permit = CLIENT_DELETIONS
+    .try_acquire()
+    .map_err(|_| ApiError::new(StatusCode::CONFLICT, "已有实例正在删除，请稍后刷新。"))?;
+  if state.runtime.busy_for_client(&name)
+    || state.launches.busy_for_client(&name)
+    || state.resources.busy_for_client(&name)
+  {
+    return Err(ApiError::new(
+      StatusCode::CONFLICT,
+      "实例正在运行、准备启动或安装，请等待完成后再删除。",
+    ));
+  }
+  let result = ClientInstaller::new(state.runtime.context.clone())
+    .remove(&name)
+    .await
+    .map_err(resource_error)?;
+  tracing::info!(
+    cleanup_pending = result.cleanup_pending,
+    "Client instance removed"
+  );
+  Ok(Json(result))
+}
+
+async fn account_skin(
+  State(state): State<AppState>,
+  RoutePath(id): RoutePath<String>,
+) -> Result<Json<Option<anvil_core::account_skin::AccountSkin>>, ApiError> {
+  let accounts = state
+    .accounts
+    .list()
+    .await
+    .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "无法读取账户"))?;
+  let account = accounts
+    .iter()
+    .find(|account| account.id == id)
+    .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "账户不存在"))?;
+  anvil_core::account_skin::read(&state.runtime.context, &account.id)
+    .await
+    .map(Json)
+    .map_err(|_| ApiError::new(StatusCode::BAD_GATEWAY, "暂时无法读取角色皮肤"))
 }
 
 async fn login_configuration(State(state): State<AppState>) -> Json<LoginConfiguration> {

@@ -26,6 +26,10 @@ export interface AccountSummary {
 	selected: boolean;
 }
 
+export interface AccountSkin { url: string; model: 'classic' | 'slim' }
+export const getAccountSkin = (id: string, signal: AbortSignal) =>
+	runtimeRequest<AccountSkin | null>(`/accounts/${encodeURIComponent(id)}/skin`, { signal });
+
 export interface AccountLoginConfiguration {
 	enabled: boolean;
 	unavailableReason: 'invalid_client_id' | null;
@@ -90,6 +94,8 @@ export interface ClientInstallOperation {
 		name: string;
 		versionId: string;
 		alreadyInstalled: boolean;
+		downloadedFiles?: number;
+		reusedFiles?: number;
 	} | null;
 	error: string | null;
 }
@@ -125,11 +131,12 @@ async function runtimeRequest<T>(path: string, init: RequestInit = {}): Promise<
 }
 
 /** Request the health endpoint directly from the authorized local sidecar. */
-export async function getRuntimeHealth(): Promise<RuntimeHealth> {
+export async function getRuntimeHealth(signal: AbortSignal = AbortSignal.timeout(5000)): Promise<RuntimeHealth> {
 	try {
 		const { connection, baseUrl } = await getRuntimeConnection();
 
 		const response = await fetch(new URL('/health', baseUrl), {
+			signal,
 			headers: { Authorization: `Bearer ${connection.token}` }
 		});
 		if (!response.ok) throw new Error(`Runtime health request failed (${response.status})`);
@@ -159,6 +166,25 @@ export interface ClientVersionCatalog {
 	revision: number;
 	refreshError: string | null;
 }
+
+export interface MinecraftNewsItem {
+	title: string;
+	url: string;
+	publishedAt: string | null;
+	categories: string[];
+}
+
+export interface MinecraftNewsCatalog {
+	items: MinecraftNewsItem[];
+	stale: boolean;
+	freshForMs: number;
+	revision: number;
+	refreshError: string | null;
+}
+
+export const getMinecraftNews = (options: { signal?: AbortSignal; refresh?: boolean } = {}) =>
+	runtimeRequest<MinecraftNewsCatalog>(`/news${options.refresh ? '?refresh=true' : ''}`, { signal: options.signal ?? null });
+
 export const listClientVersionCatalog = (options: { signal?: AbortSignal; refresh?: boolean; after?: number } = {}) =>
 	runtimeRequest<ClientVersionCatalog>(`/client/version-catalog${options.refresh ? `?refresh=true${options.after !== undefined ? `&after=${options.after}` : ''}` : ''}`, { signal: options.signal ?? null });
 
@@ -224,24 +250,28 @@ export interface ClientDetails extends InstalledClient {
 }
 export const getClientDetails = (name: string, signal: AbortSignal) =>
 	runtimeRequest<ClientDetails>(`/clients/${encodeURIComponent(name)}`, { signal });
+export interface ClientRemoval { removed: boolean; cleanupPending: boolean }
+export const deleteClient = (name: string, signal: AbortSignal) =>
+	runtimeRequest<ClientRemoval>(`/clients/${encodeURIComponent(name)}`, { method: 'DELETE', body: JSON.stringify({ confirmation: name }), signal });
 
 export interface ClientResourceEntry {
 	sha256: string;
 	filename: string;
 	size: number;
 	enabled: boolean;
-	source: 'local' | 'curseforge';
+	source: 'local' | 'curseforge' | 'modrinth';
 	origin?: { projectId: number; fileId: number; projectName: string; sha1: string; direct: boolean; requiredProjects: number[]; incompatibleProjects: number[] };
+	modrinthOrigin?: { projectId: string; versionId: string; projectName: string; sha1: string; direct: boolean; requiredVersions: Record<string, string>; incompatibleVersions: Record<string, string | null> };
 }
 export interface ClientResourceManifest {
-	schemaVersion: 1 | 2 | 3;
+	schemaVersion: 1 | 2 | 3 | 4;
 	revision: number;
 	appliedRevision?: number | null;
 	mods: ClientResourceEntry[];
 	resourcePacks?: ClientResourcePack[];
 }
 export const listClientResources = (name: string, signal: AbortSignal) =>
-	runtimeRequest<ClientResourceManifest>(`/clients/${encodeURIComponent(name)}/resources`, { signal });
+	runtimeRequest<ClientResourceManifest>(`/clients/${encodeURIComponent(name)}/resources`, { signal, cache: 'no-store' });
 export const importClientMod = (name: string, file: File, revision: number, signal: AbortSignal) =>
 	runtimeRequest<ClientResourceManifest>(`/clients/${encodeURIComponent(name)}/resources?${new URLSearchParams({ filename: file.name, revision: String(revision) })}`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file, signal });
 export const changeClientMod = (name: string, sha256: string, revision: number, enabled: boolean | null, signal: AbortSignal) =>
@@ -278,6 +308,9 @@ export interface CurseForgeProject {
 	id: number; name: string; summary: string; authors: { name: string }[];
 	links: { websiteUrl: string | null };
 	allowModDistribution: boolean | null;
+	logo?: { thumbnailUrl: string | null; url: string | null } | null;
+	downloadCount?: number | null;
+	dateModified?: string | null;
 }
 export interface CurseForgeFile {
 	id: number; modId: number; displayName: string; fileName: string; fileLength: number;
@@ -291,18 +324,42 @@ export interface CurseForgePreview {
 }
 export const getCurseForgeConfiguration = (signal: AbortSignal) =>
 	runtimeRequest<CurseForgeConfiguration>('/resources/curseforge/configuration', { signal });
-export const searchCurseForgeProjects = (name: string, q: string, index: number, signal: AbortSignal, options?: CatalogOptions) =>
-	runtimeRequest<CurseForgePage<CurseForgeProject>>(`/clients/${encodeURIComponent(name)}/curseforge/projects?${new URLSearchParams({ q, index: String(index), ...catalogQuery(options) })}`, { signal });
 export const listCurseForgeFiles = (name: string, project: number, index: number, signal: AbortSignal, options?: CatalogOptions) =>
 	runtimeRequest<CurseForgePage<CurseForgeFile>>(`/clients/${encodeURIComponent(name)}/curseforge/projects/${project}/files?${new URLSearchParams({ index: String(index), ...catalogQuery(options) })}`, { signal });
-export const previewCurseForgeDependencies = (name: string, project: number, file: number, signal: AbortSignal) =>
-	runtimeRequest<CurseForgePreview>(`/clients/${encodeURIComponent(name)}/curseforge/projects/${project}/files/${file}/preview`, { signal });
 
 
 export interface CurseForgeInstallPlan extends CurseForgePreview {
 	planId: number; expiresInMs: number; downloadBytes: number;
 	files: { projectId: number; fileId: number; projectName: string; filename: string; size: number; direct: boolean; reuse: boolean }[];
 }
+export type ModSource = 'modrinth' | 'curseforge';
+export type ModProjectSummary = Pick<CurseForgeProject, 'name' | 'summary' | 'authors' | 'links' | 'logo' | 'downloadCount' | 'dateModified'> & {
+	id: string | number;
+	iconUrl?: string | null;
+	updatedAt?: string | null;
+	allowModDistribution?: boolean | null;
+};
+export interface ModSearchOptions extends CatalogOptions { gameVersion?: string; loader?: 'fabric' }
+export interface ModProjectDetails extends CatalogStatus { project: ModProjectSummary }
+export const searchModProjects = (source: ModSource, q: string, index: number, signal: AbortSignal, options: ModSearchOptions = {}) =>
+	runtimeRequest<CurseForgePage<ModProjectSummary>>(`/resources/${source}/projects?${new URLSearchParams({
+		q, index: String(index), ...catalogQuery(options),
+		...(options.gameVersion !== undefined ? { gameVersion: options.gameVersion } : {}),
+		...(options.loader !== undefined ? { loader: options.loader } : {}),
+	})}`, { signal });
+export const getModProject = (source: ModSource, project: string | number, signal: AbortSignal, options?: CatalogOptions) =>
+	runtimeRequest<ModProjectDetails>(`/resources/${source}/projects/${encodeURIComponent(project)}?${new URLSearchParams(catalogQuery(options))}`, { signal });
+export type ModrinthProject = Omit<CurseForgeProject, 'id' | 'allowModDistribution' | 'logo' | 'dateModified'> & { id: string; iconUrl?: string | null; updatedAt?: string | null };
+export type ModrinthFile = Omit<CurseForgeFile, 'id' | 'modId' | 'isAvailable'> & { id: string; modId: string; sha1: string };
+export interface ModrinthInstallPlan extends Omit<CurseForgeInstallPlan, 'items' | 'files' | 'optionalProjects'> {
+	items: { project: ModrinthProject; file: ModrinthFile; direct: boolean }[];
+	files: { projectId: string; fileId: string; projectName: string; filename: string; size: number; direct: boolean; reuse: boolean }[];
+	optionalProjects: string[];
+}
+export const listModrinthFiles = (name: string, project: string, index: number, signal: AbortSignal, options?: CatalogOptions) =>
+	runtimeRequest<CurseForgePage<ModrinthFile>>(`/clients/${encodeURIComponent(name)}/modrinth/projects/${encodeURIComponent(project)}/files?${new URLSearchParams({ index: String(index), ...catalogQuery(options) })}`, { signal });
+export const createModrinthInstallPlan = (name: string, project: string, file: string, signal: AbortSignal) =>
+	runtimeRequest<ModrinthInstallPlan>(`/clients/${encodeURIComponent(name)}/modrinth/projects/${encodeURIComponent(project)}/files/${encodeURIComponent(file)}/plan`, { method: 'POST', signal });
 export interface ResourceInstallOperation {
 	id: number; name: string; state: 'running' | 'completed' | 'failed' | 'cancelled'; cancelRequested: boolean;
 	progress: { stage: 'preparing' | 'downloading' | 'publishing' | 'completed'; completedFiles: number; totalFiles: number; downloadedBytes: number; totalBytes: number; receivedBytes: number };

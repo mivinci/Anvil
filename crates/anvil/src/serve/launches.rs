@@ -95,6 +95,18 @@ pub(super) struct Launches {
   account_gate: Arc<Semaphore>,
 }
 impl Launches {
+  pub(super) fn busy_for_client(&self, name: &str) -> bool {
+    self
+      .inner
+      .lock()
+      .unwrap_or_else(std::sync::PoisonError::into_inner)
+      .operations
+      .values()
+      .any(|operation| {
+        let snapshot = operation.updates.borrow();
+        snapshot.name.eq_ignore_ascii_case(name) && snapshot.phase.active()
+      })
+  }
   pub fn new() -> Self {
     Self {
       inner: Mutex::new(Inner {

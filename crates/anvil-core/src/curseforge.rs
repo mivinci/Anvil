@@ -32,6 +32,18 @@ pub struct Project {
   pub authors: Vec<Author>,
   pub links: ProjectLinks,
   pub allow_mod_distribution: Option<bool>,
+  #[serde(default)]
+  pub logo: Option<ProjectLogo>,
+  #[serde(default)]
+  pub download_count: Option<u64>,
+  #[serde(default)]
+  pub date_modified: Option<String>,
+}
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectLogo {
+  pub thumbnail_url: Option<String>,
+  pub url: Option<String>,
 }
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -205,42 +217,38 @@ impl CurseForge {
     Ok(value)
   }
   pub async fn search(&self, game: &str, text: &str, index: u32) -> Result<CatalogPage<Project>> {
-    self.search_with_refresh(game, text, index, false).await
+    self
+      .search_with_refresh(Some(game), text, index, false)
+      .await
   }
   async fn search_with_refresh(
     &self,
-    game: &str,
+    game: Option<&str>,
     text: &str,
     index: u32,
     force: bool,
   ) -> Result<CatalogPage<Project>> {
-    validate_query(game, index)?;
-    if text.len() > 128 || text.chars().any(char::is_control) {
-      return Err(Error::Invalid("invalid search query".into()));
+    validate_search(game, text, index)?;
+    let mut params = vec![
+      ("gameId", "432".into()),
+      ("classId", "6".into()),
+      ("modLoaderType", "4".into()),
+      ("searchFilter", text.into()),
+      ("sortField", "2".into()),
+      ("sortOrder", "desc".into()),
+      ("pageSize", PAGE.to_string()),
+      ("index", index.to_string()),
+    ];
+    if let Some(game) = game {
+      params.push(("gameVersion", game.into()));
     }
-    let page: UpstreamPage<Project> = self
-      .get_with_refresh(
-        "mods/search",
-        &[
-          ("gameId", "432".into()),
-          ("classId", "6".into()),
-          ("gameVersion", game.into()),
-          ("modLoaderType", "4".into()),
-          ("searchFilter", text.into()),
-          ("sortField", "2".into()),
-          ("sortOrder", "desc".into()),
-          ("pageSize", PAGE.to_string()),
-          ("index", index.to_string()),
-        ],
-        force,
-      )
-      .await?;
+    let mut page: UpstreamPage<Project> =
+      self.get_with_refresh("mods/search", &params, force).await?;
+    for project in &mut page.data {
+      sanitize_logo(project);
+    }
     let next_index = next(&page, index)?;
-    if page
-      .data
-      .iter()
-      .any(|p| p.id == 0 || p.game_id != 432 || p.class_id != Some(6) || p.authors.len() > 128)
-    {
+    if page.data.iter().any(|p| !valid_project(p)) {
       return Err(Error::Metadata(
         "CurseForge project identity mismatch".into(),
       ));
@@ -249,6 +257,19 @@ impl CurseForge {
       items: page.data,
       next_index,
     })
+  }
+  pub async fn project(&self, project: u32, force: bool) -> Result<Project> {
+    validate_id(project)?;
+    let mut response: Envelope<Project> = self
+      .get_with_refresh(&format!("mods/{project}"), &[], force)
+      .await?;
+    sanitize_logo(&mut response.data);
+    if response.data.id != project || !valid_project(&response.data) {
+      return Err(Error::Metadata(
+        "CurseForge project identity mismatch".into(),
+      ));
+    }
+    Ok(response.data)
   }
   pub async fn files(&self, game: &str, project: u32, index: u32) -> Result<CatalogPage<ModFile>> {
     self.files_with_refresh(game, project, index, false).await
@@ -511,6 +532,59 @@ fn validate_id(id: u32) -> Result<()> {
     return Err(Error::Invalid("invalid CurseForge ID".into()));
   }
   Ok(())
+}
+fn validate_search(game: Option<&str>, text: &str, index: u32) -> Result<()> {
+  if game.is_some_and(|g| !crate::metadata::is_valid_version_id(g))
+    || index > 9980
+    || text.len() > 128
+    || text.chars().any(char::is_control)
+  {
+    return Err(Error::Invalid("invalid CurseForge search query".into()));
+  }
+  Ok(())
+}
+fn valid_project(p: &Project) -> bool {
+  p.id > 0
+    && p.game_id == 432
+    && p.class_id == Some(6)
+    && !p.name.is_empty()
+    && p.name.len() <= 512
+    && p.summary.len() <= 8192
+    && p.authors.len() <= 128
+    && p.authors.iter().all(|a| a.name.len() <= 512)
+    && p
+      .date_modified
+      .as_ref()
+      .is_none_or(|value| value.len() <= 64)
+    && p.logo.as_ref().is_none_or(|logo| {
+      logo.thumbnail_url.as_deref().is_none_or(valid_icon_url)
+        && logo.url.as_deref().is_none_or(valid_icon_url)
+    })
+    && p.links.website_url.as_ref().is_none_or(|s| {
+      s.len() <= 2048
+        && Url::parse(s).ok().is_some_and(|u| {
+          u.scheme() == "https"
+            && matches!(u.host_str(), Some("www.curseforge.com" | "curseforge.com"))
+            && u.username().is_empty()
+            && u.password().is_none()
+            && u.port().is_none()
+        })
+    })
+}
+fn valid_icon_url(value: &str) -> bool {
+  crate::catalog_cache::valid_image_url(value, &["media.forgecdn.net", "edge.forgecdn.net"])
+}
+fn sanitize_logo(project: &mut Project) {
+  if let Some(logo) = &mut project.logo {
+    logo.thumbnail_url = logo
+      .thumbnail_url
+      .take()
+      .filter(|value| valid_icon_url(value));
+    logo.url = logo.url.take().filter(|value| valid_icon_url(value));
+    if logo.thumbnail_url.is_none() && logo.url.is_none() {
+      project.logo = None;
+    }
+  }
 }
 fn validate_query(game: &str, index: u32) -> Result<()> {
   if !crate::metadata::is_valid_version_id(game) || index > 9980 {

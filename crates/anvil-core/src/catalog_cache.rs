@@ -7,6 +7,17 @@ use std::{
   path::PathBuf,
   time::{SystemTime, UNIX_EPOCH},
 };
+
+pub(crate) fn valid_image_url(value: &str, hosts: &[&str]) -> bool {
+  value.len() <= 2048
+    && url::Url::parse(value).ok().is_some_and(|url| {
+      url.scheme() == "https"
+        && url.host_str().is_some_and(|host| hosts.contains(&host))
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.port().is_none()
+    })
+}
 #[derive(Clone, Copy)]
 pub(crate) struct Policy {
   pub namespace: &'static str,
@@ -27,6 +38,25 @@ pub(crate) const CURSEFORGE: Policy = Policy {
   namespace: "curseforge",
   entries: 16,
   bytes: 2 * 1024 * 1024 + 4096,
+};
+#[cfg(test)]
+#[path = "../tests/discovery_cache.rs"]
+mod tests;
+
+pub(crate) const MODRINTH: Policy = Policy {
+  namespace: "modrinth",
+  entries: 16,
+  bytes: 4 * 1024 * 1024 + 4096,
+};
+pub(crate) const NEWS: Policy = Policy {
+  namespace: "news",
+  entries: 1,
+  bytes: 256 * 1024,
+};
+pub(crate) const ACCOUNT_SKINS: Policy = Policy {
+  namespace: "account-skins",
+  entries: 16,
+  bytes: 16 * 1024,
 };
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

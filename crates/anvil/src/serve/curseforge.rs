@@ -1,13 +1,9 @@
 //! Desktop orchestration for read-only CurseForge discovery. Credentials stay in Runtime.
 use super::{
   api::{ApiError, AppState},
-  operations::RuntimeState,
+  client_resources::fabric_game as game,
 };
-use anvil_core::{
-  client::ClientInstaller,
-  curseforge::{CurseForge, DependencyPreview},
-  fabric::ClientLoader,
-};
+use anvil_core::curseforge::{CurseForge, DependencyPreview};
 use axum::{
   Json,
   extract::{Path, Query, State},
@@ -18,22 +14,23 @@ use std::sync::Arc;
 use tokio::sync::Semaphore;
 
 pub(super) struct Catalog {
-  pub(super) installs: super::resource_operations::ResourceOperations,
   provider: Result<Arc<CurseForge>, ()>,
-  discovery: super::discovery_catalog::DiscoveryCatalog,
+  pub(super) discovery: super::discovery_catalog::DiscoveryCatalog,
   slots: Semaphore,
 }
 impl Catalog {
   pub fn new() -> Self {
     let key = std::env::var("ANVIL_CURSEFORGE_API_KEY").ok();
+    Self::with_key(key)
+  }
+  pub(super) fn with_key(key: Option<String>) -> Self {
     Self {
-      installs: super::resource_operations::ResourceOperations::new(),
       provider: CurseForge::new(key).map(Arc::new).map_err(|_| ()),
       discovery: super::discovery_catalog::DiscoveryCatalog::default(),
       slots: Semaphore::new(2),
     }
   }
-  fn provider(&self) -> Result<&Arc<CurseForge>, ApiError> {
+  pub(super) fn provider(&self) -> Result<&Arc<CurseForge>, ApiError> {
     let provider = self.provider.as_ref().map_err(|_| {
       ApiError::new(
         StatusCode::SERVICE_UNAVAILABLE,
@@ -48,7 +45,7 @@ impl Catalog {
     }
     Ok(provider)
   }
-  fn slot(&self) -> Result<tokio::sync::SemaphorePermit<'_>, ApiError> {
+  pub(super) fn slot(&self) -> Result<tokio::sync::SemaphorePermit<'_>, ApiError> {
     self.slots.try_acquire().map_err(|_| {
       ApiError::new(
         StatusCode::TOO_MANY_REQUESTS,
@@ -102,19 +99,6 @@ pub(super) struct Preview {
   #[serde(flatten)]
   preview: DependencyPreview,
 }
-async fn game(runtime: &Arc<RuntimeState>, name: &str) -> Result<String, ApiError> {
-  let (_, record) = ClientInstaller::new(runtime.context.clone())
-    .details(name)
-    .await
-    .map_err(super::api::resource_error)?;
-  if !matches!(record.loader, Some(ClientLoader::Fabric { .. })) {
-    return Err(ApiError::new(
-      StatusCode::CONFLICT,
-      "当前仅支持为 Fabric 实例浏览模组。",
-    ));
-  }
-  Ok(record.version_id)
-}
 fn upstream(error: anvil_core::Error) -> ApiError {
   tracing::warn!(
     error_code = error.code(),
@@ -144,7 +128,7 @@ pub(super) async fn search(
   let provider = state.curseforge.provider()?.clone();
   let version = game(&state.runtime, &name).await?;
   let identity = anvil_core::curseforge::DiscoveryQuery::Search {
-    game: version,
+    game: Some(version),
     text: query.q.trim().into(),
     index: query.index,
   };
@@ -257,7 +241,9 @@ pub(super) async fn create_plan(
       revision: plan.revision(),
       download_bytes: plan.download_bytes(),
       files: plan.files().to_vec(),
-      plan_id: state.curseforge.installs.save(plan),
+      plan_id: state
+        .resources
+        .save(super::resource_operations::InstallPlan::CurseForge(plan)),
       expires_in_ms: 600_000,
       game_version,
       preview,

@@ -1,5 +1,6 @@
 //! Shared launcher services. The caller owns the Tokio runtime and operation lifetime.
 pub mod account;
+pub mod account_skin;
 pub mod account_store;
 mod catalog_cache;
 pub mod client;
@@ -12,6 +13,8 @@ pub mod fabric;
 pub mod java;
 pub mod launch;
 pub mod metadata;
+pub mod modrinth;
+pub mod news;
 mod platform;
 pub mod resources;
 pub mod server;

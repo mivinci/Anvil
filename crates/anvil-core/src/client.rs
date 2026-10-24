@@ -3,9 +3,11 @@ pub(crate) mod classpath;
 mod crashes;
 mod install_java;
 mod logs;
+mod removal;
 mod settings;
 pub use crashes::{ClientCrashReport, ClientCrashReportEntry, ClientCrashReports};
 pub use logs::ClientGameLog;
+pub use removal::ClientRemoval;
 pub use settings::ClientLaunchSettings;
 use std::{
   collections::{BTreeMap, HashMap, VecDeque},

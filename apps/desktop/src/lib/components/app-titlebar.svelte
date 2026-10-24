@@ -1,20 +1,32 @@
 <script lang="ts">
-	import { afterNavigate } from '$app/navigation';
+	import { afterNavigate, goto } from '$app/navigation';
 	import { ArrowLeft, ArrowRight, PanelLeft } from '@lucide/svelte';
+	import { onMount } from 'svelte';
+	import { isTauri } from '@tauri-apps/api/core';
+	let windows = $state(false);
+	onMount(() => {
+		if (!isTauri() || !navigator.userAgent.includes('Windows')) return;
+		windows = true;
+	});
 	import { page } from '$app/state';
-	import { getClientSidebarState } from '../client-sidebar-state.svelte.js';
-	const sidebar = getClientSidebarState();
-	const hasClientSidebar = $derived(page.params.name !== undefined && page.route.id?.startsWith('/clients/'));
+	import { getPageSidebarState } from '../page-sidebar-state.svelte.js';
+	const sidebar = getPageSidebarState();
+	const sidebarArea = $derived(page.params.name !== undefined && page.route.id?.startsWith('/clients/') ? 'clients' : page.route.id === '/mods' ? 'mods' : null);
+	const sidebarLabel = $derived(sidebarArea === 'mods' ? '模组筛选侧栏' : '实例侧栏');
+	const sidebarId = $derived(sidebarArea === 'mods' ? 'mod-discovery-sidebar' : 'client-detail-sidebar');
 	import DownloadTasks from './download-tasks.svelte';
 
 	let historyPosition = $state(0);
 	let historyEnd = $state(0);
 	let historyPending = $state(false);
 	let currentUrl: string | undefined;
+	let replacingProject = false;
+	const directModDetail = $derived(page.route.id === '/mods' && page.url.searchParams.has('project'));
 
 	afterNavigate((navigation) => {
 		historyPending = false;
 		const nextUrl = navigation.to?.url.href;
+		if (replacingProject) { replacingProject = false; currentUrl = nextUrl; return; }
 		if (navigation.type === 'enter') {
 			currentUrl = nextUrl;
 			return;
@@ -30,16 +42,23 @@
 	});
 
 	function traverseHistory(direction: -1 | 1) {
-		if (historyPending || (direction === -1 ? historyPosition === 0 : historyPosition >= historyEnd)) {
+		if (historyPending || (direction === -1 ? historyPosition === 0 && !directModDetail : historyPosition >= historyEnd)) {
 			return;
 		}
 		historyPending = true;
+		if (direction === -1 && historyPosition === 0 && directModDetail) {
+			const next = new URL(page.url.href);
+			next.searchParams.delete('project');
+			replacingProject = true;
+			void goto(`${next.pathname}${next.search}`, { replace: true, reset: false }).catch(() => { replacingProject = false; historyPending = false; });
+			return;
+		}
 		window.history.go(direction);
 	}
 </script>
 
 <header
-	class="relative z-10 flex h-8 shrink-0 items-center gap-1 bg-transparent pl-21 pr-2 cursor-grab active:cursor-grabbing"
+	class={`relative z-10 flex h-8 shrink-0 items-center gap-1 bg-transparent cursor-grab ${windows ? 'pl-2.5' : 'pl-21 pr-2'}`}
 	data-tauri-drag-region
 	aria-label="窗口拖动区域"
 >
@@ -48,7 +67,7 @@
 		class="grid size-6 cursor-default place-items-center rounded-md text-chrome-muted/80 transition-colors enabled:hover:bg-chrome-selected enabled:hover:text-chrome-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-30"
 		aria-label="后退"
 		title="后退"
-		disabled={historyPending || historyPosition === 0}
+		disabled={historyPending || (historyPosition === 0 && !directModDetail)}
 		onclick={() => traverseHistory(-1)}
 	><ArrowLeft size={16} aria-hidden="true" />
 	</button>
@@ -61,11 +80,15 @@
 		onclick={() => traverseHistory(1)}
 	><ArrowRight size={16} aria-hidden="true" />
 	</button>
-	{#if hasClientSidebar}
-		<button type="button" aria-label={sidebar.open ? '收起实例侧栏' : '展开实例侧栏'} title={sidebar.open ? '收起实例侧栏' : '展开实例侧栏'} aria-expanded={sidebar.open} aria-controls="client-detail-sidebar" onclick={() => sidebar.toggle()} class="ml-1 grid size-6 cursor-default place-items-center rounded-md text-chrome-muted/80 transition-colors hover:bg-chrome-selected hover:text-chrome-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"><PanelLeft size={16} aria-hidden="true" /></button>
+	{#if sidebarArea}
+		<button type="button" aria-label={`${sidebar[sidebarArea] ? '收起' : '展开'}${sidebarLabel}`} title={`${sidebar[sidebarArea] ? '收起' : '展开'}${sidebarLabel}`} aria-expanded={sidebar[sidebarArea]} aria-controls={sidebarId} onclick={() => sidebar.toggle(sidebarArea!)} class="ml-1 grid size-6 cursor-default place-items-center rounded-md text-chrome-muted/80 transition-colors hover:bg-chrome-selected hover:text-chrome-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"><PanelLeft size={16} aria-hidden="true" /></button>
 	{/if}
 	<div class="ml-auto flex items-center">
 		<DownloadTasks />
 	</div>
+	{#if windows}
+		<!-- Native DWM caption buttons occupy this area above the WebView. -->
+		<div class="h-full w-34.5 shrink-0" aria-hidden="true"></div>
+	{/if}
 </header>
 

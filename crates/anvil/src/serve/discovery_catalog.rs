@@ -17,6 +17,16 @@ impl Source for Discovery {
   type Value = DiscoveryPage;
   const NAME: &'static str = "curseforge";
   const TTL: Duration = Duration::from_secs(300);
+  fn needs_refresh(&self, value: &Self::Value) -> bool {
+    let missing = |project: &anvil_core::curseforge::Project| {
+      project.download_count.is_none() || project.date_modified.is_none()
+    };
+    match value {
+      DiscoveryPage::Search(page) => page.items.iter().any(missing),
+      DiscoveryPage::Project(project) => missing(project),
+      DiscoveryPage::Files(_) => false,
+    }
+  }
   async fn load(&self, context: Context) -> Result<Option<CatalogData<Self::Value>>, Error> {
     Ok(
       self
@@ -80,6 +90,7 @@ impl DiscoveryCatalog {
     let value = entry.get(context, force, after).await?;
     let mut page = match value.value {
       DiscoveryPage::Search(page) => serde_json::to_value(page),
+      DiscoveryPage::Project(project) => Ok(serde_json::json!({ "project": project })),
       DiscoveryPage::Files(page) => serde_json::to_value(page),
     }
     .map_err(|_| "目录响应无法编码。")?;

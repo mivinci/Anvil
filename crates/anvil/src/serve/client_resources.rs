@@ -12,6 +12,25 @@ use axum::{
 
 // Limit uploads before body extraction: at most one 64 MiB resource request at a time.
 static RESOURCE_REQUESTS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(1);
+pub(super) async fn fabric_game(
+  runtime: &super::operations::RuntimeState,
+  name: &str,
+) -> Result<String, ApiError> {
+  let (_, record) = anvil_core::client::ClientInstaller::new(runtime.context.clone())
+    .details(name)
+    .await
+    .map_err(resource_error)?;
+  if !matches!(
+    record.loader,
+    Some(anvil_core::fabric::ClientLoader::Fabric { .. })
+  ) {
+    return Err(ApiError::new(
+      StatusCode::CONFLICT,
+      "当前仅支持为 Fabric 实例浏览模组。",
+    ));
+  }
+  Ok(record.version_id)
+}
 pub(super) async fn limit_resource_requests(request: Request<Body>, next: Next) -> Response {
   let Ok(_permit) = RESOURCE_REQUESTS.try_acquire() else {
     return ApiError::new(

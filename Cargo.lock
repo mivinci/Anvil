@@ -126,10 +126,12 @@ dependencies = [
 name = "anvil-core"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "directories",
  "flate2",
  "keyring",
  "q2q-http",
+ "quick-xml",
  "regex",
  "reqwest 0.12.28",
  "serde",
@@ -179,6 +181,7 @@ dependencies = [
  "tokio-util",
  "tracing",
  "url",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3251,6 +3254,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "41b1177fdf999d2321d3fb46ff47159d9c1fb9ad66a4879f8c50a0b504615e9b"
 dependencies = [
  "memchr",
+ "serde",
 ]
 
 [[package]]

@@ -1,3 +1,7 @@
-<svelte:head><title>模组与整合包 · Anvil</title></svelte:head>
+<script lang="ts">
+	import ModDiscoveryShell from '#lib/components/mods/mod-discovery-shell.svelte';
+</script>
 
-<h1 class="sr-only">模组与整合包</h1>
+<svelte:head><title>模组 · Anvil</title></svelte:head>
+
+<ModDiscoveryShell />

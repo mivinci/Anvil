@@ -1,6 +1,6 @@
 # Anvil Shell 执行清单
 
-状态：第 1–9 项已完成。第 10 项桌面发行与平台验收按当前工作安排暂缓，先完成客户端版本安装、账户和启动等产品功能；之后再恢复跨平台发行 smoke。设计决策见 [Anvil Shell 设计草案](shell-design.md)。
+状态：第 1–9 项已完成。第 10 项已恢复推进：跨平台 Desktop 发行工作流和 stable/test 签名更新 feed 已加入，尚未完成本地发行构建、真实 GitHub 测试发布和各平台 WebView/回滚 smoke。设计决策见 [Anvil Shell 设计草案](shell-design.md)。
 
 ## 范围与既定约定
 
@@ -69,9 +69,9 @@
 
 ### 10. [ ] 完成桌面发行与平台验收
 
-**交付：** 打通 Windows、macOS、Linux 目标构建中的 Shell、默认 App 包和更新元数据；记录各平台的本地协议来源、CSP/CORS、可执行 sidecar 权限和签名要求。
+**交付：** `.github/workflows/desktop-release.yml` 以 `desktop/v*` 和 `desktop-test/v*` 触发 Windows x64、macOS Intel/Apple Silicon 与 Linux x64 构建，打包 Shell、默认 App 和 signed update metadata；stable 与 test 使用不同的固定更新 feed。Runtime `cli/v*` 发布同步维护 `runtime-updates` 签名索引。发行前检查 Tauri/App manifest 版本与 tag 一致，并验证签名私钥/公钥配对。
 
-**验收：** 在每个实际宣称支持的平台完成首次离线启动、App 更新、健康确认和回滚 smoke。未实测的平台只记录为待验证，不标记为已支持。
+**验收：** 2026-10-24 本机 Windows `npm run desktop:check` 通过（0 errors/0 warnings），`npm run desktop:package` 成功生成 `x86_64-pc-windows-msvc` 基线包；打包脚本重复生成得到相同 SHA-256，tar.gz 含 74 个文件及 `manifest.json`、静态页面和 sidecar。为验证从 0.1.0 升级，Tauri 与全部 6 份 App manifest 已同步准备为 Desktop 0.1.1。`npm run desktop:build` 成功生成 0.1.1 MSI（11.28 MiB）和 NSIS 安装器（7.68 MiB）；安装器收集脚本已识别两个产物。完整 `cargo test --locked --offline -p anvil-shell -p anvil` 通过（58 项；测试期间有 4 条既有 unused-import 警告）。真实 GitHub test release、测试包下载/签名验证/待启用/重启激活与回滚 smoke，以及 macOS/Linux 构建均待执行。未实测的平台只记录为待验证，不标记为已支持。Desktop 更新需要 Secret `ANVIL_DESKTOP_SIGNING_KEY` 与 Variable `ANVIL_DESKTOP_UPDATE_PUBLIC_KEY`；Runtime 更新需要 Secret `ANVIL_RUNTIME_SIGNING_KEY` 与 Variable `ANVIL_RUNTIME_UPDATE_PUBLIC_KEY`。
 
 ## 不纳入本轮
 

@@ -266,12 +266,23 @@ async fn installs_atomic_instance_and_reuses_shared_content_cache() {
   );
   assert_eq!(fixture.requests.load(Ordering::Relaxed), 1);
 
+  let second_progress = progress();
   let second = installer
-    .install("Creative", &plan, &CancellationToken::new(), &progress())
+    .install(
+      "Creative",
+      &plan,
+      &CancellationToken::new(),
+      &second_progress,
+    )
     .await
     .unwrap();
   assert_eq!(second.downloaded_files, 0);
   assert_eq!(second.reused_files, 1);
+  assert_eq!(second_progress.borrow().received_bytes, 0);
+  assert_eq!(
+    second_progress.borrow().downloaded_bytes,
+    bytes.len() as u64
+  );
   assert!(!second.already_installed);
   assert_eq!(fixture.requests.load(Ordering::Relaxed), 1);
   assert!(
@@ -280,6 +291,65 @@ async fn installs_atomic_instance_and_reuses_shared_content_cache() {
       .join("data/instances/client-survival/game")
       .is_dir()
   );
+}
+
+#[tokio::test]
+async fn fabric_instance_downloads_only_added_library_and_reuses_base_game() {
+  let root = tempfile::tempdir().unwrap();
+  let base = payload();
+  let base_server = Fixture::new(base.clone());
+  let extra = b"local Fabric library fixture".to_vec();
+  let extra_server = Fixture::new(extra.clone());
+  let installer = installer(root.path());
+  let base_plan = plan(base_server.url.clone(), &base);
+  let first = installer
+    .install(
+      "Vanilla",
+      &base_plan,
+      &CancellationToken::new(),
+      &progress(),
+    )
+    .await
+    .unwrap();
+  let mut fabric = base_plan;
+  fabric.loader = Some(crate::fabric::ClientLoader::Fabric {
+    version: "0.16.10".into(),
+  });
+  fabric.libraries.push(crate::client_plan::ClientLibrary {
+    coordinate: "fixture:fabric:1".into(),
+    artifact: PlannedFile {
+      path: "fixture/fabric/1/fabric-1.jar".into(),
+      file: ClientFile {
+        url: extra_server.url.clone(),
+        size: extra.len() as u64,
+        sha1: sha1_hex(&extra),
+      },
+    },
+    kind: crate::client_plan::ClientLibraryKind::Classpath,
+  });
+  let updates = progress();
+  let second = installer
+    .install("Fabric", &fabric, &CancellationToken::new(), &updates)
+    .await
+    .unwrap();
+  assert_eq!(second.reused_files, 1);
+  assert_eq!(second.downloaded_files, 1);
+  assert_eq!(base_server.requests.load(Ordering::Relaxed), 1);
+  assert_eq!(extra_server.requests.load(Ordering::Relaxed), 1);
+  assert_eq!(updates.borrow().received_bytes, extra.len() as u64);
+  assert_eq!(
+    updates.borrow().downloaded_bytes,
+    (base.len() + extra.len()) as u64
+  );
+  let jar = |r: &ClientInstallRecord| {
+    r.files
+      .iter()
+      .find(|f| f.path.ends_with("1.21.1.jar"))
+      .unwrap()
+      .cache_path
+      .clone()
+  };
+  assert_eq!(jar(&first.installed), jar(&second.installed));
 }
 
 #[tokio::test]

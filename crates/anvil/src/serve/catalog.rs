@@ -15,6 +15,9 @@ pub(super) trait Source: Send + Sync + 'static {
   type Value: Clone + Send + Sync + 'static;
   const TTL: Duration;
   const NAME: &'static str;
+  fn needs_refresh(&self, _: &Self::Value) -> bool {
+    false
+  }
   fn load(
     &self,
     context: Context,
@@ -43,6 +46,7 @@ struct CachedCatalog<T> {
   value: T,
   age_at_load: Duration,
   loaded_at: Instant,
+  needs_refresh: bool,
 }
 impl<T> CachedCatalog<T> {
   fn age(&self) -> Duration {
@@ -55,6 +59,7 @@ impl<T> CachedCatalog<T> {
         .duration_since(value.fetched_at)
         .unwrap_or(ttl),
       loaded_at: Instant::now(),
+      needs_refresh: false,
     }
   }
 }
@@ -97,10 +102,11 @@ impl<S: Source> Catalog<S> {
       .get_or_init(|| async {
         match self.source.load(context.clone()).await {
           Ok(Some(value)) => {
-            let cached = CachedCatalog::new(value, S::TTL);
+            let mut cached = CachedCatalog::new(value, S::TTL);
+            cached.needs_refresh = self.source.needs_refresh(&cached.value);
             tracing::info!(
               source = S::NAME,
-              stale = cached.age() >= S::TTL,
+              stale = cached.needs_refresh || cached.age() >= S::TTL,
               "Catalogue restored from disk"
             );
             self
@@ -126,7 +132,7 @@ impl<S: Source> Catalog<S> {
       let fresh = state
         .cached
         .as_ref()
-        .is_some_and(|cached| cached.age() < S::TTL);
+        .is_some_and(|cached| !cached.needs_refresh && cached.age() < S::TTL);
       // A follow-up joins the stale read's refresh, including a completed failure.
       // Only an explicit manual refresh (without `after`) starts another attempt.
       if force
@@ -226,8 +232,12 @@ fn snapshot<T: Clone>(
   let age = cached.age();
   CatalogResult {
     value: cached.value.clone(),
-    stale: age >= ttl,
-    fresh_for_ms: ttl.saturating_sub(age).as_millis() as u64,
+    stale: cached.needs_refresh || age >= ttl,
+    fresh_for_ms: if cached.needs_refresh {
+      0
+    } else {
+      ttl.saturating_sub(age).as_millis() as u64
+    },
     revision: state.revision,
     refresh_error,
   }

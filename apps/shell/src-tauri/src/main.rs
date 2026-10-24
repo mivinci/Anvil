@@ -9,6 +9,8 @@ use anvil_shell::{
   runtime::{RuntimeFailure, RuntimeState},
 };
 use tauri::Manager;
+#[cfg(target_os = "windows")]
+mod windows_frame;
 
 fn main() {
   let mut logging = Some(anvil_logging::init(
@@ -16,6 +18,22 @@ fn main() {
     cfg!(dev),
   ));
   let page_protocol = AppPageProtocol::for_current_user();
+  let context = tauri::generate_context!();
+  #[cfg(target_os = "windows")]
+  let context = {
+    let mut context = context;
+    for window in &mut context.config_mut().app.windows {
+      if window.label == "main" {
+        window.decorations = true;
+        window.transparent = true;
+        window.window_effects = Some(tauri::utils::config::WindowEffectsConfig {
+          effects: vec![tauri::window::Effect::Acrylic],
+          ..Default::default()
+        });
+      }
+    }
+    context
+  };
 
   let app = tauri::Builder::default()
     .manage(
@@ -27,6 +45,10 @@ fn main() {
     .manage(RuntimeSupervisor::new())
     .manage(UpdateService::new())
     .setup(|app| {
+      #[cfg(target_os = "windows")]
+      if let Some(window) = app.get_webview_window("main") {
+        windows_frame::install(&window)?;
+      }
       let runtime = app.state::<RuntimeSupervisor>();
       #[cfg(not(dev))]
       let updates = app.state::<UpdateService>();
@@ -121,7 +143,7 @@ fn main() {
         responder.respond(page_protocol.handle(request));
       });
     })
-    .build(tauri::generate_context!())
+    .build(context)
     .expect("failed to run Anvil desktop application");
   app.run(move |app, event| {
     if matches!(event, tauri::RunEvent::Exit) {

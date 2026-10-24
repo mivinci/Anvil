@@ -1,5 +1,5 @@
 //! Bounded CurseForge plans, verified shared publication, and one instance transaction.
-use super::transfer::{lookup, upstream_hash};
+use super::transfer::{DownloadFile, lookup, upstream_hash};
 use super::*;
 use crate::{
   CancellationToken,
@@ -116,6 +116,7 @@ pub(super) fn validate_layout_entries(manifest: &ResourceManifest) -> Result<()>
   let mut copy = manifest.clone();
   for entry in &mut copy.mods {
     entry.origin = None;
+    entry.modrinth_origin = None;
     entry.source = ResourceSource::Local;
   }
   validate_manifest(&copy)?;
@@ -123,6 +124,7 @@ pub(super) fn validate_layout_entries(manifest: &ResourceManifest) -> Result<()>
   for entry in &manifest.mods {
     match (&entry.source, &entry.origin) {
       (ResourceSource::Local, None) => {}
+      (ResourceSource::Modrinth, None) => {}
       (ResourceSource::Curseforge, Some(origin)) => {
         validate_origin(origin)?;
         if !projects.insert(origin.project_id) {
@@ -132,9 +134,11 @@ pub(super) fn validate_layout_entries(manifest: &ResourceManifest) -> Result<()>
       _ => return Err(Error::Metadata("invalid layout source".into())),
     }
   }
+  super::modrinth::validate_entries(manifest, false)?;
   Ok(())
 }
 pub(super) fn validate_dependencies(manifest: &ResourceManifest) -> Result<()> {
+  super::modrinth::validate_entries(manifest, true)?;
   let projects: BTreeMap<_, _> = manifest
     .mods
     .iter()
@@ -268,6 +272,7 @@ fn merge(manifest: &mut ResourceManifest, file: &Planned, sha256: String) -> Res
   manifest.mods.push(ResourceEntry {
     source: ResourceSource::Curseforge,
     origin: Some(file.origin.clone()),
+    modrinth_origin: None,
     sha256,
     filename: file.file.file_name.clone(),
     size: file.file.file_length,
@@ -295,7 +300,7 @@ impl ResourceManager {
         let before = read_manifest(directory)?;
         check_revision(&before, revision)?;
         let mut after = before.clone();
-        after.schema_version = 3;
+        after.schema_version = 4;
         let mut files = Vec::new();
         let mut summary = Vec::new();
         let mut projects = HashSet::new();
@@ -338,7 +343,7 @@ impl ResourceManager {
             file: item.file,
             origin,
           };
-          let reusable = lookup(data, &file.file)?;
+          let reusable = lookup(data, &DownloadFile::from_curseforge(&file.file)?)?;
           // Preflight all identity/name/dependency conflicts before starting transfers; placeholder hash never persists.
           let sha256 = reusable
             .as_ref()
@@ -403,7 +408,13 @@ impl ResourceManager {
       if cancel.is_cancelled() {
         return Err(Error::Cancelled);
       }
-      let object = self.prepare_shared(&file.file, &cancel, &progress).await?;
+      let object = self
+        .prepare_shared(
+          &DownloadFile::from_curseforge(&file.file)?,
+          &cancel,
+          &progress,
+        )
+        .await?;
       objects.push(object);
       progress.send_modify(|p| {
         p.completed_files += 1;
@@ -427,7 +438,7 @@ impl ResourceManager {
           return Err(Error::Cancelled);
         }
         let mut after = plan.before.clone();
-        after.schema_version = 3;
+        after.schema_version = 4;
         for (file, sha256) in plan.files.iter().zip(objects) {
           verify_object(&object_path(data, &sha256), &sha256, file.file.file_length)?;
           merge(&mut after, file, sha256)?;

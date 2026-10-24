@@ -4,9 +4,17 @@
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<meta name="theme-color" content="#101113" />
+		<link rel="icon" href="/favicon.ico" sizes="any" />
+		<style>
+			html, body { background: transparent; margin: 0; }
+			#app-startup { position: fixed; inset: 0; display: grid; place-content: center; gap: 10px; text-align: center; color: #797b7e; font: 13px/1.6 system-ui, sans-serif; }
+			#app-startup strong { color: #2d2e30; font-size: 18px; font-weight: 600; }
+			@media (prefers-color-scheme: dark) { #app-startup { color: #a0a2a5; } #app-startup strong { color: #e9e9e7; } }
+		</style>
 		%sveltekit.head%
 	</head>
 	<body class="h-full overflow-hidden overscroll-none" data-sveltekit-preload-data="hover">
+		<div id="app-startup" role="status"><strong>Anvil</strong><span>正在加载界面…</span></div>
 		<div style="display: contents">%sveltekit.body%</div>
 	</body>
 </html>

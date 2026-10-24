@@ -7,10 +7,12 @@ license.workspace = true
 autotests = false
 
 [dependencies]
+base64 = "0.22"
 directories.workspace = true
 flate2.workspace = true
 keyring.workspace = true
 q2q-http.workspace = true
+quick-xml.workspace = true
 regex.workspace = true
 reqwest.workspace = true
 serde.workspace = true

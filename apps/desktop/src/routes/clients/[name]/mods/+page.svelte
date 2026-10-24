@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { getClientDetailState } from '#lib/client-detail-state.svelte.js';
-	import ClientModBrowser from '#lib/components/clients/client-mod-browser.svelte';
-	let browsing = $state(false);
+	import { resolve } from '$app/paths';
 	import { getResourceInstallState } from '#lib/resource-install-state.svelte.js';
 	const resources = getResourceInstallState();
 	let refreshedOperation = $state<number | null>(null);
@@ -21,9 +20,11 @@
 	const fabric = $derived(detail.client?.loader?.kind === 'fabric');
 	const applied = $derived(fabric && manifest !== null && manifest.appliedRevision === manifest.revision);
 	const name = $derived(page.params.name ?? '');
+	const canBrowse = $derived(fabric && !busy && !uncertain);
+	const discoveryHref = $derived(`${resolve('/mods')}?${new URLSearchParams({ instance: name.toLowerCase() })}`);
 	const visible = $derived(manifest?.mods.filter((mod) => mod.filename.toLowerCase().includes(search.trim().toLowerCase())) ?? []);
 	function validate(result: ClientResourceManifest) {
-		if (!result || ![1, 2, 3].includes(result.schemaVersion) || !Number.isSafeInteger(result.revision) || !Array.isArray(result.mods) || result.mods.length > 1024 || result.mods.some((entry) => typeof entry.filename !== 'string' || !/^[a-f0-9]{64}$/.test(entry.sha256) || !Number.isSafeInteger(entry.size) || typeof entry.enabled !== 'boolean' || !['local', 'curseforge'].includes(entry.source))) throw new Error('资源清单格式不正确。');
+		if (!result || ![1, 2, 3, 4].includes(result.schemaVersion) || !Number.isSafeInteger(result.revision) || !Array.isArray(result.mods) || result.mods.length > 1024 || result.mods.some((entry) => typeof entry.filename !== 'string' || !/^[a-f0-9]{64}$/.test(entry.sha256) || !Number.isSafeInteger(entry.size) || typeof entry.enabled !== 'boolean' || !['local', 'curseforge', 'modrinth'].includes(entry.source))) throw new Error('资源清单格式不正确。');
 		return result;
 	}
 	async function run(action: (signal: AbortSignal) => Promise<ClientResourceManifest>, mutation = false) {
@@ -80,8 +81,8 @@
 </script>
 
 <svelte:head><title>模组 · Anvil</title></svelte:head>
-<section aria-labelledby="client-mods-title" class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 lg:px-6">
-	<div class="flex items-center justify-between gap-3"><div class="flex items-baseline gap-2"><h1 id="client-mods-title" class="text-base font-semibold tracking-tight">模组</h1>{#if manifest}<span class="text-[11px] text-muted-foreground">{manifest.mods.length} 个引用</span>{/if}</div><div class="flex gap-1.5">{#if fabric && manifest && applied}<button type="button" disabled={busy || uncertain} onclick={apply} title="检查并同步受管模组文件" class="h-7 rounded-md px-2 text-xs text-muted-foreground hover:bg-chrome-hover disabled:opacity-40">同步文件</button>{/if}<button type="button" disabled={busy} aria-label="刷新模组清单" title="刷新" onclick={refresh} class="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40"><RefreshCw size={14} class={busy ? 'animate-spin motion-reduce:animate-none' : ''} aria-hidden="true" /></button><button type="button" disabled={busy || !manifest || uncertain} onclick={() => input.click()} class="inline-flex h-7 items-center gap-1.5 rounded-lg px-2 text-xs text-muted-foreground hover:bg-chrome-hover disabled:opacity-40">本地导入</button><button type="button" disabled={!fabric || busy || uncertain} onclick={() => browsing = true} class="inline-flex h-7 items-center gap-1.5 rounded-lg bg-primary px-2.5 text-xs font-medium text-primary-foreground disabled:opacity-40"><Plus size={13} aria-hidden="true" />添加模组</button></div></div>
+<section aria-labelledby="client-mods-title" class="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-5 py-5 lg:px-6">
+	<div class="flex items-center justify-between gap-3"><div class="flex items-baseline gap-2"><h1 id="client-mods-title" class="text-base font-semibold tracking-tight">模组</h1>{#if manifest}<span class="text-[11px] text-muted-foreground">{manifest.mods.length} 个引用</span>{/if}</div><div class="flex gap-1.5">{#if fabric && manifest && applied}<button type="button" disabled={busy || uncertain} onclick={apply} title="检查并同步受管模组文件" class="h-7 rounded-md px-2 text-xs text-muted-foreground hover:bg-chrome-hover disabled:opacity-40">同步文件</button>{/if}<button type="button" disabled={busy} aria-label="刷新模组清单" title="刷新" onclick={refresh} class="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40"><RefreshCw size={14} class={busy ? 'animate-spin motion-reduce:animate-none' : ''} aria-hidden="true" /></button><button type="button" disabled={busy || !manifest || uncertain} onclick={() => input.click()} class="inline-flex h-7 items-center gap-1.5 rounded-lg px-2 text-xs text-muted-foreground hover:bg-chrome-hover disabled:opacity-40">本地导入</button><a href={canBrowse ? discoveryHref : undefined} aria-disabled={!canBrowse} tabindex={canBrowse ? 0 : -1} aria-label={`为 ${name} 添加模组`} title={fabric ? "浏览兼容模组" : "需要 Fabric 实例"} class="inline-flex h-7 items-center gap-1.5 rounded-lg bg-primary px-2.5 text-xs font-medium text-primary-foreground focus-visible:outline-2 focus-visible:outline-ring aria-disabled:pointer-events-none aria-disabled:opacity-40"><Plus size={13} aria-hidden="true" />添加模组</a></div></div>
 	<input bind:this={input} type="file" accept=".jar" aria-label="选择本地模组 JAR" onchange={pick} class="hidden" />
 	<p class="mt-2 text-[11px] leading-5 text-muted-foreground">{fabric ? '启用的文件会写入本实例的 mods 目录；共享原件保留，启动前会重新检查文件。平台资源保留必需依赖关系；本地导入文件尚不解析依赖与兼容性。' : '此实例为原版，可导入并管理引用；启用模组需要 Fabric 实例。'}</p>
 	{#if error}<p role="alert" class="mt-3 wrap-break-word rounded-lg bg-destructive/5 px-3 py-2 text-xs text-destructive">{error}</p>{/if}
@@ -91,12 +92,12 @@
 	{/if}
 	{#if !manifest && busy}<div role="status" class="flex min-h-40 items-center justify-center gap-2 text-xs text-muted-foreground"><LoaderCircle size={15} class="animate-spin motion-reduce:animate-none" aria-hidden="true" />读取资源清单…</div>
 	{:else if manifest}
-		{#if manifest.mods.length === 0}<div class="flex min-h-48 flex-col items-center justify-center gap-3 text-muted-foreground"><Boxes size={25} strokeWidth={1.5} aria-hidden="true" /><p class="text-xs">尚未导入模组</p></div>
+		{#if manifest.mods.length === 0}<div class="flex min-h-48 flex-1 flex-col items-center justify-center gap-3 text-muted-foreground"><Boxes size={25} strokeWidth={1.5} aria-hidden="true" /><p class="text-xs">尚未导入模组</p></div>
 		{:else}
 			<input type="search" bind:value={search} placeholder="搜索模组文件名" aria-label="搜索模组" class="mt-4 h-8 w-full rounded-lg bg-chrome-hover px-2.5 text-xs outline-none focus:ring-1 focus:ring-ring" />
 			<ul class="mt-3 divide-y divide-border rounded-lg border border-border bg-card px-3" aria-label="本实例模组引用">
 				{#each visible as mod (mod.sha256)}
-					<li class="py-2.5"><div class="flex items-center gap-2"><div class="min-w-0 flex-1"><p class="truncate text-[13px]" title={mod.filename}>{mod.origin?.projectName ?? mod.filename}</p><p class="mt-1 text-[11px] text-muted-foreground">{mod.source === 'curseforge' ? `CurseForge · ${mod.origin?.direct ? '直接添加' : '必需依赖'}` : '本地导入'} · {size(mod.size)} · {mod.enabled ? applied ? '已启用' : '待应用' : '已停用'}</p></div><button type="button" disabled={busy || uncertain || (!fabric && !mod.enabled)} aria-pressed={mod.enabled} aria-label={`${mod.enabled ? '停用' : '启用'} ${mod.filename}`} onclick={() => change(mod, !mod.enabled)} class="h-7 shrink-0 rounded-md px-2 text-xs text-muted-foreground hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40">{mod.enabled ? '停用' : '启用'}</button><button type="button" disabled={busy || uncertain} aria-label={`移除 ${mod.filename}`} title="移除本实例引用" onclick={() => removing = mod.sha256} class="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-chrome-hover hover:text-destructive focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40"><Trash2 size={13} aria-hidden="true" /></button></div>
+					<li class="py-2.5"><div class="flex items-center gap-2"><div class="min-w-0 flex-1"><p class="truncate text-[13px]" title={mod.filename}>{mod.modrinthOrigin?.projectName ?? mod.origin?.projectName ?? mod.filename}</p><p class="mt-1 text-[11px] text-muted-foreground">{mod.source === 'modrinth' ? `Modrinth · ${mod.modrinthOrigin?.direct ? '直接添加' : '必需依赖'}` : mod.source === 'curseforge' ? `CurseForge · ${mod.origin?.direct ? '直接添加' : '必需依赖'}` : '本地导入'} · {size(mod.size)} · {mod.enabled ? applied ? '已启用' : '待应用' : '已停用'}</p></div><button type="button" disabled={busy || uncertain || (!fabric && !mod.enabled)} aria-pressed={mod.enabled} aria-label={`${mod.enabled ? '停用' : '启用'} ${mod.filename}`} onclick={() => change(mod, !mod.enabled)} class="h-7 shrink-0 rounded-md px-2 text-xs text-muted-foreground hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40">{mod.enabled ? '停用' : '启用'}</button><button type="button" disabled={busy || uncertain} aria-label={`移除 ${mod.filename}`} title="移除本实例引用" onclick={() => removing = mod.sha256} class="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-chrome-hover hover:text-destructive focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40"><Trash2 size={13} aria-hidden="true" /></button></div>
 						{#if removing === mod.sha256}<div class="mt-2 flex flex-wrap items-center justify-end gap-2 rounded-md bg-chrome-hover px-2 py-2 text-[11px]"><span class="mr-auto text-muted-foreground">只移除此实例引用，共享原件保留。</span><button type="button" disabled={busy} onclick={() => removing = null} class="rounded px-1.5 py-1 text-muted-foreground">取消</button><button type="button" disabled={busy || uncertain} onclick={() => change(mod, null)} class="rounded px-1.5 py-1 text-destructive disabled:opacity-40">确认移除</button></div>{/if}
 						<details class="mt-1 text-[11px] text-muted-foreground"><summary>文件身份</summary><p class="mt-1 select-text break-all">SHA-256 · {mod.sha256}</p></details>
 					</li>
@@ -106,5 +107,3 @@
 		{/if}
 	{/if}
 </section>
-
-{#if browsing && detail.client && fabric}<ClientModBrowser {name} gameVersion={detail.client.versionId} onClose={() => browsing = false} />{/if}

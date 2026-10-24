@@ -19,6 +19,7 @@
 			<button type="button" data-client-install-trigger onclick={() => { if (installs.active || installs.starting || installs.uncertain) installs.detailsOpen = true; else installOpen = true; }} class="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground disabled:opacity-40"><Plus size={14} aria-hidden="true" /> {installs.active || installs.starting ? '安装进度' : '安装版本'}</button>
 		</div>
 		<p class="mt-2 text-[11px] text-muted-foreground">管理你的 Minecraft Java 游戏实例</p>
+		{#if library.removalNotice}<p role="status" class="mt-2 text-[11px] text-muted-foreground">{library.removalNotice}</p>{/if}
 		<div class="mt-5 flex items-center gap-2">
 			<label class="flex h-8 w-full max-w-xs items-center gap-2 rounded-lg bg-chrome-hover px-2.5 text-muted-foreground focus-within:ring-1 focus-within:ring-ring"><Search size={14} class="shrink-0" aria-hidden="true" /><input type="search" bind:value={library.query} placeholder="搜索名称或版本" aria-label="搜索客户端" class="min-w-0 flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground" /></label>
 			<button type="button" aria-label="刷新客户端列表" title="刷新" disabled={library.loading} onclick={() => void library.refresh()} class="grid size-8 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40"><RefreshCw size={14} class={library.loading ? 'animate-spin motion-reduce:animate-none' : ''} aria-hidden="true" /></button>

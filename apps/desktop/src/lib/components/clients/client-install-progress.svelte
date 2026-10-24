@@ -12,20 +12,23 @@
 	const totalBytes = $derived(operation?.progress.totalBytes ?? null);
 	const downloadedBytes = $derived(operation?.progress.downloadedBytes ?? 0);
 	const percent = $derived(totalBytes && operation ? Math.min(100, Math.max(0, downloadedBytes / totalBytes * 100)) : files && operation ? Math.min(100, Math.max(0, operation.progress.completedFiles / files * 100)) : null);
-	const showSpeed = $derived(operation?.state === 'running' && operation.progress.stage === 'downloading' && !operation.cancelRequested && !installs.error && !installs.syncing && !installs.changingPause);
+	const showSpeed = $derived(operation?.state === 'running' && operation.progress.stage === 'downloading' && operation.progress.receivedBytes > 0 && !operation.cancelRequested && !installs.error && !installs.syncing && !installs.changingPause);
+	const showNetwork = $derived(operation && ['downloading', 'verifying', 'publishing', 'completed'].includes(operation.progress.stage));
 </script>
 
 <div class="space-y-3">
 	<div><p class="truncate text-[13px] font-medium">{operation?.name ?? installs.intent?.name ?? 'Minecraft'}</p><p class="mt-1 text-[11px] text-muted-foreground">Minecraft {operation?.versionId ?? installs.intent?.versionId ?? '—'}{operation?.loader ? ` · Fabric ${operation.loader.version}` : ''}</p></div>
 	<p role="status" class="text-xs text-muted-foreground">{installs.label}</p>
 	{#if installs.active || installs.starting}
-		<progress max="100" value={percent ?? undefined} aria-label="安装下载进度" class="block h-1.5 w-full overflow-hidden rounded-full accent-primary [&::-webkit-progress-bar]:rounded-full [&::-webkit-progress-bar]:bg-chrome-hover [&::-webkit-progress-value]:rounded-full [&::-webkit-progress-value]:bg-primary"></progress>
+		<progress max="100" value={percent ?? undefined} aria-label="安装准备进度" class="block h-1.5 w-full overflow-hidden rounded-full accent-primary [&::-webkit-progress-bar]:rounded-full [&::-webkit-progress-bar]:bg-chrome-hover [&::-webkit-progress-value]:rounded-full [&::-webkit-progress-value]:bg-primary"></progress>
 		<div class="flex min-h-4 flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[11px] tabular-nums text-muted-foreground">
-				{#if totalBytes !== null}<span>{formatBytes(Math.min(downloadedBytes, totalBytes))} / {formatBytes(totalBytes)}</span>{:else if files !== null}<span>文件 {operation?.progress.completedFiles ?? 0} / {files}</span>{/if}
+				{#if totalBytes !== null}<span>{operation?.progress.stage === 'java' ? '进度' : '已准备'} {formatBytes(Math.min(downloadedBytes, totalBytes))} / {formatBytes(totalBytes)}</span>{:else if files !== null}<span>文件 {operation?.progress.completedFiles ?? 0} / {files}</span>{/if}
 				{#if showSpeed}<span aria-label="下载速度">{installs.bytesPerSecond === null ? '—' : `${formatBytes(installs.bytesPerSecond)}/s`}</span>{/if}
 			</div>
 	{/if}
+	{#if showNetwork}<p class="text-[11px] tabular-nums text-muted-foreground">本轮游戏文件网络接收 {formatBytes(operation?.progress.receivedBytes ?? 0)}{operation?.progress.receivedBytes === 0 ? ' · 缓存校验不产生下载流量' : ''}</p>{/if}
 	{#if operation?.state === 'completed'}<p class="text-[11px] text-muted-foreground">{operation.result?.alreadyInstalled ? '已确认现有实例的安装文件。' : '实例已安装完成。'}</p>{/if}
+	{#if operation?.state === 'completed' && operation.result?.reusedFiles !== undefined && operation.result.downloadedFiles !== undefined}<p class="text-[11px] text-muted-foreground">本轮复用 {operation.result.reusedFiles} 个缓存文件 · 下载 {operation.result.downloadedFiles} 个文件</p>{/if}
 	{#if operation?.state === 'completed' && library.loading}<p role="status" class="text-[11px] text-muted-foreground">正在刷新客户端列表…</p>{/if}
 	{#if operation?.state === 'completed' && library.error}<div role="alert" class="rounded-lg bg-chrome-hover px-2.5 py-2 text-xs text-muted-foreground">安装已完成，但列表刷新失败。<button type="button" disabled={library.loading} onclick={() => void library.refresh()} class="ml-1 rounded px-1 text-primary underline underline-offset-2 disabled:opacity-40">重新刷新</button></div>{/if}
 	{#if operation?.state === 'cancelled'}<p class="text-[11px] text-muted-foreground">安装任务已结束，已校验的缓存文件可供后续安装复用。</p>{/if}

@@ -30,9 +30,8 @@ jobs:
     timeout-minutes: 30
     env:
       RELEASE_TAG: ${{ github.ref_name }}
-      # Compile the runtime self-updater into the released binary. Missing
-      # repository variables leave the updater disabled in the build.
-      ANVIL_RUNTIME_UPDATE_MANIFEST_URL: ${{ vars.ANVIL_RUNTIME_UPDATE_MANIFEST_URL }}
+      # Every released Runtime reads the mutable, signed pointer updated below.
+      ANVIL_RUNTIME_UPDATE_MANIFEST_URL: https://github.com/${{ github.repository }}/releases/download/runtime-updates/runtime-index.json
       ANVIL_RUNTIME_UPDATE_PUBLIC_KEY: ${{ vars.ANVIL_RUNTIME_UPDATE_PUBLIC_KEY }}
     steps:
       - uses: actions/checkout@v4
@@ -53,7 +52,16 @@ jobs:
         with:
           key: release-${{ matrix.target }}
       - name: Build CLI
-        run: cargo build --locked --release -p anvil --target ${{ matrix.target }}
+        env:
+          UPDATE_PUBLIC_KEY: ${{ vars.ANVIL_RUNTIME_UPDATE_PUBLIC_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$UPDATE_PUBLIC_KEY" || {
+            echo "ANVIL_RUNTIME_UPDATE_PUBLIC_KEY is required for Runtime release builds." >&2
+            exit 1
+          }
+          cargo build --locked --release -p anvil --target ${{ matrix.target }}
       - name: Verify binary version
         shell: bash
         run: |
@@ -111,6 +119,9 @@ jobs:
       RELEASE_TAG: ${{ github.ref_name }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - uses: actions/download-artifact@v4
         with:
           path: dist
@@ -121,19 +132,19 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           SIGNING_KEY: ${{ secrets.ANVIL_RUNTIME_SIGNING_KEY }}
+          UPDATE_PUBLIC_KEY: ${{ vars.ANVIL_RUNTIME_UPDATE_PUBLIC_KEY }}
         shell: bash
         run: |
           set -euo pipefail
-          if [ -z "$SIGNING_KEY" ]; then
-            echo "ANVIL_RUNTIME_SIGNING_KEY is not configured; skipping the runtime index."
-            exit 0
-          fi
+          test -n "$SIGNING_KEY" || { echo "ANVIL_RUNTIME_SIGNING_KEY is required." >&2; exit 1; }
+          test -n "$UPDATE_PUBLIC_KEY" || { echo "ANVIL_RUNTIME_UPDATE_PUBLIC_KEY is required." >&2; exit 1; }
           version="${RELEASE_TAG#cli/v}"
           runner_binary="dist/anvil-${version}-x86_64-unknown-linux-gnu"
           test "$(./"$runner_binary" --version)" = "anvil $version"
           api_version="$(./"$runner_binary" --serve-api-version)"
-          pip3 install --user --quiet pynacl
+          python3 -m pip install --disable-pip-version-check pynacl
           SIGNING_KEY="$SIGNING_KEY" RELEASE_VERSION="$version" API_VERSION="$api_version" \
+          UPDATE_PUBLIC_KEY="$UPDATE_PUBLIC_KEY" \
           python3 .github/scripts/sign_runtime_index.py dist
       - name: Create latest index
         shell: python3 {0}
@@ -141,6 +152,7 @@ jobs:
           import hashlib
           import json
           import os
+          from urllib.parse import quote
 
           tag = os.environ["RELEASE_TAG"]
           version = tag.removeprefix("cli/v")
@@ -165,7 +177,7 @@ jobs:
                   "archive": name,
                   "archive_format": archive_format,
                   "sha256": digest,
-                  "url": f"https://github.com/{repo}/releases/download/{tag}/{name}",
+                  "url": f"https://github.com/{repo}/releases/download/{quote(tag, safe='')}/{name}",
               }
           if not targets:
               raise SystemExit("no archives found for latest index")
@@ -194,3 +206,19 @@ jobs:
           fi
           gh release upload "$RELEASE_TAG" dist/* --clobber
           gh release edit "$RELEASE_TAG" --draft=false --latest
+      - name: Update stable Runtime feed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! gh release view runtime-updates >/dev/null 2>&1; then
+            gh release create runtime-updates \
+              --draft \
+              --prerelease \
+              --target "$GITHUB_SHA" \
+              --title "Anvil Runtime update feed" \
+              --notes "Mutable signed Runtime update index. Do not use as an installer release."
+          fi
+          gh release upload runtime-updates dist/runtime-index.json --clobber
+          gh release edit runtime-updates --draft=false --prerelease

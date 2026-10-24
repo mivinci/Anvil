@@ -3,7 +3,8 @@ use super::api::{ApiError, AppState};
 use anvil_core::{
   CancellationToken, Context,
   resources::{
-    ResourceInstallPlan, ResourceInstallProgress, ResourceInstallStage, ResourceManager,
+    ModrinthInstallPlan, ResourceInstallPlan, ResourceInstallProgress, ResourceInstallStage,
+    ResourceManager,
   },
 };
 use axum::{
@@ -24,10 +25,36 @@ use tokio::sync::watch;
 
 const LIMIT: usize = 8;
 const TTL: Duration = Duration::from_secs(600);
+#[derive(Clone)]
+pub(super) enum InstallPlan {
+  CurseForge(ResourceInstallPlan),
+  Modrinth(ModrinthInstallPlan),
+}
+impl InstallPlan {
+  fn name(&self) -> &str {
+    match self {
+      Self::CurseForge(p) => p.name(),
+      Self::Modrinth(p) => p.name(),
+    }
+  }
+  fn progress(&self) -> ResourceInstallProgress {
+    match self {
+      Self::CurseForge(p) => ResourceInstallProgress::for_plan(p),
+      Self::Modrinth(p) => ResourceInstallProgress {
+        stage: ResourceInstallStage::Preparing,
+        completed_files: 0,
+        total_files: p.files().len(),
+        downloaded_bytes: 0,
+        total_bytes: p.total_bytes(),
+        received_bytes: 0,
+      },
+    }
+  }
+}
 struct SavedPlan {
   id: u64,
   at: Instant,
-  plan: ResourceInstallPlan,
+  plan: InstallPlan,
 }
 struct Operation {
   cancel: CancellationToken,
@@ -62,6 +89,18 @@ pub(super) struct ResourceOperations {
   next: AtomicU64,
 }
 impl ResourceOperations {
+  pub(super) fn busy_for_client(&self, name: &str) -> bool {
+    self
+      .inner
+      .lock()
+      .unwrap_or_else(std::sync::PoisonError::into_inner)
+      .operations
+      .values()
+      .any(|operation| {
+        let snapshot = operation.snapshot.borrow();
+        snapshot.name.eq_ignore_ascii_case(name) && snapshot.state == Status::Running
+      })
+  }
   pub fn new() -> Self {
     Self {
       inner: Mutex::new(Inner {
@@ -72,7 +111,7 @@ impl ResourceOperations {
       next: AtomicU64::new(1),
     }
   }
-  pub fn save(&self, plan: ResourceInstallPlan) -> u64 {
+  pub fn save(&self, plan: InstallPlan) -> u64 {
     let id = self.next.fetch_add(1, Ordering::Relaxed);
     let mut inner = self
       .inner
@@ -123,7 +162,7 @@ impl ResourceOperations {
       .find(|p| p.id == id && p.plan.name() == name.to_ascii_lowercase() && p.at.elapsed() < TTL)
       .ok_or_else(|| ApiError::new(StatusCode::CONFLICT, "安装计划已过期，请重新预览。"))?;
     let plan = saved.plan.clone();
-    let progress = ResourceInstallProgress::for_plan(&plan);
+    let progress = plan.progress();
     let initial = Snapshot {
       id,
       name: plan.name().into(),
@@ -157,9 +196,11 @@ impl ResourceOperations {
         }
       });
       let result = tokio::spawn(async move {
-        ResourceManager::new(context)
-          .install_curseforge(plan, cancel, progress_tx)
-          .await
+        let manager = ResourceManager::new(context);
+        match plan {
+          InstallPlan::CurseForge(p) => manager.install_curseforge(p, cancel, progress_tx).await,
+          InstallPlan::Modrinth(p) => manager.install_modrinth(p, cancel, progress_tx).await,
+        }
       })
       .await
       .map_err(anvil_core::Error::from)
@@ -225,15 +266,13 @@ pub(super) async fn submit(
   Path((name, id)): Path<(String, u64)>,
 ) -> Result<(StatusCode, Json<Snapshot>), ApiError> {
   let op = state
-    .curseforge
-    .installs
+    .resources
     .start(state.runtime.context.clone(), &name, id)?;
   Ok((StatusCode::ACCEPTED, Json(op)))
 }
 pub(super) async fn list(State(state): State<AppState>) -> Json<Vec<Snapshot>> {
   let inner = state
-    .curseforge
-    .installs
+    .resources
     .inner
     .lock()
     .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -244,8 +283,7 @@ pub(super) async fn cancel(
   Path(id): Path<u64>,
 ) -> Result<Json<Snapshot>, ApiError> {
   let inner = state
-    .curseforge
-    .installs
+    .resources
     .inner
     .lock()
     .unwrap_or_else(std::sync::PoisonError::into_inner);

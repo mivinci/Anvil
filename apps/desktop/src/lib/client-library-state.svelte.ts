@@ -11,6 +11,14 @@ export class ClientLibraryState {
 	error = $state<string | null>(null);
 	query = $state('');
 	lastCompleted = $state<InstallReceipt | null>(null);
+	removalNotice = $state<string | null>(null);
+	acceptRemoved(name: string, cleanupPending: boolean) {
+		this.revision++;
+		this.clients = this.clients.filter(client => client.name.toLowerCase() !== name.toLowerCase());
+		if (this.lastCompleted?.name.toLowerCase() === name.toLowerCase()) this.lastCompleted = null;
+		this.removalNotice = cleanupPending ? `实例 ${name} 已移除，部分文件可能尚未清理，请查看日志。` : `已删除实例 ${name}。`;
+		void this.refresh();
+	}
 	private disposed = false;
 	private controller: AbortController | null = null;
 	private refreshQueued = false;

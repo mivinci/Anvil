@@ -1,17 +1,15 @@
 <script lang="ts">
 	import { type Snippet } from 'svelte';
-	import { slide } from 'svelte/transition';
-	import { cubicOut } from 'svelte/easing';
-	import { MediaQuery } from 'svelte/reactivity';
-	const reducedMotion = new MediaQuery('(prefers-reduced-motion: reduce)');
+	import PageSidebar from '../ui/page-sidebar.svelte';
+	import { pageSidebarItemClass } from '../ui/page-sidebar-item';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import { Box, Boxes, Image, FileText, LoaderCircle, Settings2, Sparkles } from '@lucide/svelte';
 	import { ClientDetailState, setClientDetailState } from '../../client-detail-state.svelte.js';
-	import { getClientSidebarState } from '../../client-sidebar-state.svelte.js';
+	import { getPageSidebarState } from '../../page-sidebar-state.svelte.js';
 	let { children }: { children: Snippet } = $props();
 	const detail = setClientDetailState(new ClientDetailState());
-	const sidebar = getClientSidebarState();
+	const sidebar = getPageSidebarState();
 	const name = $derived(page.params.name ?? '');
 	const valid = $derived(/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,47}$/.test(name) && !name.endsWith('.'));
 	const client = $derived(detail.client);
@@ -27,16 +25,14 @@
 </script>
 
 <div class="flex min-h-0 flex-1 overflow-hidden">
-	{#if sidebar.open}
-		<aside transition:slide={{ axis: 'x', duration: reducedMotion.current ? 0 : 180, easing: cubicOut }} id="client-detail-sidebar" aria-label="实例侧栏" class="flex w-44 shrink-0 flex-col overflow-y-auto overscroll-contain bg-card px-2 py-3">
-			<div class="min-w-0 w-40 shrink-0 px-2 pb-4"><p class="truncate text-[13px] font-semibold" title={client?.name}>{client?.name ?? '实例详情'}</p><p class="mt-1 truncate text-[11px] text-muted-foreground">{client ? `Minecraft ${client.versionId}` : 'Minecraft Java'}</p></div>
-			<nav aria-label="实例导航" class="w-40 shrink-0 space-y-1">
-				{#each items as item (item.href)}
-					<a href={item.href} aria-current={page.url.pathname === item.href ? 'page' : undefined} class={`flex h-8 items-center gap-2 rounded-lg px-2.5 text-[13px] transition-colors focus-visible:outline-2 focus-visible:outline-ring ${page.url.pathname === item.href ? 'bg-chrome-selected font-medium text-accent-foreground' : 'text-muted-foreground hover:bg-chrome-hover hover:text-foreground'}`}><item.icon size={15} strokeWidth={1.7} aria-hidden="true" />{item.label}</a>
-				{/each}
-			</nav>
-		</aside>
-	{/if}
+	<PageSidebar open={sidebar.clients} id="client-detail-sidebar" label="实例侧栏">
+		<div class="min-w-0 w-40 shrink-0 px-2 pb-4"><p class="truncate text-[13px] font-semibold" title={client?.name}>{client?.name ?? '实例详情'}</p><p class="mt-1 truncate text-[11px] text-muted-foreground">{client ? `Minecraft ${client.versionId}` : 'Minecraft Java'}</p></div>
+		<nav aria-label="实例导航" class="w-40 shrink-0 space-y-1">
+			{#each items as item (item.href)}
+				<a href={item.href} aria-current={page.url.pathname === item.href ? 'page' : undefined} class={pageSidebarItemClass(page.url.pathname === item.href)}><item.icon size={15} strokeWidth={1.7} aria-hidden="true" />{item.label}</a>
+			{/each}
+		</nav>
+	</PageSidebar>
 	<div class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
 		{#if !valid}
 			<div class="px-5 py-4 text-[13px] text-muted-foreground" role="alert">实例名称无效。<a href={resolve('/clients')} class="ml-2 text-primary underline underline-offset-2">返回客户端</a></div>

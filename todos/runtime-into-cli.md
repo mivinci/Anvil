@@ -8,7 +8,7 @@
 - 终端用户安装的 CLI 与桌面 App 运行的业务逻辑天然同源，口径一致。
 - App 包继续把 `anvil` 二进制作为 sidecar 打入，Shell 现有签名更新通道与启动监管不变。
 
-**进度**：Phase 1–4 已全部完成（2026-10-23）。runtime 自更新走 CLI release 的签名 `runtime-index.json` 通道；App 包继续以包内种子兜底，override 失败自动回退并拉黑。后续演进（如 sidecar 独立版本化的 `stable.json` artifact）在出现真实需求时另立方案。
+**进度**：Phase 1–4 的代码已完成（2026-10-23）。CLI release 现在把签名 `runtime-index.json` 发布到固定的 `runtime-updates` feed，Desktop Shell 构建时嵌入该 HTTPS 地址；App 包仍以包内种子兜底，override 失败自动回退并拉黑。真实 Runtime release 和自更新尚未执行验收。
 
 ## Phase 划分
 
@@ -46,10 +46,10 @@
 
 2026-10-23（维护者确认后开工）：
 
-- 新增 `.github/workflows/cli-release.yml`，tag `cli/v*` 推送触发。流程：4 target matrix 构建 → 版本校验（tag ↔ `Cargo.toml` workspace 版本 ↔ 二进制 `--version` 三方一致）→ 打包（`anvil-<ver>-<target>.tar.gz` / `.zip`，含二进制 + LICENSE + README.md）→ release job 生成 `SHA256SUMS` 与 `latest.json`（版本、tag、每 target 的归档名/sha256/下载 URL，供将来 Phase 4 自更新器消费）→ draft release → 上传 → publish --latest。已发布 release 的 asset 不可变，重试只允许修复 draft。
+- `.github/workflows/cli-release.yml` 以 tag `cli/v*` 触发。流程：4 target matrix 构建 → 版本校验（tag ↔ `Cargo.toml` workspace 版本 ↔ 二进制 `--version` 三方一致）→ 打包（`anvil-<ver>-<target>.tar.gz` / `.zip`，含二进制 + LICENSE + README.md）→ release job 生成 `SHA256SUMS`、`latest.json` 与签名 `runtime-index.json` → 发布版本 release 并更新固定的 `runtime-updates` feed。发行要求 Runtime 签名私钥和公钥变量都配置且匹配。
 - target 矩阵与 Q2Q release 完全一致：`x86_64-unknown-linux-gnu`（ubuntu-22.04，glibc 2.35 兼容）、`x86_64-apple-darwin`（macos-15-intel）、`aarch64-apple-darwin`（macos-15）、`x86_64-pc-windows-msvc`（windows-2022）。`macos-15-intel` 经 Q2Q 10-22 的成功 run 验证可用（actionlint 1.7.7 的 label 数据库滞后，报未知属误报）。
 - `latest.json` 生成脚本与版本提取脚本段在本地用假产物实测通过；修复了一处 `.tar.gz` 双后缀被 `rpartition('.')` 切错的真实 bug。
-- 发布操作流程：`Cargo.toml` workspace 版本 bump 并合入 main → `git tag cli/vX.Y.Z && git push origin cli/vX.Y.Z`。CI 未真实执行过一次完整发布，首次打 tag 时需人工核对产物。
+- 发布操作流程：`Cargo.toml` workspace 版本 bump 并合入 main → `git tag cli/vX.Y.Z && git push origin cli/vX.Y.Z`。完整 GitHub release 与自更新 smoke 仍未真实执行。
 - 风险提示（Phase 4 开工前复核）：GitHub release asset 无 Ed25519 签名，sha256 与产物同源（同一 release 页面），校验强度低于 Shell 的 `stable.json` 签名通道。
 
 ## Phase 3 验收记录

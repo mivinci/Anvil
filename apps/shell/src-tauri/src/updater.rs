@@ -748,6 +748,8 @@ fn is_windows_reserved_name(component: &str) -> bool {
 fn validate_extracted_package(root: &Path, manifest: &AppManifest) -> Result<(), UpdateError> {
   let page = resolve_regular_file(root, &manifest.page_entry)?;
   let sidecar = resolve_regular_file(root, &manifest.sidecar_entry)?;
+  #[cfg(not(unix))]
+  let _ = sidecar;
   if fs::metadata(page)
     .map_err(|_| UpdateError::InvalidPackage)?
     .len()

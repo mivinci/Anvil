@@ -9,10 +9,13 @@
 - `server.rs`：服务端安装、缓存、实例发布与失败清理。
 - `account.rs`：账户资料校验、设备码事件、凭证存储替身、令牌轮换、身份一致性及敏感值脱敏。
 - `account_store.rs`：共享账户资料的原子存储、当前选择、移除及令牌隔离。
+- `client_removal.rs`：只删除临时目标实例、保留共享缓存与其他实例，运行/设置锁及身份校验；Windows junction/Unix 符号链接拒绝并保留外部目标。不会删除用户实例。
+- `resource_transfer.rs`：下载返回路径与目标的规范化比较，覆盖 Windows verbatim 路径、不同文件、缺失文件和目录拒绝；Unix 另验证符号链接拒绝。仅使用临时文件，无真实下载。
 - `account_microsoft.rs`：本地 HTTP fixture 覆盖 Microsoft 设备码轮询、用户拒绝/取消、Xbox/XSTS 与 Minecraft profile 交换和刷新令牌轮换；不访问真实账户服务。
 - `client.rs`：客户端文件缓存、q2q-http 并发/校验/取消、实例原子提交与失败重试，以及结构化启动参数和 natives 会话生命周期。
 - `metadata.rs`：Mojang 版本清单、客户端与服务端版本 JSON 校验。
 - `client_plan.rs`：官方 1.21.1 平台库/native/日志/assets 计划，以及旧 classifier、安全路径和不支持条件。
+- `discovery_cache.rs`：模组全局搜索与项目摘要的缓存键兼容、来源/筛选隔离、磁盘恢复、身份/来源链接/图标 CDN 校验、旧图标字段兼容及条目数上限；仅使用临时目录和离线 DTO，不请求 Modrinth/CurseForge。
 
 `fixtures/1.21.1.json` 和 `fixtures/1.21.1-assets-17.json` 是通过 Mojang 官方版本清单 SHA-1 校验的离线样本，供客户端计划测试使用。这些测试会被各自源码模块通过 `#[path = "../tests/<name>.rs"]` 引入，以便覆盖私有实现。Core crate 关闭 Cargo 对根目录 `.rs` 文件的自动集成测试发现，避免同一文件被作为独立集成测试再次编译；它们仍由 `cargo test -p anvil-core --locked` 编译和运行。
 

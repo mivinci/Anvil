@@ -1,4 +1,5 @@
 import { createContext } from 'svelte';
+import { readRecentPlays, recordRecentPlay, forgetRecentPlay } from './recent-plays';
 import { listClientLaunches, startClientLaunch, stopClientLaunch, type ClientLaunch } from './runtime';
 export const launchActive = (value: ClientLaunch | undefined) => !!value && !['exited', 'failed', 'cancelled'].includes(value.phase);
 export function launchLabel(value: ClientLaunch): string {
@@ -26,6 +27,13 @@ export function launchLabel(value: ClientLaunch): string {
 	}
 }
 export class ClientLaunchState {
+	recentPlays = $state(readRecentPlays());
+	private awaitingRecent = new Set<string>();
+	forgetClient(name: string) {
+		this.recentPlays = forgetRecentPlay(this.recentPlays, name);
+		this.operations = this.operations.filter(value => value.name !== name.toLowerCase());
+		this.awaitingRecent.delete(name.toLowerCase());
+	}
 	operations = $state<ClientLaunch[]>([]);
 	pending = $state<string[]>([]);
 	uncertain = $state(true);
@@ -42,7 +50,15 @@ export class ClientLaunchState {
 	}
 	forClient(name: string) { return this.operations.filter(v => v.name === name.toLowerCase()).at(-1); }
 	private controller() { const value = new AbortController(); this.controllers.add(value); return value; }
-	private accept(value: ClientLaunch) { this.operations = [...this.operations.filter(v => v.id !== value.id), value].sort((a, b) => a.id - b.id); }
+	private recordPlay(value: ClientLaunch) {
+		const name = value.name.toLowerCase();
+		if (!this.awaitingRecent.has(name)) return;
+		if (value.phase === 'running') {
+			this.recentPlays = recordRecentPlay(this.recentPlays, value.name);
+			this.awaitingRecent.delete(name);
+		} else if (!launchActive(value)) this.awaitingRecent.delete(name);
+	}
+	private accept(value: ClientLaunch) { this.operations = [...this.operations.filter(v => v.id !== value.id), value].sort((a, b) => a.id - b.id); this.recordPlay(value); }
 	async sync() {
 		if (this.disposed) return;
 		if (this.timer) clearTimeout(this.timer);
@@ -53,6 +69,7 @@ export class ClientLaunchState {
 			const values = await listClientLaunches(controller.signal);
 			if (this.disposed || sequence !== this.readSequence || generation !== this.generation) return;
 			this.operations = values; this.uncertain = false; this.error = null;
+			for (const value of values) this.recordPlay(value);
 		} catch { if (!this.disposed && sequence === this.readSequence && generation === this.generation) { this.uncertain = true; this.error = '无法确认游戏运行状态，请刷新后重试。'; } }
 		finally {
 			this.controllers.delete(controller);
@@ -62,6 +79,7 @@ export class ClientLaunchState {
 	async start(name: string, accountId: string | null, installJava = false, offlineTest = false) {
 		if (this.disposed || this.uncertain || this.pending.includes(name) || launchActive(this.forClient(name))) return;
 		this.pending = [...this.pending, name]; ++this.generation;
+		this.awaitingRecent.add(name.toLowerCase());
 		const controller = this.controller();
 		try { const value = await startClientLaunch(name, accountId, installJava, controller.signal, offlineTest); if (!this.disposed) this.accept(value); }
 		catch { if (!this.disposed) { this.uncertain = true; this.error = '启动请求未确认，请刷新状态后重试。'; } }

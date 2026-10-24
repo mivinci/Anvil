@@ -56,6 +56,9 @@ export class ClientInstallState {
 			const steps = { resolving: '查找', downloading: '下载', extracting: '解压', validating: '校验', publishing: '安装', completed: '准备完成' };
 			return progress.javaStage === 'completed' ? `${java} 已就绪` : `正在${progress.javaStage ? steps[progress.javaStage] : '准备'} ${java}…`;
 		}
+		if (this.operation?.progress.stage === 'downloading') {
+			return this.operation.progress.receivedBytes > 0 ? '正在下载缺失的 Minecraft 文件' : '正在校验并复用本地 Minecraft 缓存';
+		}
 		return this.operation ? installStages[this.operation.progress.stage] : '暂无安装任务';
 	}
 	private async request<T>(run: (signal: AbortSignal) => Promise<T>): Promise<T> {

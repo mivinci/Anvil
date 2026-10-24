@@ -9,7 +9,7 @@ use std::time::SystemTime;
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum DiscoveryQuery {
   Search {
-    game: String,
+    game: Option<String>,
     text: String,
     index: u32,
   },
@@ -18,12 +18,16 @@ pub enum DiscoveryQuery {
     project: u32,
     index: u32,
   },
+  Project {
+    project: u32,
+  },
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "page", rename_all = "snake_case")]
 pub enum DiscoveryPage {
   Search(CatalogPage<Project>),
   Files(CatalogPage<ModFile>),
+  Project(Project),
 }
 pub struct CachedDiscovery {
   pub page: DiscoveryPage,
@@ -38,10 +42,7 @@ impl DiscoveryQuery {
   fn validate(&self) -> Result<()> {
     match self {
       Self::Search { game, text, index } => {
-        validate_query(game, *index)?;
-        if text.len() > 128 || text.chars().any(char::is_control) {
-          return Err(Error::Invalid("invalid search query".into()));
-        }
+        validate_search(game.as_deref(), text, *index)?;
       }
       Self::Files {
         game,
@@ -51,6 +52,7 @@ impl DiscoveryQuery {
         validate_query(game, *index)?;
         validate_id(*project)?;
       }
+      Self::Project { project } => validate_id(*project)?,
     }
     Ok(())
   }
@@ -62,9 +64,10 @@ impl DiscoveryQuery {
           && page
             .next_index
             .is_none_or(|next| next > *index && next <= 10000)
-          && page.items.iter().all(|p| {
-            p.id > 0 && p.game_id == 432 && p.class_id == Some(6) && p.authors.len() <= 128
-          })
+          && page.items.iter().all(valid_project)
+      }
+      (Self::Project { project }, DiscoveryPage::Project(p)) => {
+        p.id == *project && valid_project(p)
       }
       (
         Self::Files {
@@ -113,9 +116,10 @@ impl DiscoveryQuery {
     let page = match self {
       Self::Search { game, text, index } => DiscoveryPage::Search(
         provider
-          .search_with_refresh(game, text, *index, true)
+          .search_with_refresh(game.as_deref(), text, *index, true)
           .await?,
       ),
+      Self::Project { project } => DiscoveryPage::Project(provider.project(*project, true).await?),
       Self::Files {
         game,
         project,

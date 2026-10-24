@@ -49,6 +49,8 @@ pub(super) struct InstallReceipt {
   pub name: String,
   pub version_id: String,
   pub already_installed: bool,
+  pub downloaded_files: usize,
+  pub reused_files: usize,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -297,7 +299,7 @@ impl RuntimeState {
 
       state_tx.send_modify(|snapshot| match outcome {
         Ok(result) => {
-          tracing::info!(operation_id = id, elapsed_ms = started.elapsed().as_millis() as u64, already_installed = result.already_installed, received_bytes = progress_tx.borrow().received_bytes, completed_files = progress_tx.borrow().completed_files, "Client installation completed");
+          tracing::info!(operation_id = id, elapsed_ms = started.elapsed().as_millis() as u64, already_installed = result.already_installed, downloaded_files = result.downloaded_files, reused_files = result.reused_files, received_bytes = progress_tx.borrow().received_bytes, completed_files = progress_tx.borrow().completed_files, "Client installation completed");
           snapshot.state = OperationState::Completed;
           snapshot.progress = progress_tx.borrow().clone().into();
           snapshot.result = Some(install_receipt(result));
@@ -332,6 +334,13 @@ impl RuntimeState {
       .collect::<Vec<_>>();
     snapshots.sort_by_key(|snapshot| snapshot.id);
     snapshots
+  }
+
+  pub(super) fn busy_for_client(&self, name: &str) -> bool {
+    self
+      .operations()
+      .iter()
+      .any(|operation| operation.name.eq_ignore_ascii_case(name) && operation.state.is_active())
   }
 
   pub(super) fn operation(&self, id: u64) -> Option<InstallOperationSnapshot> {
@@ -467,6 +476,8 @@ fn install_receipt(result: ClientInstallResult) -> InstallReceipt {
     name: result.instance.name,
     version_id: result.installed.version_id,
     already_installed: result.already_installed,
+    downloaded_files: result.downloaded_files,
+    reused_files: result.reused_files,
   }
 }
 

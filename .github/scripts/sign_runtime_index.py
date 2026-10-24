@@ -8,14 +8,15 @@ manifest format:
 
     {"payload": "<hex>", "signature": "<hex>"}
 
-Requires the SIGNING_KEY (hex seed), RELEASE_VERSION and API_VERSION
-environment variables.
+    Requires the SIGNING_KEY (hex seed), UPDATE_PUBLIC_KEY (hex public key),
+    RELEASE_VERSION and API_VERSION environment variables.
 """
 
 import hashlib
 import json
 import os
 import sys
+from urllib.parse import quote
 
 TARGETS = [
     "x86_64-unknown-linux-gnu",
@@ -25,11 +26,20 @@ TARGETS = [
 ]
 
 
+def sha256_file(path: str) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as file:
+        for chunk in iter(lambda: file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def main() -> int:
     dist = sys.argv[1] if len(sys.argv) > 1 else "dist"
     version = os.environ["RELEASE_VERSION"]
     api_version = os.environ["API_VERSION"]
     seed = bytes.fromhex(os.environ["SIGNING_KEY"])
+    expected_public_key = os.environ["UPDATE_PUBLIC_KEY"].lower()
 
     try:
         from nacl.signing import SigningKey
@@ -43,6 +53,11 @@ def main() -> int:
         return 1
     tag = f"cli/v{version}"
 
+    signing_key = SigningKey(seed)
+    if signing_key.verify_key.encode().hex() != expected_public_key:
+        print("Runtime signing key does not match ANVIL_RUNTIME_UPDATE_PUBLIC_KEY", file=sys.stderr)
+        return 1
+
     targets = {}
     for target in TARGETS:
         suffix = ".exe" if target.endswith("windows-msvc") else ""
@@ -51,12 +66,12 @@ def main() -> int:
         if not os.path.isfile(path):
             print(f"missing bare binary for {target}: {path}", file=sys.stderr)
             return 1
-        digest = hashlib.sha256(open(path, "rb").read()).hexdigest()
+        digest = sha256_file(path)
         targets[target] = {
             "binary": name,
             "sha256": digest,
             "size": os.path.getsize(path),
-            "url": f"https://github.com/{repo}/releases/download/{tag}/{name}",
+            "url": f"https://github.com/{repo}/releases/download/{quote(tag, safe='')}/{name}",
         }
 
     payload = json.dumps(
@@ -70,7 +85,7 @@ def main() -> int:
         sort_keys=True,
         separators=(",", ":"),
     ).encode()
-    signature = SigningKey(seed).sign(payload).signature
+    signature = signing_key.sign(payload).signature
     envelope = {
         "payload": payload.hex(),
         "signature": signature.hex(),
