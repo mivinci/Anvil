@@ -23,9 +23,9 @@ B 已接入基础闭环：
 
 - Core 新增 `shader_file`，返回指定版本的主 ZIP 与下载地址；`Context::download_file_sha1` 复用 q2q-http 的 SHA-1 校验、断点恢复和有界进度。
 - Runtime 新增 `POST /clients/{name}/shader-packs/modrinth`，body 为 `{ project, version, revision }`。端点读取实例游戏版本，实时解析版本元数据，下载到临时目录，核对 SHA-1 与大小后调用现有 `import_shader_pack`；沿用鉴权和资源请求门禁。
-- 桌面新增 `/shaders` 导航页和路由：侧栏选择实例，按该实例 Minecraft 版本搜索 Modrinth 光影、查看项目与 Iris 兼容版本、下载并导入；实例光影页保留本地导入，并提供跳转到该实例的 `/shaders?instance=` 入口。
+- 桌面新增 `/shaders` 导航页和路由：侧栏选择实例，按该实例 Minecraft 版本搜索 Modrinth 光影、查看项目与 Iris 兼容版本；选择版本后在底部确认栏确认，再下载并导入。实例光影页保留本地导入，并提供跳转到该实例的 `/shaders?instance=` 入口。
 - 已通过 Core 真实 smoke 实际下载 Complementary 光影 ZIP，并校验字节数；`cargo test`、Clippy、`svelte-check` 和桌面构建通过。
-- 仍未做：下载进度/取消、Runtime 端点与 UI 的真实 loopback/WebView 验收、CurseForge 光影、游戏内加载。当前下载是同步请求，受 Runtime 60 秒请求超时约束；UI 关闭后服务端可能继续完成导入，结果需刷新确认。
+- 仍未做：下载进度/取消、Runtime 端点与 UI 的真实 loopback/WebView 验收、CurseForge 光影、游戏内加载。当前下载在确认后仍是同步请求，受 Runtime 60 秒请求超时约束；没有后台任务进度或取消，离开页面后服务端可能继续完成导入，结果需刷新确认。
 
 ## 用户流程
 

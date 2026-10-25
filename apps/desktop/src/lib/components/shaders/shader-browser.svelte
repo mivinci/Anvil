@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { ChevronLeft, Download, LoaderCircle, RefreshCw, Search } from '@lucide/svelte';
+	import { Check, ChevronLeft, Download, LoaderCircle, RefreshCw, Search } from '@lucide/svelte';
 	import ModProjectIcon from '../mods/mod-project-icon.svelte';
 	import { formatBytes } from '../../download-progress';
 	import { formatModDownloads, formatModUpdated } from '../../mod-project-stats';
@@ -27,6 +27,7 @@
 	let nextIndex = $state<number | null>(null);
 	let selected = $state<ModProjectSummary | null>(null);
 	let versions = $state<ModrinthFile[]>([]);
+	let pending = $state<ModrinthFile | null>(null);
 	let request: AbortController | null = null;
 	const button = 'inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs text-muted-foreground hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40';
 
@@ -56,6 +57,7 @@
 	async function search(index: number) {
 		const controller = begin();
 		searching = true;
+		pending = null;
 		error = null;
 		message = null;
 		try {
@@ -73,6 +75,7 @@
 		const controller = begin();
 		selected = project;
 		versions = [];
+		pending = null;
 		loadingVersions = true;
 		error = null;
 		message = null;
@@ -94,16 +97,25 @@
 		abort();
 		selected = null;
 		versions = [];
+		pending = null;
 		error = null;
 		message = null;
 	}
-	async function install(file: ModrinthFile) {
-		if (!selected || revision === null || installing) return;
+	function choose(file: ModrinthFile) {
+		if (installing) return;
+		pending = file;
+		error = null;
+		message = null;
+	}
+	async function install() {
+		const file = pending;
+		if (!selected || !file || revision === null || installing) return;
 		installing = file.id;
 		error = null;
 		message = null;
 		try {
 			await downloadShaderPack(name, String(selected.id), file.id, revision, AbortSignal.timeout(120_000));
+			pending = null;
 			message = '已添加到此实例，可在游戏内选择光影。';
 			await loadRevision();
 			onImported?.();
@@ -149,11 +161,13 @@
 			{:else if versions.length === 0}
 				<p class="py-16 text-center text-xs text-muted-foreground">没有 Minecraft {gameVersion} 可用的 Iris 光影版本</p>
 			{:else}
-				<ul class="mt-3 divide-y divide-border/70 rounded-lg bg-card px-3" aria-label="光影版本">
+				<ul class="mt-3 divide-y divide-border/70 rounded-lg bg-card px-1" aria-label="光影版本">
 					{#each versions as file (file.id)}
 						<li class="flex items-center gap-3 py-2.5">
-							<div class="min-w-0 flex-1"><p class="truncate text-[13px] font-medium" title={file.displayName}>{file.displayName}</p><p class="mt-0.5 text-[11px] text-muted-foreground">{file.fileDate.slice(0, 10)} · {formatBytes(file.fileLength)}</p></div>
-							<button type="button" disabled={installing !== null || revision === null} onclick={() => void install(file)} class="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-lg bg-primary px-2.5 text-xs font-medium text-primary-foreground focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40">{#if installing === file.id}<LoaderCircle size={12} class="animate-spin motion-reduce:animate-none" aria-hidden="true" />下载中…{:else}<Download size={12} aria-hidden="true" />下载并导入{/if}</button>
+							<button type="button" aria-pressed={pending?.id === file.id} disabled={installing !== null} onclick={() => choose(file)} class={`flex w-full items-center gap-3 rounded-md px-2 py-2 text-left transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring disabled:opacity-40 ${pending?.id === file.id ? 'bg-chrome-selected' : 'hover:bg-chrome-hover'}`}>
+								<span class="min-w-0 flex-1"><span class="block truncate text-[13px] font-medium" title={file.displayName}>{file.displayName}</span><span class="mt-0.5 block text-[11px] text-muted-foreground">{file.fileDate.slice(0, 10)} · {formatBytes(file.fileLength)}</span></span>
+								{#if pending?.id === file.id}<Check size={14} class="shrink-0 text-primary" aria-hidden="true" />{/if}
+							</button>
 						</li>
 					{/each}
 				</ul>
@@ -161,4 +175,23 @@
 			{/if}
 		{/if}
 	</div>
+	{#if pending}
+		<section aria-label="确认光影下载" class="mt-3 shrink-0 rounded-lg bg-card px-3 py-2.5">
+			<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+				<div class="min-w-0 flex-1 text-xs">
+					{#if installing}
+						<p role="status" class="flex items-center gap-2 text-muted-foreground"><LoaderCircle size={13} class="animate-spin motion-reduce:animate-none" aria-hidden="true" />正在下载并导入 {pending.displayName}…</p>
+					{:else}
+						<p class="truncate" title={`${pending.displayName} · ${formatBytes(pending.fileLength)}`}><span class="text-muted-foreground">安装到</span> {name} <span class="text-muted-foreground">· {pending.displayName} · {formatBytes(pending.fileLength)}</span></p>
+					{/if}
+				</div>
+				{#if installing}
+					<span class="text-[10px] text-muted-foreground">下载完成后自动导入</span>
+				{:else}
+					<button type="button" class={button} onclick={() => { pending = null; }}>取消</button>
+					<button type="button" disabled={revision === null} onclick={() => void install()} class="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40"><Download size={13} aria-hidden="true" />确认下载并导入</button>
+				{/if}
+			</div>
+		</section>
+	{/if}
 </div>
