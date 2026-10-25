@@ -11,9 +11,9 @@
 	import { page } from '$app/state';
 	import { getPageSidebarState } from '../page-sidebar-state.svelte.js';
 	const sidebar = getPageSidebarState();
-	const sidebarArea = $derived(page.params.name !== undefined && page.route.id?.startsWith('/clients/') ? 'clients' : page.route.id === '/mods' ? 'mods' : null);
-	const sidebarLabel = $derived(sidebarArea === 'mods' ? '模组筛选侧栏' : '实例侧栏');
-	const sidebarId = $derived(sidebarArea === 'mods' ? 'mod-discovery-sidebar' : 'client-detail-sidebar');
+	const sidebarArea = $derived(page.params.name !== undefined && page.route.id?.startsWith('/clients/') ? 'clients' : page.route.id === '/mods' ? 'mods' : page.route.id === '/shaders' ? 'shaders' : null);
+	const sidebarLabel = $derived(sidebarArea === 'mods' ? '模组筛选侧栏' : sidebarArea === 'shaders' ? '光影筛选侧栏' : '实例侧栏');
+	const sidebarId = $derived(sidebarArea === 'mods' ? 'mod-discovery-sidebar' : sidebarArea === 'shaders' ? 'shader-discovery-sidebar' : 'client-detail-sidebar');
 	import DownloadTasks from './download-tasks.svelte';
 
 	let historyPosition = $state(0);

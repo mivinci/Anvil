@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Blocks, Gamepad2, House, Server } from '@lucide/svelte';
+	import { Blocks, Gamepad2, House, Server, Sparkles } from '@lucide/svelte';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
@@ -22,6 +22,7 @@
 	const clientsSelected = $derived(pathname === resolve('/clients') || pathname.startsWith(`${resolve('/clients')}/`));
 	const serversSelected = $derived(pathname === resolve('/servers') || pathname.startsWith(`${resolve('/servers')}/`));
 	const modsSelected = $derived(pathname === resolve('/mods') || pathname.startsWith(`${resolve('/mods')}/`));
+	const shadersSelected = $derived(pathname === resolve('/shaders') || pathname.startsWith(`${resolve('/shaders')}/`));
 </script>
 
 <svg class="pointer-events-none absolute size-0" aria-hidden="true" focusable="false">
@@ -41,6 +42,7 @@
 		</NavButton>
 		<NavButton aria-label="服务端" selected={serversSelected} onclick={() => goto(resolve('/servers'))}>{#if serversSelected}<ServerFilled />{:else}<Server size={19} />{/if}</NavButton>
 		<NavButton aria-label="模组" selected={modsSelected} onclick={() => goto(resolve('/mods'))}>{#if modsSelected}<BlocksFilled />{:else}<Blocks size={19} />{/if}</NavButton>
+		<NavButton aria-label="光影" selected={shadersSelected} onclick={() => goto(resolve('/shaders'))}><Sparkles size={19} /></NavButton>
 	</div>
 	<div class="mt-auto flex flex-col items-center gap-2.5">
 		<UpdateNavButton />
