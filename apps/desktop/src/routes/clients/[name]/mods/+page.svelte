@@ -48,7 +48,8 @@
 		return map;
 	});
 	function validate(result: ClientResourceManifest) {
-		if (!result || ![1, 2, 3, 4].includes(result.schemaVersion) || !Number.isSafeInteger(result.revision) || !Array.isArray(result.mods) || result.mods.length > 1024 || result.mods.some((entry) => typeof entry.filename !== 'string' || !/^[a-f0-9]{64}$/.test(entry.sha256) || !Number.isSafeInteger(entry.size) || typeof entry.enabled !== 'boolean' || !['local', 'curseforge', 'modrinth'].includes(entry.source))) throw new Error('资源清单格式不正确。');
+		// Schema 5 adds shaderPacks; this page only reads the mods collection.
+		if (!result || ![1, 2, 3, 4, 5].includes(result.schemaVersion) || !Number.isSafeInteger(result.revision) || !Array.isArray(result.mods) || result.mods.length > 1024 || result.mods.some((entry) => typeof entry.filename !== 'string' || !/^[a-f0-9]{64}$/.test(entry.sha256) || !Number.isSafeInteger(entry.size) || typeof entry.enabled !== 'boolean' || !['local', 'curseforge', 'modrinth'].includes(entry.source))) throw new Error('资源清单格式不正确。');
 		return result;
 	}
 	async function run(action: (signal: AbortSignal) => Promise<ClientResourceManifest>, mutation = false) {
