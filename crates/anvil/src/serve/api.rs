@@ -45,6 +45,7 @@ pub(super) struct AppState {
   news: Arc<super::news::NewsCatalog>,
   pub(super) resources: Arc<super::resource_operations::ResourceOperations>,
   pub(super) accounts: Arc<AccountState>,
+  pub(super) play_stats: Arc<anvil_core::play_stats::PlayStatsStore>,
   api_version: Arc<str>,
   token: Arc<str>,
   pub(super) logging: Option<anvil_logging::LoggingStatus>,
@@ -57,8 +58,12 @@ impl AppState {
     api_version: String,
     token: String,
   ) -> Self {
+    let play_stats = Arc::new(anvil_core::play_stats::PlayStatsStore::open(
+      &runtime.context.paths.data,
+    ));
     Self {
-      launches: Arc::new(super::launches::Launches::new()),
+      launches: Arc::new(super::launches::Launches::new(play_stats.clone())),
+      play_stats,
       curseforge: Arc::new(super::curseforge::Catalog::new()),
       modrinth: Arc::new(super::modrinth::Catalog::new()),
       news: Arc::new(super::news::NewsCatalog::default()),
@@ -140,6 +145,10 @@ pub(super) async fn serve(
     .route(
       "/clients/{name}/modrinth/projects/{project}/files/{file}/plan",
       post(super::modrinth::create_plan),
+    )
+    .route(
+      "/play-stats",
+      get(super::play_stats::snapshot).delete(super::play_stats::clear),
     )
     .route("/health", get(health))
     .route("/news", get(news_feed))
@@ -719,6 +728,18 @@ async fn delete_client(
     cleanup_pending = result.cleanup_pending,
     "Client instance removed"
   );
+  let stats = state.play_stats.clone();
+  let removed_id = result.id.clone();
+  match tokio::task::spawn_blocking(move || stats.remove_instance(&removed_id)).await {
+    Ok(Ok(())) => {}
+    Ok(Err(error)) => {
+      tracing::warn!(
+        error_code = error.code(),
+        "Play statistics could not be pruned"
+      );
+    }
+    Err(error) => tracing::warn!(%error, "Play statistics cleanup task failed"),
+  }
   Ok(Json(result))
 }
 

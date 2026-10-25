@@ -50,6 +50,10 @@ Core 的 `catalog_cache` 共用有界磁盘读写、原始获取时间、schema 
 
 Shell 与 Runtime 入口共用 `anvil-logging`，开发模式写终端和文件，发行模式写文件；Core 仅产生 tracing 事件，不持有日志输出。文件轮转、队列与历史数量有界，Runtime stdout 保留为握手协议，日志使用 stderr。不得记录认证凭据、验证码或请求体。实例日志页只按需读取游戏自身 latest.log 的末尾快照（上限 256 KiB），不混入启动器日志，不设常驻日志流。桌面启动另以有界内存保留经认证信息过滤的 Java stdout/stderr（每任务 256 KiB、单行 8 KiB），日志页手动刷新查看；Runtime 结束或任务历史淘汰即清空。实例日志页另支持按需浏览最近 50 份崩溃报告，单份读取上限 2 MiB，不作自动诊断。实施状态与验收边界见[桌面日志执行项](../todos/desktop-logging.md)。
 
+## 桌面游玩统计
+
+Runtime 在客户端启动进入 `running` 时开始记录会话，游戏退出、取消或失败时按实际时长结算；小于 10 秒的会话只计启动次数，单局上限 24 小时。统计按账户 UUID 与实例 ID 聚合，离线测试单独记为 `offline`；实例删除后清理对应统计。数据保存在 Runtime 数据目录的 `play-stats.json`（schema 1，有界 512 KiB），原子替换，损坏文件备份后重建；只由 Runtime 生命周期写入，桌面通过鉴权的 `GET/DELETE /play-stats` 读取和清除，不接收前端计时、不云同步、不记录凭据。首页玩家卡按当前账户展示总游玩、近 7 天、启动次数、最常玩和上次游玩；900px 下新闻移到主内容下方，≥1200px 恢复右侧栏。执行项与验收见[桌面首页玩家卡](../todos/desktop-home.md)。
+
 ## Runtime 自更新
 
 - Shell 保持通用：启动时优先读取 `<app>/sidecar-store/current.json`（schema 1：`version`/`sidecar_entry`/`http_api_version`），校验失败或启动失败即回退包内种子，并把失败版本写入 `blocked.json`。Shell 不了解 Anvil 版本策略或下载渠道。

@@ -250,7 +250,7 @@ export interface ClientDetails extends InstalledClient {
 }
 export const getClientDetails = (name: string, signal: AbortSignal) =>
 	runtimeRequest<ClientDetails>(`/clients/${encodeURIComponent(name)}`, { signal });
-export interface ClientRemoval { removed: boolean; cleanupPending: boolean }
+export interface ClientRemoval { id: string; removed: boolean; cleanupPending: boolean }
 export const deleteClient = (name: string, signal: AbortSignal) =>
 	runtimeRequest<ClientRemoval>(`/clients/${encodeURIComponent(name)}`, { method: 'DELETE', body: JSON.stringify({ confirmation: name }), signal });
 
@@ -395,7 +395,7 @@ export const cancelResourceOperation = (id: number, signal: AbortSignal) =>
 	runtimeRequest<ResourceInstallOperation>(`/resource-operations/${id}`, { method: 'DELETE', signal });
 
 export interface ClientLaunch {
-	id: number; name: string; offlineTest: boolean; javaDownloadStarted: boolean;
+	id: number; name: string; offlineTest: boolean; startedAt: number | null; javaDownloadStarted: boolean;
 	phase: 'preparing' | 'authenticating' | 'planning' | 'java' | 'running' | 'stopping' | 'exited' | 'failed' | 'cancelled';
 	cancelRequested: boolean; javaMajor: number | null;
 	javaStage: 'resolving' | 'downloading' | 'extracting' | 'validating' | 'publishing' | 'completed' | null;
@@ -407,6 +407,20 @@ export const startClientLaunch = (name: string, accountId: string | null, instal
 	runtimeRequest<ClientLaunch>(`/clients/${encodeURIComponent(name)}/launch`, { method: 'POST', body: JSON.stringify({ accountId, installJava, offlineTest }), signal });
 export const stopClientLaunch = (id: number, signal: AbortSignal) =>
 	runtimeRequest<ClientLaunch>(`/client-launches/${id}`, { method: 'DELETE', signal });
+
+export interface PlayStatsSession {
+	instanceId: string; startedAt: number; endedAt: number; durationMs: number;
+}
+export interface PlayStatsInstance { totalMs: number; launches: number; lastPlayedAt: number }
+export interface PlayStatsAccount {
+	totalMs: number; launches: number; lastPlayedAt: number | null; lastInstanceId: string | null;
+	last7dMs: number; instances: Record<string, PlayStatsInstance>; recentSessions: PlayStatsSession[];
+}
+export interface PlayStatsSnapshot { schemaVersion: number; accounts: Record<string, PlayStatsAccount> }
+export const getPlayStats = (signal: AbortSignal) =>
+	runtimeRequest<PlayStatsSnapshot>('/play-stats', { signal, cache: 'no-store' });
+export const clearPlayStats = (signal: AbortSignal) =>
+	runtimeRequest<PlayStatsSnapshot>('/play-stats', { method: 'DELETE', signal });
 
 export interface ClientGameLog { exists: boolean; text: string; totalBytes: number; truncated: boolean }
 export const getClientGameLog = (name: string, signal: AbortSignal) =>

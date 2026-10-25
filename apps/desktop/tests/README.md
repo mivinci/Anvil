@@ -3,9 +3,11 @@
 仓库根目录运行 Node 状态检查（PowerShell）：
 
 ```powershell
-node --experimental-strip-types --test (Get-ChildItem -LiteralPath apps/desktop/tests -Filter 'mod-*.test.ts').FullName
+node --experimental-strip-types --test (Get-ChildItem -LiteralPath apps/desktop/tests -Filter '*.test.ts').FullName
 npm run check --workspace @anvil/desktop
 ```
+
+`play-stats.test.ts` 覆盖玩家卡的时长、相对时间、启动次数和“最常玩”展示辅助，只使用内存数据，不访问 Runtime。
 
 浏览器验收使用构建后的页面、本地 HTTP fixture、独立临时 Edge 配置和假 Shell IPC。不会读取真实账户、连接真实 Runtime 或下载/安装模组。先构建，再运行：
 
@@ -17,6 +19,8 @@ node apps/desktop/tests/mod-discovery.browser.mjs
 ```
 
 需要本机 Edge 和可用的 Playwright，测试不自动安装依赖。默认 CI 无需运行此脚本。成功后输出检查结果及截图目录；截图位于被 Git 忽略的 `apps/desktop/.svelte-kit/mod-discovery-qa/`。
+
+玩家卡与首页断点更新后，脚本中的旧首页布局断言（侧栏快捷入口、900px 并排）尚未同步，当前以 `todos/desktop-home.md` 的实现记录为准。
 
 覆盖搜索、滚动追加/位置恢复、直接链接及历史、目标/来源切换、缺失/原版目标、来源未配置、900px 深色与宽窗口浅色，以及内存安装任务离页接续、提交结果未知后原计划重试和返回实例刷新。另用长说明和 20 个兼容版本验证底部安装栏始终可见、详情默认收起及正常状态隐藏重新生成入口。原生 WebView、真实平台下载及游戏内加载仍需独立验收。
 

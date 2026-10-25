@@ -1,6 +1,6 @@
 # 桌面首页玩家卡
 
-状态：B 方案（左侧玩家卡）设计已确认，尚未实现。统计按账户、由 Runtime 在启动生命周期内采集并持久化到数据目录；首页在 900×620 下保持“玩家卡 + 继续游玩 + 启动”可见，新闻移到主内容下方，≥1200px 再回到右侧栏。等光影页合入、工作区干净后从新分支开始。
+状态：H1–H4 已实现（Core 统计存储、Runtime 会话采集与 API、首页玩家卡与统计接入）；待真实游玩、原生 WebView 视觉与浏览器验收。清除统计入口、首页主推实例跟随账户和皮肤全身展示仍未做。
 
 ## 目标与非目标
 
@@ -124,7 +124,7 @@
 ```
 
 - 数据模型、校验、裁剪和原子写入放在 `anvil-core` 的 `play_stats` 模块，复用现有有界读取和 `replace_json`；Runtime 负责启动生命周期和 HTTP，不把 UI 逻辑放进 Core。
-- 有界：最多 32 个账户、每账户 128 个实例、每账户 256 条会话、单文件读取上限 512 KiB；写入前按 `lastPlayedAt` 裁剪旧会话。
+- 有界：最多 32 个账户、每账户 64 个实例、每账户 256 条会话、全局 2048 条会话、单文件读取上限 512 KiB；写入前按 `lastPlayedAt` 裁剪旧会话。
 - 会话列表用于“近 7 天”和最近游玩；超过上限时丢弃最旧记录，统计仍保留累计值。近 7 天在读取时按当前时间滚动计算。
 - 读取失败或 schema 不符：保留原文件并复制为 `play-stats.corrupt.json`（只保留一份），本次以空数据启动，记录 warn；不静默删除用户数据。
 - 实例删除成功后，从所有账户移除该实例的统计；账户删除时保留统计，重新登录同一 UUID 可以接上。
@@ -137,7 +137,7 @@
 - `DELETE /play-stats`：清除本机统计，显式调用；不清除 `recent-plays`、实例或账户。
 - 不提供前端写接口；统计只能由 Runtime 生命周期产生，避免伪造和重复计数。
 - 返回体只含统计和公开 ID，不含路径、token 或凭据。
-- 可选：给 `ClientLaunch` 快照增加 `startedAt`，用于“运行中 · 已玩 12 分钟”的实时展示；不加也可以只显示“运行中”。
+- `ClientLaunch` 快照已增加 `startedAt`，用于“运行中 · 已玩 12 分钟”的实时展示；实例删除结果增加 `id` 以便清理统计。
 
 ## UI 接入
 
@@ -161,6 +161,14 @@
 6. **H6 文档与验收**：README、architecture、本文件状态；真实游玩一局验证记录与持久化。
 
 H1/H2 可以在独立分支先做，不依赖首页视觉；H3 只改首页，不碰 Runtime。光影页合入前不动当前工作区。
+
+## 实现记录
+
+- Core：新增 `crates/anvil-core/src/play_stats.rs`，schema 1；按账户/实例聚合、保留最近 20 条会话、滚动 7 天；有界（32 账户、每账户 64 实例、每账户 256 会话、全局 2048 会话、读取 512 KiB），原子替换，损坏文件备份为 `play-stats.corrupt.json`。9 项单测覆盖聚合、短会话、上限、重载、清除、实例移除、损坏恢复、滚动窗口和文件大小。
+- Runtime：新增 `GET/DELETE /play-stats`；`launches.rs` 在进入 running 时记录、退出/取消/失败时结算，账户取启动请求，离线测试记为 `offline`；实例删除后按 `ClientRemoval.id` 清理统计。loopback API 测试覆盖鉴权、持久化读取和清除。
+- 桌面：新增 `home-player-card.svelte`、`home-news.svelte`、`play-stats-state.svelte.ts`、`play-stats.ts`；首页断点为 1000/1200，900px 下玩家卡全宽、新闻移到主内容下方；统计按当前账户过滤，启动终态后刷新，账户菜单内切换账户。
+- 验证：`cargo test -p anvil-core -p anvil` 通过（Core 119、Runtime 单测 18、CLI 20、sidecar 1）；`cargo clippy --all-targets -- -D warnings`、`cargo fmt --check`、`npm run desktop:check`、`npm run build --workspace @anvil/desktop`、Node 前端测试 13 项（含 play-stats 5 项）通过。
+- 未验证：真实 Minecraft 启动后的会话记录；原生 WebView 首帧、900/1200px 截图与交互；`mod-discovery.browser.mjs` 的旧首页布局断言尚未随玩家卡更新，当前不能作为首页验收；清除统计 UI 入口未接入；全量真实游玩、账户切换后的统计准确性由维护者手测。
 
 ## 验收
 

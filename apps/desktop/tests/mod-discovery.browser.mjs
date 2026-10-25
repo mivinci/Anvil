@@ -28,12 +28,13 @@ function api(url, method) {
 	if (p === '/health') return { status: 'ok', apiVersion: '1.0.0' };
 	if (p === '/system/memory') return { totalMib: 16384 };
 	if (p === '/accounts') return [{ id: accountId, username: 'FixturePlayer', selected: true }];
+	if (p === '/play-stats') return { schemaVersion: 1, accounts: {} };
 	if (p === `/accounts/${accountId}/skin`) return { url: skinUrl, model: 'slim' };
 	if (p === '/clients') return homeReadError ? { status: 503, error: 'fixture unavailable' } : homeEmpty ? [] : [client('first'), client('second'), client('vanilla')].filter(value => !deletedClients.has(value.name));
 	if (p.endsWith('/launch-settings')) return { schemaVersion: 1, revision: 0, maxMemoryMib: 2048, initialMemoryMib: null, resolution: null };
 	if (p === '/news') return { ...catalog, items: [1, 2, 3].map(number => ({ title: `Minecraft Java fixture ${number}`, url: `https://www.minecraft.net/article/fixture-${number}`, publishedAt: '2026-10-24T00:00:00Z', categories: ['Java'] })) };
 	if (p === '/client-launches') return gameLaunch ? [gameLaunch] : [];
-	if (p.endsWith('/launch') && method === 'POST') { gameLaunch = { id: 1, name: p.split('/')[2], phase: nextGamePhase, cancelRequested: false, offlineTest: false, error: nextGamePhase === 'failed' ? 'fixture launch failed' : null, javaDownloadStarted: false }; return gameLaunch; }
+	if (p.endsWith('/launch') && method === 'POST') { gameLaunch = { id: 1, name: p.split('/')[2], phase: nextGamePhase, startedAt: nextGamePhase === 'running' ? Date.now() : null, cancelRequested: false, offlineTest: false, error: nextGamePhase === 'failed' ? 'fixture launch failed' : null, javaDownloadStarted: false }; return gameLaunch; }
 	if (/^\/clients\/[^/]+$/.test(p)) {
 		const name = p.split('/')[2];
 		if (method === 'DELETE') {
@@ -41,7 +42,7 @@ function api(url, method) {
 			if (deletionMode === 'conflict') return { status: 409, error: 'fixture instance busy' };
 			deletedClients.add(name);
 			if (deletionMode === 'lost') return { status: 500, error: 'fixture reply lost' };
-			return { removed: true, cleanupPending: false };
+			return { id: `client-${name}`, removed: true, cleanupPending: false };
 		}
 		return name === 'missing' || deletedClients.has(name) ? { status: 404, error: 'not found' } : client(name);
 	}

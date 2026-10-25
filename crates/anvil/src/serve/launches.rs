@@ -12,6 +12,7 @@ use anvil_core::{
   client_plan::ClientTarget,
   java::{InstallStage as JavaStage, JavaProgress},
   launch::{LaunchOptions, build_launch_spec_with_settings},
+  play_stats::{OFFLINE_ACCOUNT, PlaySession, PlayStatsStore},
 };
 use axum::{
   Json,
@@ -27,6 +28,7 @@ use std::{
     Arc, Mutex,
     atomic::{AtomicU64, Ordering},
   },
+  time::{SystemTime, UNIX_EPOCH},
 };
 use tokio::{
   process::Command,
@@ -59,6 +61,7 @@ pub(super) struct Snapshot {
   id: u64,
   name: String,
   offline_test: bool,
+  started_at: Option<u64>,
   phase: Phase,
   cancel_requested: bool,
   java_major: Option<u32>,
@@ -89,10 +92,15 @@ struct Inner {
   operations: BTreeMap<u64, Operation>,
   stopping: bool,
 }
+struct LaunchServices {
+  accounts: Arc<AccountState>,
+  stats: Arc<PlayStatsStore>,
+}
 pub(super) struct Launches {
   inner: Mutex<Inner>,
   next: AtomicU64,
   account_gate: Arc<Semaphore>,
+  stats: Arc<PlayStatsStore>,
 }
 impl Launches {
   pub(super) fn busy_for_client(&self, name: &str) -> bool {
@@ -107,7 +115,7 @@ impl Launches {
         snapshot.name.eq_ignore_ascii_case(name) && snapshot.phase.active()
       })
   }
-  pub fn new() -> Self {
+  pub fn new(stats: Arc<PlayStatsStore>) -> Self {
     Self {
       inner: Mutex::new(Inner {
         operations: BTreeMap::new(),
@@ -115,6 +123,7 @@ impl Launches {
       }),
       next: AtomicU64::new(1),
       account_gate: Arc::new(Semaphore::new(1)),
+      stats,
     }
   }
   fn start(
@@ -184,6 +193,7 @@ impl Launches {
       id,
       name: name.clone(),
       offline_test: request.offline_test,
+      started_at: None,
       phase: Phase::Preparing,
       cancel_requested: false,
       java_major: None,
@@ -207,13 +217,17 @@ impl Launches {
       },
     );
     let gate = self.account_gate.clone();
+    let services = LaunchServices {
+      accounts,
+      stats: self.stats.clone(),
+    };
     tokio::spawn(async move {
       tracing::info!(launch_id = id, "Client launch accepted");
       let worker_updates = updates.clone();
       let result = tokio::spawn(async move {
         run(
           context,
-          accounts,
+          services,
           name,
           request,
           cancel,
@@ -301,6 +315,27 @@ fn phase(updates: &watch::Sender<Snapshot>, value: Phase) {
   updates.send_modify(|s| s.phase = value);
   tracing::info!(launch_id = updates.borrow().id, phase = ?value, "Client launch phase changed");
 }
+
+fn running(updates: &watch::Sender<Snapshot>) -> u64 {
+  let started_at = now_ms();
+  updates.send_modify(|snapshot| {
+    snapshot.phase = Phase::Running;
+    snapshot.started_at = Some(started_at);
+  });
+  tracing::info!(
+    launch_id = updates.borrow().id,
+    phase = ?Phase::Running,
+    "Client launch phase changed"
+  );
+  started_at
+}
+
+fn now_ms() -> u64 {
+  SystemTime::now()
+    .duration_since(UNIX_EPOCH)
+    .map(|duration| duration.as_millis() as u64)
+    .unwrap_or(0)
+}
 fn failure(error: &Error) -> (&'static str, &'static str) {
   match error {
     Error::AccountRequired => ("account_required", "请先登录 Microsoft 账户，再点击启动。"),
@@ -336,16 +371,23 @@ fn failure(error: &Error) -> (&'static str, &'static str) {
 }
 async fn run(
   context: Context,
-  accounts: Arc<AccountState>,
+  services: LaunchServices,
   name: String,
   request: LaunchRequest,
   cancel: CancellationToken,
   gate: Arc<Semaphore>,
   output: (watch::Sender<Snapshot>, Arc<Mutex<Console>>),
 ) -> Result<i32> {
+  let LaunchServices { accounts, stats } = services;
   let (updates, console) = output;
+  let stats_account = if request.offline_test {
+    Some(OFFLINE_ACCOUNT.to_string())
+  } else {
+    request.account_id.clone()
+  };
   let installer = ClientInstaller::new(context.clone());
   let (instance, installed) = installer.details(&name).await?;
+  let stats_instance = instance.id.clone();
   let launch_settings = installer.launch_settings(&instance.name).await?;
   updates.send_modify(|s| s.java_major = Some(installed.java_major));
   let (session, client_id) = if request.offline_test {
@@ -449,7 +491,7 @@ async fn run(
     session.clone(),
   ));
   readers.spawn(console::capture(stderr, "stderr", console.clone(), session));
-  phase(&updates, Phase::Running);
+  let running_since = running(&updates);
   let result = tokio::select! {
     result = child.wait() => result.map_err(Error::from),
     _ = cancel.cancelled() => { phase(&updates, Phase::Stopping); let _ = child.start_kill(); match child.wait().await { Ok(_) => Err(Error::Cancelled), Err(error) => Err(error.into()) } }
@@ -462,6 +504,24 @@ async fn run(
   drop(child);
   console::finish(readers, &console).await;
   drop(spec);
+  if let Some(account_id) = stats_account {
+    let session = PlaySession {
+      account_id,
+      instance_id: stats_instance,
+      started_at: running_since,
+      ended_at: now_ms(),
+    };
+    match tokio::task::spawn_blocking(move || stats.record(session)).await {
+      Ok(Ok(())) => {}
+      Ok(Err(error)) => {
+        tracing::warn!(
+          error_code = error.code(),
+          "Play statistics could not be saved"
+        );
+      }
+      Err(error) => tracing::warn!(%error, "Play statistics task failed"),
+    }
+  }
   let status = result?;
   Ok(status.code().unwrap_or(-1))
 }

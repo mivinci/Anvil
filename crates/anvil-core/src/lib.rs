@@ -16,6 +16,7 @@ pub mod metadata;
 pub mod modrinth;
 pub mod news;
 mod platform;
+pub mod play_stats;
 pub mod resources;
 pub mod server;
 mod storage;

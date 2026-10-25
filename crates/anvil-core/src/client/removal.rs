@@ -4,6 +4,7 @@ use super::*;
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClientRemoval {
+  pub id: String,
   pub removed: bool,
   pub cleanup_pending: bool,
 }
@@ -111,6 +112,7 @@ impl ClientInstaller {
         // instance still exists or invite a second destructive submission.
         let cleanup_pending = fs::remove_dir_all(staging).is_err();
         Ok(ClientRemoval {
+          id,
           removed: true,
           cleanup_pending,
         })
