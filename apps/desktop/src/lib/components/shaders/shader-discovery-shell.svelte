@@ -2,6 +2,7 @@
 	import { onMount, tick } from 'svelte';
 	import PageSidebar from '#lib/components/ui/page-sidebar.svelte';
 	import { getPageSidebarState } from '../../page-sidebar-state.svelte.js';
+	import { pageSidebarItemClass } from '../ui/page-sidebar-item';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
@@ -83,6 +84,9 @@
 					</Popover.Content>
 				</Popover.Portal>{/if}
 			</Popover.Root>
+			<div class="flex flex-col gap-1" role="group" aria-label="光影来源">
+				<button type="button" aria-pressed="true" class={pageSidebarItemClass(true)}><Sparkles size={15} strokeWidth={1.7} aria-hidden="true" />Modrinth</button>
+			</div>
 			<p class="px-2 text-[10px] leading-4 text-muted-foreground">首期只支持 Modrinth 和 Iris 兼容版本；CurseForge 光影后续接入。</p>
 		</div>
 	</PageSidebar>
