@@ -52,11 +52,11 @@
 <section aria-labelledby="shader-packs-title" class="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-5 py-5 lg:px-6">
 	<header class="flex shrink-0 flex-wrap items-center justify-between gap-2">
 		<div class="flex items-baseline gap-2"><h1 id="shader-packs-title" class="text-base font-semibold tracking-tight">光影</h1>{#if packs.collection}<span class="text-[11px] text-muted-foreground">{packs.collection.packs.length} 个</span>{/if}</div>
-		<div class="flex items-center gap-1">
-			{#if packs.collection?.packs.length}<button type="button" class={secondary} disabled={locked} onclick={() => void packs.sync()} title="校验并补回本实例受管资源文件">{packs.activity === 'syncing' ? '同步中…' : applied ? '同步文件' : '应用到目录'}</button>{/if}
-			<button type="button" class={`${secondary} w-7 px-0`} disabled={packs.busy} onclick={() => void packs.refresh()} aria-label="刷新光影清单" title="刷新清单"><RefreshCw size={14} class={packs.busy ? 'animate-spin motion-reduce:animate-none' : ''} aria-hidden="true" /></button>
-			<a href={`${resolve('/shaders')}?${new URLSearchParams({ instance: name.toLowerCase() })}`} class="inline-flex h-7 items-center gap-1.5 rounded-lg px-2 text-xs text-muted-foreground hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring">浏览光影</a>
-			<button type="button" disabled={locked || !packs.collection} onclick={() => input.click()} class="inline-flex h-7 items-center gap-1.5 rounded-lg bg-primary px-2.5 text-xs font-medium text-primary-foreground focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40"><Plus size={13} aria-hidden="true" />导入光影</button>
+		<div class="flex items-center gap-1.5">
+			{#if packs.collection?.packs.length}<button type="button" disabled={locked} onclick={() => void packs.sync()} title="校验并补回本实例受管资源文件" class="h-7 rounded-md px-2 text-xs text-muted-foreground hover:bg-chrome-hover disabled:opacity-40">{packs.activity === 'syncing' ? '同步中…' : applied ? '同步文件' : '应用到目录'}</button>{/if}
+			<button type="button" disabled={packs.busy} onclick={() => void packs.refresh()} aria-label="刷新光影清单" title="刷新清单" class="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40"><RefreshCw size={14} class={packs.busy ? 'animate-spin motion-reduce:animate-none' : ''} aria-hidden="true" /></button>
+			<button type="button" disabled={locked || !packs.collection} onclick={() => input.click()} class="inline-flex h-7 items-center gap-1.5 rounded-lg px-2 text-xs text-muted-foreground hover:bg-chrome-hover disabled:opacity-40">本地导入</button>
+			<a href={`${resolve('/shaders')}?${new URLSearchParams({ instance: name.toLowerCase() })}`} aria-label={`为 ${name} 添加光影`} title="浏览 Iris 兼容光影" class="inline-flex h-7 items-center gap-1.5 rounded-lg bg-primary px-2.5 text-xs font-medium text-primary-foreground focus-visible:outline-2 focus-visible:outline-ring"><Plus size={13} aria-hidden="true" />添加光影</a>
 		</div>
 	</header>
 	<input bind:this={input} type="file" accept=".zip,application/zip" onchange={pick} aria-label="选择本地光影 ZIP" class="hidden" />
