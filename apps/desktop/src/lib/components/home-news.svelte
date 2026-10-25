@@ -46,7 +46,7 @@
 </script>
 
 <aside class={`min-w-0 ${className}`} aria-labelledby="news-title">
-	<section class="rounded-lg border border-border bg-card p-3">
+	<section class="rounded-lg bg-card p-3">
 		<div class="mb-1 flex items-center justify-between gap-2">
 			<div class="flex min-w-0 items-center gap-2">
 				<Newspaper size={15} class="shrink-0 text-primary" aria-hidden="true" />

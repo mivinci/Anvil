@@ -23,8 +23,8 @@
 	const palette = $derived(['bg-primary/10 text-primary', 'bg-teal-600/8 text-teal-700/70 dark:text-teal-300/60', 'bg-stone-500/10 text-stone-600/80 dark:text-stone-300/60'][motif]);
 </script>
 <li class="min-w-0">
-	<div class="group relative isolate overflow-hidden rounded-xl border border-border/70 bg-card transition-[transform,border-color,box-shadow] duration-200 hover:border-primary/30 hover:shadow-sm motion-safe:hover:-translate-y-0.5">
-		<a href={resolve('/clients/[name]', { name: client.name.toLowerCase() })} aria-label={`管理实例 ${client.name}`} class="absolute inset-0 z-10 rounded-xl focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring"></a>
+	<div class="group relative isolate overflow-hidden rounded-xl bg-card transition-[transform,border-color,box-shadow] duration-200 hover:border-primary/30 hover:shadow-sm motion-safe:hover:-translate-y-0.5">
+		<a href={resolve('/clients/[name]', { name: client.name.toLowerCase() })} aria-label={`管理实例 ${client.name}`} class="absolute inset-0 z-10 rounded-xl focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"></a>
 		<div class={`pointer-events-none relative flex h-23 items-center justify-center overflow-hidden ${palette}`}>
 			<span class="absolute top-2.5 left-3 text-[10px] font-medium tracking-wide opacity-70">{client.loader ? 'FABRIC' : 'VANILLA'}</span>
 			{#if statusBadge}<span class={`absolute top-2.5 right-3 rounded-full bg-card/80 px-2 py-0.5 text-[10px] ${badgeTone}`} title={label}>{statusBadge}</span>{/if}
