@@ -83,10 +83,10 @@
 		void loadLogs();
 		return () => { if (updateTimer) clearTimeout(updateTimer); };
 	});
-	async function openProject(event: MouseEvent) {
+	async function openExternal(event: MouseEvent, url: string) {
 		if (!isTauri()) return;
 		event.preventDefault();
-		try { await shell.openExternalUrl('https://github.com/mivinci/Anvil'); }
+		try { await shell.openExternalUrl(url); }
 		catch { error = '无法打开系统浏览器，请稍后重试。'; }
 	}
 </script>
@@ -134,6 +134,9 @@
 		<p class="text-[11px] leading-4 text-muted-foreground">shell.log / runtime.log · 每份 10 MiB，各保留 4 份历史文件</p>
 		{#if logsError}<p role="alert" class="text-[12px] text-destructive">{logsError}</p>{/if}
 	</section>
-	<a href="https://github.com/mivinci/Anvil" target="_blank" rel="noreferrer" onclick={openProject} class="flex items-center justify-between rounded-lg bg-card px-3.5 py-3 text-[13px] transition-colors hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring">项目地址<ExternalLink size={14} class="text-muted-foreground" aria-hidden="true" /></a>
+	<div class="divide-y divide-border rounded-lg bg-card px-3.5 text-[13px]">
+		<a href="https://github.com/mivinci/Anvil" target="_blank" rel="noreferrer" onclick={(event) => void openExternal(event, 'https://github.com/mivinci/Anvil')} class="flex items-center justify-between py-2.5 transition-colors hover:text-primary focus-visible:outline-2 focus-visible:outline-ring">项目地址<ExternalLink size={14} class="text-muted-foreground" aria-hidden="true" /></a>
+		<a href="https://github.com/mivinci/Anvil/issues/new/choose" target="_blank" rel="noreferrer" onclick={(event) => void openExternal(event, 'https://github.com/mivinci/Anvil/issues/new/choose')} class="flex items-center justify-between py-2.5 transition-colors hover:text-primary focus-visible:outline-2 focus-visible:outline-ring">反馈问题<ExternalLink size={14} class="text-muted-foreground" aria-hidden="true" /></a>
+	</div>
 	{#if error}<div role="alert" class="text-[13px] text-destructive">{error}<button type="button" disabled={loading} onclick={() => void load()} class="ml-2 underline underline-offset-2">重试</button></div>{/if}
 </div>
