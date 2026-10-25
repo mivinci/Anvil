@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="theme-color" content="#101113" />
+		<title>Anvil — 恢复</title>
+		<style>
+			:root { color-scheme: dark; font: 15px/1.6 system-ui, sans-serif; background: #101113; color: #e7e8eb; }
+			* { box-sizing: border-box; }
+			body { display: grid; min-height: 100vh; margin: 0; place-items: center; padding: 24px; }
+			main { width: min(100%, 480px); padding: 36px; border: 1px solid #ffffff16; border-radius: 18px; background: #17191b; box-shadow: 0 24px 80px #0005; }
+			.mark { display: grid; width: 42px; height: 42px; place-items: center; border-radius: 12px; color: #122119; background: #a3e6b3; font-size: 22px; font-weight: 800; }
+			h1 { margin: 24px 0 8px; font-size: 23px; letter-spacing: -.03em; }
+			p { margin: 0; color: #a1a4aa; }
+			button { margin-top: 24px; border: 0; border-radius: 9px; padding: 10px 15px; color: #122119; background: #a3e6b3; font: inherit; font-weight: 650; cursor: pointer; }
+			button:focus-visible { outline: 2px solid #e7e8eb; outline-offset: 3px; }
+			.note { margin-top: 18px; color: #747880; font-size: 12px; }
+		</style>
+	</head>
+	<body>
+		<main>
+			<div class="mark" aria-hidden="true">A</div>
+			<h1>Anvil 暂时无法启动桌面 App</h1>
+			<p>本地 App 页面不存在、损坏，或与当前 Shell 不兼容。可以重试；如果问题仍然存在，请重新安装或修复 App。</p>
+			<button type="button" onclick="location.reload()">重试</button>
+			<div class="note">Shell 恢复入口 · App 页面保存在本机</div>
+		</main>
+	</body>
+</html>
