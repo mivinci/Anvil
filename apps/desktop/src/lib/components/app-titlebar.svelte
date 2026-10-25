@@ -11,9 +11,9 @@
 	import { page } from '$app/state';
 	import { getPageSidebarState } from '../page-sidebar-state.svelte.js';
 	const sidebar = getPageSidebarState();
-	const sidebarArea = $derived(page.params.name !== undefined && page.route.id?.startsWith('/clients/') ? 'clients' : page.route.id === '/mods' ? 'mods' : null);
-	const sidebarLabel = $derived(sidebarArea === 'mods' ? '模组筛选侧栏' : '实例侧栏');
-	const sidebarId = $derived(sidebarArea === 'mods' ? 'mod-discovery-sidebar' : 'client-detail-sidebar');
+	const sidebarArea = $derived(page.params.name !== undefined && page.route.id?.startsWith('/clients/') ? 'clients' : page.route.id === '/mods' ? 'mods' : page.route.id === '/shaders' ? 'shaders' : null);
+	const sidebarLabel = $derived(sidebarArea === 'mods' ? '模组筛选侧栏' : sidebarArea === 'shaders' ? '光影筛选侧栏' : '实例侧栏');
+	const sidebarId = $derived(sidebarArea === 'mods' ? 'mod-discovery-sidebar' : sidebarArea === 'shaders' ? 'shader-discovery-sidebar' : 'client-detail-sidebar');
 	import DownloadTasks from './download-tasks.svelte';
 
 	let historyPosition = $state(0);
@@ -22,6 +22,8 @@
 	let currentUrl: string | undefined;
 	let replacingProject = false;
 	const directModDetail = $derived(page.route.id === '/mods' && page.url.searchParams.has('project'));
+	const directShaderDetail = $derived(page.route.id === '/shaders' && page.url.searchParams.has('project'));
+	const directDetail = $derived(directModDetail || directShaderDetail);
 
 	afterNavigate((navigation) => {
 		historyPending = false;
@@ -42,11 +44,11 @@
 	});
 
 	function traverseHistory(direction: -1 | 1) {
-		if (historyPending || (direction === -1 ? historyPosition === 0 && !directModDetail : historyPosition >= historyEnd)) {
+		if (historyPending || (direction === -1 ? historyPosition === 0 && !directDetail : historyPosition >= historyEnd)) {
 			return;
 		}
 		historyPending = true;
-		if (direction === -1 && historyPosition === 0 && directModDetail) {
+		if (direction === -1 && historyPosition === 0 && directDetail) {
 			const next = new URL(page.url.href);
 			next.searchParams.delete('project');
 			replacingProject = true;
@@ -67,7 +69,7 @@
 		class="grid size-6 cursor-default place-items-center rounded-md text-chrome-muted/80 transition-colors enabled:hover:bg-chrome-selected enabled:hover:text-chrome-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-30"
 		aria-label="后退"
 		title="后退"
-		disabled={historyPending || (historyPosition === 0 && !directModDetail)}
+		disabled={historyPending || (historyPosition === 0 && !directDetail)}
 		onclick={() => traverseHistory(-1)}
 	><ArrowLeft size={16} aria-hidden="true" />
 	</button>

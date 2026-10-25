@@ -9,6 +9,7 @@ pub(super) struct DownloadFile {
   pub size: u64,
   pub sha1: String,
   pub url: String,
+  pub extension: &'static str,
 }
 impl DownloadFile {
   pub fn from_curseforge(file: &ModFile) -> Result<Self> {
@@ -17,10 +18,11 @@ impl DownloadFile {
       size: file.file_length,
       sha1: upstream_hash(file)?,
       url: file.download_url.clone().expect("validated URL"),
+      extension: "jar",
     })
   }
   fn validate(&self) -> Result<()> {
-    validate_filename(&self.filename)?;
+    validate_resource_filename(&self.filename, self.extension)?;
     if self.size == 0
       || self.size > MAX_IMPORT_BYTES as u64
       || self.sha1.len() != 40

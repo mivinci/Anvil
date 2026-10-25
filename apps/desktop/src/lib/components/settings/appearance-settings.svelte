@@ -17,7 +17,7 @@
 <div class="space-y-5">
 	<section aria-labelledby="visual-style" class="space-y-2">
 		<h2 id="visual-style" class="text-[13px] font-medium">视觉风格</h2>
-		<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 rounded-lg border border-border bg-card px-3.5 py-3">
+		<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 rounded-lg bg-card px-3.5 py-3">
 			<div class="flex items-center gap-3">
 				<div><h3 class="text-[13px] font-medium">显示模式</h3></div>
 			</div>
@@ -39,7 +39,7 @@
 	</section>
 	<section aria-labelledby="theme-colors" class="space-y-2">
 		<h2 id="theme-colors" class="text-[13px] font-medium">主题配色</h2>
-		<div class="divide-y divide-border rounded-lg border border-border bg-card px-3.5">
+		<div class="divide-y divide-border rounded-lg bg-card px-3.5">
 			<div class="flex min-h-10 items-center justify-between gap-4 py-2">
 				<label for="theme-preset" class="text-[13px]">主题</label>
 				<select id="theme-preset" value={appearance.colors.theme} onchange={(event) => appearance.setTheme(event.currentTarget.value as 'default' | 'custom')} class="h-7 rounded-md border border-border bg-main-pane px-2 text-xs text-foreground focus-visible:outline-2 focus-visible:outline-ring"><option value="default">水墨淡紫</option><option value="custom">自定义</option></select>

@@ -29,7 +29,7 @@
 <svelte:head><title>设置 · Anvil</title></svelte:head>
 
 <div class="grid min-h-0 flex-1 grid-cols-[168px_minmax(0,1fr)] overflow-hidden lg:grid-cols-[184px_minmax(0,1fr)]">
-	<aside class="flex min-h-0 flex-col border-r border-border bg-secondary/30 px-2.5 py-4" aria-label="设置分类">
+	<aside class="flex min-h-0 flex-col bg-secondary/30 px-2.5 py-4" aria-label="设置分类">
 		<h1 class="px-2 text-[13px] font-semibold tracking-tight">设置</h1>
 		<label class="mt-3 flex h-8 items-center gap-2 rounded-md bg-chrome-hover px-2.5 text-muted-foreground focus-within:ring-1 focus-within:ring-ring">
 			<Search size={13} class="shrink-0" aria-hidden="true" />
@@ -50,7 +50,7 @@
 			{#if selected === 'appearance'}<AppearanceSettings />
 			{:else if selected === 'about'}<AboutSettings />
 			{:else}
-				<div class="rounded-xl border border-border bg-card p-4"><p class="text-[13px] font-medium">尚未开放</p><p class="mt-2 text-[11px] leading-5 text-muted-foreground">{pending[selected as keyof typeof pending]}</p></div>
+				<div class="rounded-xl bg-card p-4"><p class="text-[13px] font-medium">尚未开放</p><p class="mt-2 text-[11px] leading-5 text-muted-foreground">{pending[selected as keyof typeof pending]}</p></div>
 			{/if}
 		</div>
 	</section>

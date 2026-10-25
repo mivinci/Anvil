@@ -458,6 +458,8 @@ async fn shader_aliases_resolve_dependencies_but_reject_ambiguous_owners() {
 #[test]
 fn shader_stable_versions_compare_to_prerelease_bounds_conservatively() {
   for (version, requirement, expected) in [
+    ("26.3", "~26.3-", Some(true)),
+    ("26.2", "~26.3-", Some(false)),
     ("1.21.1", ">=1.15-alpha.19.39.a", Some(true)),
     ("1.15", ">1.15-alpha.19.39.a", Some(true)),
     ("1.14.4", ">=1.15-alpha.19.39.a", Some(false)),
@@ -498,4 +500,127 @@ async fn shader_alias_reverse_conflicts_cover_provider_and_virtual_ids() {
       ShaderEnvironmentStatus::Unconfirmed
     );
   }
+}
+
+#[tokio::test]
+async fn shader_environment_coalesces_root_and_nested_identical_payloads() {
+  for identical in [true, false] {
+    let (_root, manager, directory) = fixture();
+    fabric(&directory);
+    let placeholder = bundle("placeholder-api", json!({"java": ">=21"}), &[]);
+    let bundled = if identical {
+      placeholder.clone()
+    } else {
+      bundle("placeholder-api", json!({"java": ">=22"}), &[])
+    };
+    import_enabled(&manager, "placeholder-api.jar", placeholder).await;
+    import_enabled(
+      &manager,
+      "modmenu.jar",
+      bundle(
+        "modmenu",
+        json!({}),
+        &[("META-INF/jars/placeholder-api.jar", &bundled)],
+      ),
+    )
+    .await;
+    import_enabled(&manager, "iris.jar", bundle("iris", json!({}), &[])).await;
+    import_enabled(&manager, "sodium.jar", bundle("sodium", json!({}), &[])).await;
+    let environment = manager.shader_packs("test").await.unwrap().environment;
+    assert_eq!(
+      environment.status,
+      if identical {
+        ShaderEnvironmentStatus::Ready
+      } else {
+        ShaderEnvironmentStatus::Unconfirmed
+      },
+      "identical={identical}: {environment:?}"
+    );
+    if !identical {
+      assert!(environment.reason.contains("placeholder-api"));
+    }
+  }
+}
+
+#[tokio::test]
+async fn shader_environment_coalesces_nested_copies_with_the_same_contract() {
+  let (_root, manager, directory) = fixture();
+  fabric(&directory);
+  let metadata = serde_json::to_vec(
+    &json!({"schemaVersion": 1, "id": "library", "version": "1.0.0",
+      "depends": {"java": ">=21"}}),
+  )
+  .unwrap();
+  let first = zip(&[
+    ("fabric.mod.json", metadata.as_slice()),
+    ("first.txt", b"first"),
+  ]);
+  let second = zip(&[
+    ("fabric.mod.json", metadata.as_slice()),
+    ("second.txt", b"second"),
+  ]);
+  import_enabled(
+    &manager,
+    "iris.jar",
+    bundle("iris", json!({}), &[("META-INF/jars/library.jar", &first)]),
+  )
+  .await;
+  import_enabled(
+    &manager,
+    "another.jar",
+    bundle(
+      "another",
+      json!({}),
+      &[("META-INF/jars/library.jar", &second)],
+    ),
+  )
+  .await;
+  import_enabled(&manager, "sodium.jar", bundle("sodium", json!({}), &[])).await;
+  let environment = manager.shader_packs("test").await.unwrap().environment;
+  assert_eq!(
+    environment.status,
+    ShaderEnvironmentStatus::Ready,
+    "{environment:?}"
+  );
+}
+
+#[tokio::test]
+async fn shader_environment_lets_fabric_resolve_nested_version_differences() {
+  let (_root, manager, directory) = fixture();
+  fabric(&directory);
+  let first = bundle("library", json!({"java": ">=21"}), &[]);
+  let second = {
+    let metadata = serde_json::to_vec(
+      &json!({"schemaVersion": 1, "id": "library", "version": "2.0.0",
+        "depends": {"java": ">=22"}}),
+    )
+    .unwrap();
+    zip(&[
+      ("fabric.mod.json", metadata.as_slice()),
+      ("second.txt", b"second"),
+    ])
+  };
+  import_enabled(
+    &manager,
+    "iris.jar",
+    bundle("iris", json!({}), &[("META-INF/jars/library.jar", &first)]),
+  )
+  .await;
+  import_enabled(
+    &manager,
+    "another.jar",
+    bundle(
+      "another",
+      json!({}),
+      &[("META-INF/jars/library.jar", &second)],
+    ),
+  )
+  .await;
+  import_enabled(&manager, "sodium.jar", bundle("sodium", json!({}), &[])).await;
+  let environment = manager.shader_packs("test").await.unwrap().environment;
+  assert_eq!(
+    environment.status,
+    ShaderEnvironmentStatus::Ready,
+    "{environment:?}"
+  );
 }

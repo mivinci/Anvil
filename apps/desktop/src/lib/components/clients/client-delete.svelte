@@ -29,7 +29,7 @@
 	}
 </script>
 
-<section aria-label="删除实例" class="mt-6 rounded-lg border border-border bg-card px-3.5 py-3">
+<section aria-label="删除实例" class="mt-6 rounded-lg bg-card px-3.5 py-3">
 	<div class="flex items-center justify-between gap-4">
 		<div class="min-w-0"><h2 class="text-[13px] font-medium">删除实例</h2><p class="mt-1 text-[11px] leading-5 text-muted-foreground">{inUse ? '实例正在运行或安装，完成后才可删除。' : statusUnknown ? '正在确认运行与安装状态。' : '删除存档、配置及实例文件；保留共享缓存。'}</p></div>
 		<button type="button" disabled={blocked} onclick={() => { open = true; }} class="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs text-destructive hover:bg-destructive/10 focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40"><Trash2 size={13} aria-hidden="true" />删除实例</button>

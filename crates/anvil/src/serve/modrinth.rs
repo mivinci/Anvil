@@ -16,6 +16,7 @@ use tokio::sync::Semaphore;
 pub(super) struct Catalog {
   provider: Result<Arc<Modrinth>, ()>,
   pub(super) discovery: super::modrinth_catalog::DiscoveryCatalog,
+  pub(super) shader_discovery: super::shader_catalog::DiscoveryCatalog,
   slots: Semaphore,
 }
 impl Catalog {
@@ -23,6 +24,7 @@ impl Catalog {
     Self {
       provider: Modrinth::new().map(Arc::new).map_err(|_| ()),
       discovery: Default::default(),
+      shader_discovery: Default::default(),
       slots: Semaphore::new(2),
     }
   }

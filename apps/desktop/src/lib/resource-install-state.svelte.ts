@@ -16,15 +16,16 @@ export class ResourceInstallState {
 	private disposed = false;
 	private controllers = new Set<AbortController>();
 	get active() { return this.operation?.state === 'running'; }
+	get noun() { return this.operation?.kind === 'shader' ? '光影' : '模组'; }
 	get label() {
-		if (this.starting) return '正在提交模组安装…';
-		if (this.cancelling || this.operation?.cancelRequested) return '正在取消模组安装…';
-		if (this.operation?.state === 'completed') return '模组安装完成';
-		if (this.operation?.state === 'cancelled') return '模组安装已取消';
-		if (this.operation?.state === 'failed') return '模组安装失败';
-		if (this.operation?.progress.stage === 'publishing') return '正在应用模组…';
-		if (this.operation?.progress.stage === 'downloading') return '正在下载并校验模组…';
-		return this.operation ? '正在准备模组文件…' : '模组下载任务';
+		if (this.starting) return '正在提交安装…';
+		if (this.cancelling || this.operation?.cancelRequested) return `正在取消${this.noun}安装…`;
+		if (this.operation?.state === 'completed') return `${this.noun}安装完成`;
+		if (this.operation?.state === 'cancelled') return `${this.noun}安装已取消`;
+		if (this.operation?.state === 'failed') return `${this.noun}安装失败`;
+		if (this.operation?.progress.stage === 'publishing') return `正在应用${this.noun}…`;
+		if (this.operation?.progress.stage === 'downloading') return `正在下载并校验${this.noun}…`;
+		return this.operation ? `正在准备${this.noun}文件…` : '资源下载任务';
 	}
 	canSubmit(id: number) { return !this.starting && !this.syncing && !this.active && (!this.uncertain || this.intent?.id === id); }
 	private async request<T>(action: (signal: AbortSignal) => Promise<T>) {
@@ -55,7 +56,7 @@ export class ResourceInstallState {
 			const current = this.intent ? values.find((value) => value.id === this.intent!.id) : values.find((value) => value.state === 'running') ?? values.at(-1);
 			if (this.intent && !current && this.uncertain) { this.error = '尚未确认提交结果，可回到原计划重试提交；同一计划不会重复安装。'; return; }
 			this.apply(current ?? null); this.uncertain = false; this.intent = null; this.error = null;
-		} catch (error) { if (!this.disposed) { this.uncertain = true; this.error = error instanceof Error ? error.message : '无法读取模组任务。'; } }
+		} catch (error) { if (!this.disposed) { this.uncertain = true; this.error = error instanceof Error ? error.message : '无法读取资源任务。'; } }
 		finally { this.syncing = false; this.schedule(); }
 	}
 	async start(name: string, id: number): Promise<boolean> {

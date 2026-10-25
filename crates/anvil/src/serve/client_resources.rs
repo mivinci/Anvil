@@ -1,5 +1,6 @@
 //! Local mod and resource-pack APIs; storage and layout rules remain in Core.
 use super::api::{ApiError, AppState};
+use anvil_core::client::ClientInstaller;
 use anvil_core::resources::{ResourceManager, ResourceManifest, ResourcePackEntry};
 use axum::{
   Json,
@@ -16,7 +17,7 @@ pub(super) async fn fabric_game(
   runtime: &super::operations::RuntimeState,
   name: &str,
 ) -> Result<String, ApiError> {
-  let (_, record) = anvil_core::client::ClientInstaller::new(runtime.context.clone())
+  let (_, record) = ClientInstaller::new(runtime.context.clone())
     .details(name)
     .await
     .map_err(resource_error)?;
@@ -29,6 +30,16 @@ pub(super) async fn fabric_game(
       "当前仅支持为 Fabric 实例浏览模组。",
     ));
   }
+  Ok(record.version_id)
+}
+pub(super) async fn client_game(
+  runtime: &super::operations::RuntimeState,
+  name: &str,
+) -> Result<String, ApiError> {
+  let (_, record) = ClientInstaller::new(runtime.context.clone())
+    .details(name)
+    .await
+    .map_err(resource_error)?;
   Ok(record.version_id)
 }
 pub(super) async fn limit_resource_requests(request: Request<Body>, next: Next) -> Response {
@@ -264,6 +275,71 @@ pub(super) async fn remove_shader_pack(
     "Local shader pack removed"
   );
   Ok(Json(manifest.into()))
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct ShaderPlanRequest {
+  project: String,
+  version: String,
+  revision: u64,
+}
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct ShaderPlanView {
+  plan_id: u64,
+  name: String,
+  revision: u64,
+  project_id: String,
+  project_name: String,
+  version_id: String,
+  version_name: String,
+  file_name: String,
+  file_size: u64,
+}
+pub(super) async fn plan_shader_pack(
+  State(state): State<AppState>,
+  RoutePath(name): RoutePath<String>,
+  Json(request): Json<ShaderPlanRequest>,
+) -> Result<Json<ShaderPlanView>, ApiError> {
+  ClientInstaller::validate_name(&name).map_err(super::api::resource_error)?;
+  let game = client_game(&state.runtime, &name).await?;
+  let _slot = state.modrinth.slot()?;
+  let provider = state.modrinth.provider()?;
+  let project = provider
+    .shader_project(&request.project)
+    .await
+    .map_err(super::api::resource_error)?;
+  let (file, url) = provider
+    .shader_file(&game, &request.project, &request.version)
+    .await
+    .map_err(super::api::resource_error)?;
+  let plan = anvil_core::resources::ShaderInstallPlan {
+    name: name.to_ascii_lowercase(),
+    revision: request.revision,
+    project_id: project.id.clone(),
+    project_name: project.name.clone(),
+    version_id: file.id.clone(),
+    version_name: file.display_name.clone(),
+    file_name: file.file_name.clone(),
+    file_size: file.file_length,
+    sha1: file.sha1.clone(),
+    url,
+  };
+  let plan_id = state
+    .resources
+    .save(super::resource_operations::InstallPlan::Shader(plan));
+  Ok(Json(ShaderPlanView {
+    plan_id,
+    name: name.to_ascii_lowercase(),
+    revision: request.revision,
+    project_id: project.id,
+    project_name: project.name,
+    version_id: file.id,
+    version_name: file.display_name,
+    file_name: file.file_name,
+    file_size: file.file_length,
+  }))
 }
 
 #[cfg(test)]

@@ -299,6 +299,7 @@ impl ResourceManager {
               size: item.file.file_length,
               sha1: item.file.sha1.clone(),
               url: item.file.url,
+              extension: "jar",
             },
             origin: ModrinthOrigin {
               project_id: item.project.id,

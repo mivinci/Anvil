@@ -65,7 +65,7 @@
 	{:else}
 	{#if readFailed}<p role="status" class="text-[11px] text-muted-foreground">部分 Java 输出未能读取，以下内容可能不完整。</p>{/if}
 	{#if error}<p role="alert" class="text-[11px] text-destructive">{error}{snapshot ? ' 保留上次读取的内容。' : ''}</p>{/if}
-	<div bind:this={viewport} class="min-h-0 flex-1 overflow-auto overscroll-contain rounded-lg border border-border bg-card">
+	<div bind:this={viewport} class="min-h-0 flex-1 overflow-auto overscroll-contain rounded-lg bg-card">
 		{#if snapshot?.text}<pre class="min-w-full w-max select-text p-3 font-mono text-[12px] leading-5 text-foreground"><code>{snapshot.text}</code></pre>
 		{:else}<div role="status" class="flex h-full min-h-32 items-center justify-center px-4 text-[13px] text-muted-foreground">{loading ? '正在读取日志…' : snapshot?.exists ? (snapshot.totalBytes ? '当前片段没有可显示的完整行。' : isConsole ? '本次启动暂未产生 Java 输出。' : '日志文件暂时为空。') : snapshot ? (isConsole ? '本次启动器会话中还没有此实例的 Java 输出。' : '还没有游戏日志，启动游戏后可在这里查看。') : '暂未读取到日志。'}</div>{/if}
 	</div>

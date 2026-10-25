@@ -19,24 +19,24 @@
 	onMount(() => { void library.refresh(); });
 </script>
 
-<section class="flex h-full min-w-0 flex-col rounded-lg border border-border bg-card p-3.5" aria-labelledby="home-play-title">
+<section class="relative isolate flex h-full min-w-0 flex-col overflow-hidden rounded-lg bg-card p-3" aria-labelledby="home-play-title">
 	{#if featured}
-		<div class="flex items-center justify-between gap-3">
+		<div class="relative z-10 flex items-center justify-between gap-3">
 			<h2 id="home-play-title" class="flex items-center gap-2 text-[13px] font-semibold"><Gamepad2 size={15} class="text-primary" aria-hidden="true" />最近游玩</h2>
 			<a href={resolve('/clients/[name]', { name: featured.name.toLowerCase() })} class={link}>管理实例<ChevronRight size={12} aria-hidden="true" /></a>
 		</div>
-		<div class="flex flex-1 items-center justify-between gap-5 pt-4">
+		<div class="pointer-events-none absolute inset-0 flex items-center justify-center text-primary/15" aria-hidden="true"><div class="h-40 w-72 min-[1200px]:h-48 min-[1200px]:w-96"><ClientArtwork id={featured.id} /></div></div>
+		<div class="relative z-10 flex flex-1 items-center pt-3">
 			<div class="min-w-0 flex-1">
-				<a href={resolve('/clients/[name]', { name: featured.name.toLowerCase() })} class="block truncate rounded text-2xl font-semibold tracking-tight hover:text-primary focus-visible:outline-2 focus-visible:outline-ring" title={featured.name}>{featured.name}</a>
-				<p class="mt-1 truncate text-xs text-muted-foreground">Minecraft {featured.versionId} · {featured.loader ? `Fabric ${featured.loader.version}` : '原版'}</p>
+				<a href={resolve('/clients/[name]', { name: featured.name.toLowerCase() })} class="block truncate rounded text-xl font-semibold tracking-tight hover:text-primary focus-visible:outline-2 focus-visible:outline-ring" title={featured.name}>{featured.name}</a>
+				<p class="mt-1 truncate text-[11px] text-muted-foreground">Minecraft {featured.versionId} · {featured.loader ? `Fabric ${featured.loader.version}` : '原版'}</p>
 				{#if recent}
-					<p class="mt-2 flex items-center gap-1 text-[10px] text-muted-foreground"><Clock3 size={11} aria-hidden="true" />{new Intl.DateTimeFormat('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(recent.playedAt)}</p>
+					<p class="mt-1.5 flex items-center gap-1 text-[10px] text-muted-foreground"><Clock3 size={11} aria-hidden="true" />{new Intl.DateTimeFormat('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(recent.playedAt)}</p>
 				{:else}
-					<p class="mt-2 text-[10px] text-muted-foreground">尚无游玩记录</p>
+					<p class="mt-1.5 text-[10px] text-muted-foreground">尚无游玩记录</p>
 				{/if}
-				<div class="mt-4"><ClientLaunchControls client={featured} large /></div>
+				<div class="mt-3"><ClientLaunchControls client={featured} large /></div>
 			</div>
-			<div class="hidden h-24 w-44 shrink-0 self-center text-primary min-[1200px]:block" aria-hidden="true"><ClientArtwork id={featured.id} /></div>
 		</div>
 	{:else if library.error}
 		<div class="flex flex-1 flex-col items-start justify-center gap-2" role="alert">

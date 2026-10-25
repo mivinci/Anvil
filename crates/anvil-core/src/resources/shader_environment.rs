@@ -96,6 +96,18 @@ fn object_bytes(data: &Path, entry: &ResourceEntry) -> Result<Vec<u8>> {
   }
   Ok(bytes)
 }
+fn metadata_contract(meta: &Metadata) -> String {
+  serde_json::json!({
+    "schema": meta.schema,
+    "id": meta.id,
+    "version": meta.version,
+    "environment": meta.environment,
+    "depends": meta.depends,
+    "breaks": meta.breaks,
+    "provides": meta.provides,
+  })
+  .to_string()
+}
 fn metadata(bytes: &[u8]) -> Result<Metadata> {
   let mut archive = open_zip(bytes)?;
   let mut index = None;
@@ -166,7 +178,16 @@ struct Inspected {
   meta: Metadata,
   enabled: bool,
   nested: bool,
-  hash: String,
+  raw_hash: String,
+  content_hash: Option<String>,
+  contract: String,
+}
+struct SeenMod {
+  raw_hash: String,
+  content_hash: Option<String>,
+  nested: bool,
+  contract: String,
+  version: String,
 }
 struct ScanBudget {
   bytes: u64,
@@ -241,15 +262,16 @@ fn scan_jar(
   } else {
     Vec::new()
   };
+  let contract = metadata_contract(&meta);
   output.push(Inspected {
     meta,
     enabled,
     nested: depth > 0,
-    hash: if depth > 0 {
-      nested_content_hash(bytes, budget)?
-    } else {
-      hex(&Sha256::digest(bytes))
-    },
+    raw_hash: hex(&Sha256::digest(bytes)),
+    content_hash: (depth > 0)
+      .then(|| nested_content_hash(bytes, budget))
+      .transpose()?,
+    contract,
   });
   if declarations.is_empty() {
     return Ok(());
@@ -364,24 +386,43 @@ pub(super) fn inspect_environment(
     }
   }
   let mut scanned = Vec::new();
-  let mut ids = BTreeMap::<String, (String, bool)>::new();
+  let mut ids = BTreeMap::<String, SeenMod>::new();
   let mut nested_ids = Vec::new();
   for candidate in candidates {
     let Inspected {
       meta,
       enabled,
       nested,
-      hash,
+      raw_hash,
+      content_hash,
+      contract,
     } = candidate;
-    if let Some((existing_hash, existing_nested)) = ids.get(&meta.id) {
-      // Fabric may encounter the same bundled library from multiple parents. Only identical
-      // nested payloads are safely coalesced; root/local entries and different versions conflict.
-      if nested && *existing_nested && existing_hash == &hash {
+    if let Some(existing) = ids.get(&meta.id) {
+      // A root JAR may be bundled verbatim by another mod; Fabric API and Mod Menu also
+      // carry different builds of the same nested library. Fabric resolves nested versions
+      // itself, so only same-version nested copies with different contracts remain conflicts.
+      let identical = existing.raw_hash == raw_hash
+        || (nested && existing.nested && existing.version != meta.version)
+        || ((nested || existing.nested) && existing.contract == contract)
+        || (nested
+          && existing.nested
+          && existing.content_hash.is_some()
+          && existing.content_hash == content_hash);
+      if identical {
         continue;
       }
       issue = Some(format!("发现重复或版本冲突的受管模组 ID：{}。", meta.id));
     } else {
-      ids.insert(meta.id.clone(), (hash, nested));
+      ids.insert(
+        meta.id.clone(),
+        SeenMod {
+          raw_hash,
+          content_hash,
+          nested,
+          contract,
+          version: meta.version.clone(),
+        },
+      );
     }
     if matches!(meta.id.as_str(), "minecraft" | "fabricloader" | "java") {
       issue = Some("受管模组 ID 与运行环境标识冲突。".into());
@@ -571,8 +612,11 @@ fn matches_requirement(version: &str, requirement: &Value) -> Option<bool> {
     if token == "*" {
       continue;
     }
-    let value = token.trim_start_matches(['=', '>', '<', '~', '^']);
-    let operator = &token[..token.len() - value.len()];
+    let raw_value = token.trim_start_matches(['=', '>', '<', '~', '^']);
+    let operator = &token[..token.len() - raw_value.len()];
+    // Fabric accepts a trailing hyphen to include prereleases of a version, e.g. `~26.3-`.
+    // A stable installed version is still within that range, so compare its base version.
+    let value = raw_value.strip_suffix('-').unwrap_or(raw_value);
     if !matches!(operator, "" | "=" | ">" | ">=" | "<" | "<=" | "~" | "^") {
       return None;
     }

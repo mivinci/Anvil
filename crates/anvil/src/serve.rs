@@ -26,6 +26,7 @@ mod play_stats;
 mod protocol;
 mod resource_discovery;
 mod resource_operations;
+mod shader_catalog;
 mod versions;
 
 mod self_update;

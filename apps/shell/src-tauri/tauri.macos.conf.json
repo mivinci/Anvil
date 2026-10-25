@@ -9,8 +9,8 @@
 				"url": "anvil-app://localhost/",
 				"width": 900,
 				"height": 620,
-				"minWidth": 900,
-				"minHeight": 620,
+        "minWidth": 620,
+        "minHeight": 420,
 				"titleBarStyle": "Overlay",
 				"trafficLightPosition": {
 					"x": 12,

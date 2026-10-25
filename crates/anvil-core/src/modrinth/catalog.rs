@@ -70,10 +70,10 @@ impl DiscoveryQuery {
           && p
             .next_index
             .is_none_or(|next| next > *index && next <= 10000)
-          && p.items.iter().all(valid_project)
+          && p.items.iter().all(|p| valid_project(p, ProjectKind::Mod))
       }
       (Self::Project { project }, DiscoveryPage::Project(p)) => {
-        p.id == *project && valid_project(p)
+        p.id == *project && valid_project(p, ProjectKind::Mod)
       }
       (Self::Files { project, .. }, DiscoveryPage::Files(p)) => {
         p.items.len() <= 2048

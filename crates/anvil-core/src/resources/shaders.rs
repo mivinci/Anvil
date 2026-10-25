@@ -1,5 +1,7 @@
 //! Local shader ZIP references; game-side selection remains with Iris.
 use super::*;
+use crate::CancellationToken;
+use tokio::sync::watch;
 
 const MAX_SOURCE_BYTES: u64 = 4 * 1024 * 1024;
 
@@ -10,6 +12,21 @@ pub struct ShaderPackEntry {
   pub sha256: String,
   pub filename: String,
   pub size: u64,
+}
+
+/// A resolved Modrinth shader version ready for a background download/import.
+#[derive(Clone, Debug)]
+pub struct ShaderInstallPlan {
+  pub name: String,
+  pub revision: u64,
+  pub project_id: String,
+  pub project_name: String,
+  pub version_id: String,
+  pub version_name: String,
+  pub file_name: String,
+  pub file_size: u64,
+  pub sha1: String,
+  pub url: String,
 }
 
 impl ResourceManager {
@@ -67,6 +84,33 @@ impl ResourceManager {
         Ok(manifest)
       })
       .await
+  }
+
+  /// Download a resolved shader ZIP through the shared object store, then import it.
+  pub async fn install_shader(
+    &self,
+    plan: ShaderInstallPlan,
+    cancel: CancellationToken,
+    progress: watch::Sender<ResourceInstallProgress>,
+  ) -> Result<ResourceManifest> {
+    let download = super::transfer::DownloadFile {
+      filename: plan.file_name.clone(),
+      size: plan.file_size,
+      sha1: plan.sha1.clone(),
+      url: plan.url.clone(),
+      extension: "zip",
+    };
+    let sha256 = self.prepare_shared(&download, &cancel, &progress).await?;
+    if cancel.is_cancelled() {
+      return Err(Error::Cancelled);
+    }
+    progress.send_modify(|value| value.stage = ResourceInstallStage::Publishing);
+    let bytes = std::fs::read(object_path(&self.context.paths.data, &sha256))?;
+    let manifest = self
+      .import_shader_pack(&plan.name, plan.file_name, bytes, plan.revision)
+      .await?;
+    progress.send_modify(|value| value.completed_files = 1);
+    Ok(manifest)
   }
 
   /// Remove only this instance's reference; shared objects are retained.

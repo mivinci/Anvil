@@ -376,12 +376,31 @@ export interface ModrinthInstallPlan extends Omit<CurseForgeInstallPlan, 'items'
 	files: { projectId: string; fileId: string; projectName: string; filename: string; size: number; direct: boolean; reuse: boolean }[];
 	optionalProjects: string[];
 }
+export interface ShaderProjectPage extends CatalogStatus { items: ModProjectSummary[]; nextIndex: number | null }
+export interface ShaderProjectDetails extends CatalogStatus { project: ModProjectSummary }
+export interface ShaderVersionPage extends CatalogStatus { items: ModrinthFile[]; nextIndex: null }
+export const searchShaderProjects = (q: string, index: number, gameVersion: string, signal: AbortSignal, options: CatalogOptions = {}) =>
+	runtimeRequest<ShaderProjectPage>(`/resources/modrinth/shader-projects?${new URLSearchParams({
+		q, index: String(index), gameVersion, ...catalogQuery(options),
+	})}`, { signal });
+export const getShaderProject = (project: string, signal: AbortSignal, options?: CatalogOptions) =>
+	runtimeRequest<ShaderProjectDetails>(`/resources/modrinth/shader-projects/${encodeURIComponent(project)}?${new URLSearchParams(catalogQuery(options))}`, { signal });
+export const listShaderVersions = (project: string, gameVersion: string, signal: AbortSignal, options?: CatalogOptions) =>
+	runtimeRequest<ShaderVersionPage>(`/resources/modrinth/shader-projects/${encodeURIComponent(project)}/versions?${new URLSearchParams({ gameVersion, ...catalogQuery(options) })}`, { signal });
+export interface ShaderInstallPlan {
+	planId: number; name: string; revision: number;
+	projectId: string; projectName: string;
+	versionId: string; versionName: string;
+	fileName: string; fileSize: number;
+}
+export const createShaderInstallPlan = (name: string, project: string, version: string, revision: number, signal: AbortSignal) =>
+	runtimeRequest<ShaderInstallPlan>(`/clients/${encodeURIComponent(name)}/shader-plans`, { method: 'POST', body: JSON.stringify({ project, version, revision }), signal });
 export const listModrinthFiles = (name: string, project: string, index: number, signal: AbortSignal, options?: CatalogOptions) =>
 	runtimeRequest<CurseForgePage<ModrinthFile>>(`/clients/${encodeURIComponent(name)}/modrinth/projects/${encodeURIComponent(project)}/files?${new URLSearchParams({ index: String(index), ...catalogQuery(options) })}`, { signal });
 export const createModrinthInstallPlan = (name: string, project: string, file: string, signal: AbortSignal) =>
 	runtimeRequest<ModrinthInstallPlan>(`/clients/${encodeURIComponent(name)}/modrinth/projects/${encodeURIComponent(project)}/files/${encodeURIComponent(file)}/plan`, { method: 'POST', signal });
 export interface ResourceInstallOperation {
-	id: number; name: string; state: 'running' | 'completed' | 'failed' | 'cancelled'; cancelRequested: boolean;
+	id: number; name: string; kind: 'mod' | 'shader'; state: 'running' | 'completed' | 'failed' | 'cancelled'; cancelRequested: boolean;
 	progress: { stage: 'preparing' | 'downloading' | 'publishing' | 'completed'; completedFiles: number; totalFiles: number; downloadedBytes: number; totalBytes: number; receivedBytes: number };
 	revision: number | null; error: string | null;
 }

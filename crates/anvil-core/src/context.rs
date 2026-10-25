@@ -110,6 +110,35 @@ impl Context {
     expected_size: Option<u64>,
     cancel: &CancellationToken,
   ) -> Result<()> {
+    let checksum = sha256.map(Checksum::sha256).transpose()?;
+    self
+      .download_file_with_checksum(url, destination, checksum, expected_size, cancel)
+      .await
+  }
+
+  /// Download with a SHA-1 digest, as published by Modrinth.
+  pub async fn download_file_sha1(
+    &self,
+    url: &url::Url,
+    destination: &Path,
+    sha1: Option<&str>,
+    expected_size: Option<u64>,
+    cancel: &CancellationToken,
+  ) -> Result<()> {
+    let checksum = sha1.map(Checksum::sha1).transpose()?;
+    self
+      .download_file_with_checksum(url, destination, checksum, expected_size, cancel)
+      .await
+  }
+
+  async fn download_file_with_checksum(
+    &self,
+    url: &url::Url,
+    destination: &Path,
+    checksum: Option<Checksum>,
+    expected_size: Option<u64>,
+    cancel: &CancellationToken,
+  ) -> Result<()> {
     let parent = destination
       .parent()
       .ok_or_else(|| Error::Invalid("download destination has no parent directory".into()))?
@@ -128,8 +157,8 @@ impl Context {
     if let Some(size) = expected_size {
       request = request.expected_size(size);
     }
-    if let Some(sha256) = sha256 {
-      request = request.checksum(Checksum::sha256(sha256)?);
+    if let Some(checksum) = checksum {
+      request = request.checksum(checksum);
     }
 
     let task = tokio::select! {

@@ -135,6 +135,18 @@ pub(super) async fn serve(
       get(super::resource_discovery::project),
     )
     .route(
+      "/resources/modrinth/shader-projects",
+      get(super::resource_discovery::shader_search),
+    )
+    .route(
+      "/resources/modrinth/shader-projects/{project}",
+      get(super::resource_discovery::shader_project),
+    )
+    .route(
+      "/resources/modrinth/shader-projects/{project}/versions",
+      get(super::resource_discovery::shader_versions),
+    )
+    .route(
       "/clients/{name}/modrinth/projects",
       get(super::modrinth::search),
     )
@@ -258,6 +270,11 @@ pub(super) async fn serve(
     .route(
       "/clients/{name}/shader-packs/{sha256}",
       axum::routing::delete(super::client_resources::remove_shader_pack)
+        .layer(middleware::from_fn(limit_resource_requests)),
+    )
+    .route(
+      "/clients/{name}/shader-plans",
+      post(super::client_resources::plan_shader_pack)
         .layer(middleware::from_fn(limit_resource_requests)),
     )
     .route("/clients/install", post(install_client))
