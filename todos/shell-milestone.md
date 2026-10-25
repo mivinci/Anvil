@@ -53,7 +53,7 @@
 
 ### 7. [x] 打通内置桌面 App 的首次启动
 
-**交付：** `npm run desktop:package` 按 Tauri target triple 构建 SvelteKit 静态页面、对应平台的 `anvil-desktop` sidecar 和 manifest，生成完整的 `anvil.desktop` 基线包；Tauri `bundle.resources` 将它装入 Shell 安装包。首次运行安全发布到本地 App 存储，再从该版本加载页面并启动 sidecar。前端 typed client 位于 `apps/desktop/src/lib`，不创建尚无第二消费者的共享 npm 包。
+**交付：** `npm run desktop:package` 按 Tauri target triple 构建 SvelteKit 静态页面、对应平台的 `anvil-desktop` sidecar 和 manifest，生成完整的 `anvil.desktop` 基线包；Tauri `bundle.resources` 将它装入 Shell 安装包。首次运行安全发布到本地 App 存储，再从该版本加载页面并启动 sidecar；后续安装包基线版本更高时，启动阶段发布为待启用版本，并经健康确认激活。前端 typed client 位于 `apps/desktop/src/lib`，不创建尚无第二消费者的共享 npm 包。
 
 **验收：** `cargo test --locked --offline -p anvil-shell` 的 26 项测试通过，首次安装测试覆盖包校验、staging 原子发布、状态恢复、已安装版本保护、符号链接拒绝和 sidecar 执行权限。2026-10-22 `npm run desktop:package` 和 `npm run desktop:build -- --bundles app` 成功；生成的 `Anvil.app/Contents/Resources/baseline` 含 manifest、静态页面与 aarch64 sidecar。使用该 bundle 资源和隔离 HOME 完成离线安装、实际 sidecar ready、带凭据的 `/health` 200 响应及有序停止。桌面 typed client 将 Shell 状态请求发往 Tauri IPC，并直接连接 sidecar 健康端点；构建脚本从同一 manifest 生成页面包和 sidecar，Shell 启动时校验 App 版本与 API 兼容性。当前系统的 LaunchServices 无法打开测试 `.app`（`kLSNoExecutableErr`），完整 `desktop:build` 的 DMG 阶段也因环境中的 `hdiutil`“设备未配置”失败；WebView 与安装器 smoke 留待第 10 项平台验收。
 
