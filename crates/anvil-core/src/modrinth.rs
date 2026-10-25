@@ -4,16 +4,50 @@ use crate::{Error, Result};
 pub use catalog::{CachedDiscovery, DiscoveryPage, DiscoveryQuery};
 use reqwest::Client;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
+pub use shader_catalog::{CachedShaderDiscovery, ShaderDiscoveryPage, ShaderDiscoveryQuery};
 use std::{
   collections::{BTreeMap, BTreeSet, VecDeque},
   time::Duration,
 };
 use tokio::{sync::Mutex, time::Instant};
+mod shader_catalog;
 
 pub struct Modrinth {
   client: Client,
   next_request: Mutex<Instant>,
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ProjectKind {
+  Mod,
+  Shader,
+}
+impl ProjectKind {
+  fn slug(self) -> &'static str {
+    match self {
+      Self::Mod => "mod",
+      Self::Shader => "shader",
+    }
+  }
+  fn project_type(self) -> &'static str {
+    match self {
+      Self::Mod => "mod",
+      Self::Shader => "shader",
+    }
+  }
+  fn loader(self) -> &'static str {
+    match self {
+      Self::Mod => "fabric",
+      Self::Shader => "iris",
+    }
+  }
+  fn extension(self) -> &'static str {
+    match self {
+      Self::Mod => ".jar",
+      Self::Shader => ".zip",
+    }
+  }
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Project {
@@ -161,27 +195,27 @@ fn validate_search(game: Option<&str>, text: &str, index: u32) -> Result<()> {
   }
   Ok(())
 }
-fn valid_project(p: &Project) -> bool {
+fn valid_project(p: &Project, kind: ProjectKind) -> bool {
   valid_id(&p.id)
     && !p.name.is_empty()
     && p.name.len() <= 512
     && p.summary.len() <= 8192
     && p.authors.len() <= 128
     && p.authors.iter().all(|a| a.name.len() <= 512)
-    && p.links.website_url == format!("https://modrinth.com/mod/{}", p.id)
+    && p.links.website_url == format!("https://modrinth.com/{}/{}", kind.slug(), p.id)
     && p.icon_url.as_deref().is_none_or(valid_icon_url)
     && p.updated_at.as_ref().is_none_or(|value| value.len() <= 64)
 }
 fn valid_icon_url(value: &str) -> bool {
   crate::catalog_cache::valid_image_url(value, &["cdn.modrinth.com"])
 }
-pub(crate) fn valid_file(file: &ModFile) -> bool {
+fn valid_file_with_extension(file: &ModFile, extension: &str) -> bool {
   valid_id(&file.id)
     && valid_id(&file.mod_id)
     && !file.display_name.is_empty()
     && file.display_name.len() <= 512
     && file.file_name.len() <= 128
-    && file.file_name.ends_with(".jar")
+    && file.file_name.to_ascii_lowercase().ends_with(extension)
     && !file.file_name.contains(['/', '\\', ':'])
     && file.file_length > 0
     && file.file_length <= crate::resources::MAX_IMPORT_BYTES as u64
@@ -191,7 +225,13 @@ pub(crate) fn valid_file(file: &ModFile) -> bool {
       .bytes()
       .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
-fn project(
+pub(crate) fn valid_file(file: &ModFile) -> bool {
+  valid_file_with_extension(file, ProjectKind::Mod.extension())
+}
+pub(crate) fn valid_shader_file(file: &ModFile) -> bool {
+  valid_file_with_extension(file, ProjectKind::Shader.extension())
+}
+struct ProjectFields {
   id: String,
   name: String,
   summary: String,
@@ -199,7 +239,17 @@ fn project(
   icon_url: Option<String>,
   download_count: Option<u64>,
   updated_at: Option<String>,
-) -> Result<Project> {
+}
+fn project(kind: ProjectKind, fields: ProjectFields) -> Result<Project> {
+  let ProjectFields {
+    id,
+    name,
+    summary,
+    authors,
+    icon_url,
+    download_count,
+    updated_at,
+  } = fields;
   if !valid_id(&id)
     || name.is_empty()
     || name.len() > 512
@@ -210,7 +260,7 @@ fn project(
   }
   Ok(Project {
     links: Links {
-      website_url: format!("https://modrinth.com/mod/{id}"),
+      website_url: format!("https://modrinth.com/{}/{id}", kind.slug()),
     },
     id,
     name,
@@ -222,31 +272,35 @@ fn project(
   })
 }
 impl Version {
-  fn file(&self, game: &str) -> Result<ModFile> {
+  fn mod_file(&self, game: &str) -> Result<ModFile> {
+    self.file(game, ProjectKind::Mod)
+  }
+  fn shader_file(&self, game: &str) -> Result<ModFile> {
+    self.file(game, ProjectKind::Shader)
+  }
+  fn file(&self, game: &str, kind: ProjectKind) -> Result<ModFile> {
     id(&self.id)?;
     id(&self.project_id)?;
     if self.status != "listed"
-      || !self.loaders.iter().any(|v| v == "fabric")
+      || !self.loaders.iter().any(|v| v == kind.loader())
       || !self.game_versions.iter().any(|v| v == game)
       || self.files.len() > 64
       || self.dependencies.len() > 128
     {
       return Err(Error::Metadata(
-        "Modrinth 版本不适用于此 Minecraft/Fabric 实例。".into(),
+        "Modrinth 版本不适用于此 Minecraft 实例。".into(),
       ));
     }
-    let jars: Vec<_> = self
+    let candidates: Vec<_> = self
       .files
       .iter()
-      .filter(|f| f.filename.ends_with(".jar"))
+      .filter(|f| f.filename.to_ascii_lowercase().ends_with(kind.extension()))
       .collect();
-    let primary: Vec<_> = jars.iter().copied().filter(|f| f.primary).collect();
-    let file = match (primary.as_slice(), jars.as_slice()) {
+    let primary: Vec<_> = candidates.iter().copied().filter(|f| f.primary).collect();
+    let file = match (primary.as_slice(), candidates.as_slice()) {
       ([file], _) | ([], [file]) => *file,
       _ => {
-        return Err(Error::Metadata(
-          "Modrinth 版本没有唯一的主 JAR 文件。".into(),
-        ));
+        return Err(Error::Metadata("Modrinth 版本没有唯一的主文件。".into()));
       }
     };
     let url = url::Url::parse(&file.url)
@@ -280,7 +334,10 @@ impl Version {
         .to_ascii_lowercase(),
       url: file.url.clone(),
     };
-    if !valid_file(&file) {
+    if !(match kind {
+      ProjectKind::Mod => valid_file(&file),
+      ProjectKind::Shader => valid_shader_file(&file),
+    }) {
       return Err(Error::Metadata("invalid Modrinth file".into()));
     }
     Ok(file)
@@ -367,15 +424,37 @@ impl Modrinth {
     text: &str,
     index: u32,
   ) -> Result<Page<Project>> {
+    self.search_kind(ProjectKind::Mod, game, text, index).await
+  }
+  pub async fn search_shaders(
+    &self,
+    game: Option<&str>,
+    text: &str,
+    index: u32,
+  ) -> Result<Page<Project>> {
+    self
+      .search_kind(ProjectKind::Shader, game, text, index)
+      .await
+  }
+  async fn search_kind(
+    &self,
+    kind: ProjectKind,
+    game: Option<&str>,
+    text: &str,
+    index: u32,
+  ) -> Result<Page<Project>> {
     validate_search(game, text, index)?;
-    let mut facets = vec![
-      vec!["project_type:mod".to_owned()],
-      vec!["categories:fabric".to_owned()],
-      vec![
-        "client_side:required".to_owned(),
-        "client_side:optional".to_owned(),
+    let mut facets = match kind {
+      ProjectKind::Mod => vec![
+        vec!["project_type:mod".to_owned()],
+        vec!["categories:fabric".to_owned()],
+        vec![
+          "client_side:required".to_owned(),
+          "client_side:optional".to_owned(),
+        ],
       ],
-    ];
+      ProjectKind::Shader => vec![vec!["project_type:shader".to_owned()]],
+    };
     if let Some(game) = game {
       facets.push(vec![format!("versions:{game}")]);
     }
@@ -398,17 +477,22 @@ impl Modrinth {
     let count = result.hits.len() as u32;
     let mut items = Vec::new();
     for h in result.hits {
-      if h.project_type != "mod" || h.client_side == "unsupported" {
+      if h.project_type != kind.project_type()
+        || (kind == ProjectKind::Mod && h.client_side == "unsupported")
+      {
         return Err(Error::Metadata("invalid Modrinth search match".into()));
       }
       items.push(project(
-        h.project_id,
-        h.title,
-        h.description,
-        vec![Author { name: h.author }],
-        h.icon_url,
-        h.downloads,
-        h.date_modified,
+        kind,
+        ProjectFields {
+          id: h.project_id,
+          name: h.title,
+          summary: h.description,
+          authors: vec![Author { name: h.author }],
+          icon_url: h.icon_url,
+          download_count: h.downloads,
+          updated_at: h.date_modified,
+        },
       )?);
     }
     let next = index.saturating_add(count);
@@ -418,13 +502,21 @@ impl Modrinth {
     })
   }
   async fn versions(&self, game: &str, project: &str) -> Result<Vec<Version>> {
+    self.versions_with_loader(game, project, "fabric").await
+  }
+  async fn versions_with_loader(
+    &self,
+    game: &str,
+    project: &str,
+    loader: &str,
+  ) -> Result<Vec<Version>> {
     query(game, 0)?;
     id(project)?;
     let versions: Vec<Version> = self
       .get(
         &format!("project/{project}/version"),
         &[
-          ("loaders", "[\"fabric\"]".into()),
+          ("loaders", serde_json::to_string(&[loader])?),
           ("game_versions", serde_json::to_string(&[game])?),
         ],
       )
@@ -457,7 +549,26 @@ impl Modrinth {
         .cmp(&a.date_published)
         .then(a.id.cmp(&b.id))
     });
-    let items: Vec<_> = versions.iter().filter_map(|v| v.file(game).ok()).collect();
+    let items: Vec<_> = versions
+      .iter()
+      .filter_map(|v| v.mod_file(game).ok())
+      .collect();
+    Ok(Page {
+      items,
+      next_index: None,
+    })
+  }
+  pub async fn shader_files(&self, game: &str, project: &str) -> Result<Page<ModFile>> {
+    let mut versions = self.versions_with_loader(game, project, "iris").await?;
+    versions.sort_by(|a, b| {
+      b.date_published
+        .cmp(&a.date_published)
+        .then(a.id.cmp(&b.id))
+    });
+    let items: Vec<_> = versions
+      .iter()
+      .filter_map(|v| v.shader_file(game).ok())
+      .collect();
     Ok(Page {
       items,
       next_index: None,
@@ -480,13 +591,35 @@ impl Modrinth {
       ));
     }
     project(
-      p.id,
-      p.title,
-      p.description,
-      Vec::new(),
-      p.icon_url,
-      p.downloads,
-      p.updated,
+      ProjectKind::Mod,
+      ProjectFields {
+        id: p.id,
+        name: p.title,
+        summary: p.description,
+        authors: Vec::new(),
+        icon_url: p.icon_url,
+        download_count: p.downloads,
+        updated_at: p.updated,
+      },
+    )
+  }
+  pub async fn shader_project(&self, project_id: &str) -> Result<Project> {
+    id(project_id)?;
+    let p: RawProject = self.get(&format!("project/{project_id}"), &[]).await?;
+    if p.id != project_id || p.project_type != "shader" {
+      return Err(Error::Metadata("Modrinth 项目不是光影包。".into()));
+    }
+    project(
+      ProjectKind::Shader,
+      ProjectFields {
+        id: p.id,
+        name: p.title,
+        summary: p.description,
+        authors: Vec::new(),
+        icon_url: p.icon_url,
+        download_count: p.downloads,
+        updated_at: p.updated,
+      },
     )
   }
   pub async fn preview(
@@ -519,7 +652,7 @@ impl Modrinth {
       if selected.len() >= 32 {
         return Err(Error::Metadata("Modrinth 依赖超过 32 个项目上限。".into()));
       }
-      let file = version.file(game)?;
+      let file = version.mod_file(game)?;
       let project = self.project(&version.project_id).await?;
       let mut required = BTreeMap::new();
       let mut incompatible = BTreeMap::new();
@@ -588,7 +721,7 @@ impl Modrinth {
             });
             versions
               .into_iter()
-              .find(|v| v.file(game).is_ok())
+              .find(|v| v.mod_file(game).is_ok())
               .ok_or_else(|| Error::Metadata("必需依赖没有兼容的 Fabric 版本。".into()))?
           }
         } else {
@@ -605,7 +738,7 @@ impl Modrinth {
             "dependency project identity mismatch".into(),
           ));
         }
-        target.file(game)?;
+        target.mod_file(game)?;
         if existing
           .get(&target.project_id)
           .is_some_and(|v| v != &target.id)
@@ -645,5 +778,108 @@ impl Modrinth {
       optional_projects: optional.into_iter().collect(),
       warnings: vec!["仅安装兼容的 Fabric 主 JAR 和必需依赖；不自动升级或替换已有项目。".into()],
     })
+  }
+}
+
+#[cfg(test)]
+mod shader_discovery_tests {
+  use super::*;
+
+  fn file(name: &str, primary: bool) -> File {
+    File {
+      url: "https://cdn.modrinth.com/data/abcd1234/versions/efgh5678/shader.zip".into(),
+      filename: name.into(),
+      primary,
+      size: 1024,
+      hashes: BTreeMap::from([("sha1".into(), "a".repeat(40))]),
+    }
+  }
+  fn version(loaders: &[&str], files: Vec<File>) -> Version {
+    Version {
+      id: "efgh5678".into(),
+      project_id: "abcd1234".into(),
+      name: "v1".into(),
+      date_published: "2026-10-25T00:00:00Z".into(),
+      version_type: "release".into(),
+      status: "listed".into(),
+      game_versions: vec!["1.21.1".into()],
+      loaders: loaders.iter().map(|value| value.to_string()).collect(),
+      files,
+      dependencies: Vec::new(),
+    }
+  }
+
+  #[test]
+  fn shader_version_selects_a_single_zip() {
+    let value = version(&["iris", "optifine"], vec![file("shader.zip", true)]);
+    let selected = value.shader_file("1.21.1").unwrap();
+    assert_eq!(selected.file_name, "shader.zip");
+    assert!(value.mod_file("1.21.1").is_err());
+  }
+
+  #[test]
+  fn shader_version_requires_iris_and_an_unambiguous_zip() {
+    assert!(
+      version(&["optifine"], vec![file("shader.zip", true)])
+        .shader_file("1.21.1")
+        .is_err()
+    );
+    assert!(
+      version(
+        &["iris"],
+        vec![file("one.zip", true), file("two.zip", true)]
+      )
+      .shader_file("1.21.1")
+      .is_err()
+    );
+    assert!(
+      version(&["iris"], vec![file("shader.jar", true)])
+        .shader_file("1.21.1")
+        .is_err()
+    );
+  }
+
+  #[test]
+  fn shader_project_uses_the_shader_route() {
+    let project = project(
+      ProjectKind::Shader,
+      ProjectFields {
+        id: "abcd1234".into(),
+        name: "Shader".into(),
+        summary: "summary".into(),
+        authors: Vec::new(),
+        icon_url: None,
+        download_count: None,
+        updated_at: None,
+      },
+    )
+    .unwrap();
+    assert_eq!(
+      project.links.website_url,
+      "https://modrinth.com/shader/abcd1234"
+    );
+    assert!(valid_project(&project, ProjectKind::Shader));
+    assert!(!valid_project(&project, ProjectKind::Mod));
+  }
+
+  #[tokio::test]
+  #[ignore = "live Modrinth shader metadata; requires network"]
+  async fn shader_discovery_live_metadata_smoke() {
+    let provider = Modrinth::new().unwrap();
+    let page = provider
+      .search_shaders(Some("1.21.1"), "complementary", 0)
+      .await
+      .unwrap();
+    assert!(!page.items.is_empty());
+    let project = provider.shader_project("HVnmMxH1").await.unwrap();
+    assert_eq!(project.id, "HVnmMxH1");
+    let files = provider.shader_files("1.21.1", "HVnmMxH1").await.unwrap();
+    assert!(!files.items.is_empty());
+    assert!(
+      files
+        .items
+        .iter()
+        .all(|file| file.file_name.to_ascii_lowercase().ends_with(".zip"))
+    );
   }
 }

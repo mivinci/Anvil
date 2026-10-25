@@ -48,6 +48,11 @@ pub(crate) const MODRINTH: Policy = Policy {
   entries: 16,
   bytes: 4 * 1024 * 1024 + 4096,
 };
+pub(crate) const MODRINTH_SHADER: Policy = Policy {
+  namespace: "modrinth-shader",
+  entries: 16,
+  bytes: 2 * 1024 * 1024 + 4096,
+};
 pub(crate) const NEWS: Policy = Policy {
   namespace: "news",
   entries: 1,

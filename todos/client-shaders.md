@@ -1,6 +1,6 @@
 # 实例光影管理
 
-状态：第 1–6 项完成，本地光影管理、Runtime 接口、受管 Fabric 环境识别、实例光影页和 Iris 安装确认已接入；隔离测试、指定真实 JAR 的缓存提交及 Runtime 在线资源安装链路验收通过，游戏加载与渲染尚未验收。首期交付本地光影管理和 Fabric / Iris 安装入口；在线光影发现另行排期。逐项推进，每项结束汇报并确认下一项。
+状态：第 1–6 项完成，本地光影管理、Runtime 接口、受管 Fabric 环境识别、实例光影页和 Iris 安装确认已接入；隔离测试、指定真实 JAR 的缓存提交及 Runtime 在线资源安装链路验收通过，游戏加载与渲染尚未验收。在线光影发现的只读后端（A）已完成：Modrinth 光影搜索/项目/版本、独立有界缓存和真实元数据 smoke 通过；下载导入与页面（B）尚未开始。逐项推进，每项结束汇报并确认下一项。
 
 ## 执行项
 
@@ -10,6 +10,16 @@
 4. [x] **实例光影页**：接入环境提示、本地 ZIP 导入确认、列表搜索、移除确认及概览真实数量。
 5. [x] **安装光影支持**：为 Fabric 实例生成 Iris 及必需依赖的真实安装计划，确认后交给现有窗口级资源任务执行。
 6. [x] **交付验证**：完成相称的静态检查与构建，整理状态；真实 ZIP、Iris 下载、游戏内选择及 macOS 渲染效果由维护者按需验收。
+
+## 在线光影发现（A 已完成，B 待做）
+
+A 只做只读发现，不下载、不改页面入口：
+
+- Core 新增 `Modrinth::search_shaders`、`shader_project` 和 `shader_files`；搜索固定 `project_type:shader`，版本固定 Iris loader 与当前游戏版本，文件只接受唯一主 ZIP，校验 CDN HTTPS、大小和 SHA-1。
+- 新增 `ShaderDiscoveryQuery`/`ShaderDiscoveryPage` 与 `modrinth-shader` 缓存命名空间；搜索、项目、版本分别有界缓存 5 分钟，磁盘命名空间与模组发现隔离，最多 16 项、2 MiB。
+- Runtime 新增只读接口：`GET /resources/modrinth/shader-projects`（可选 `gameVersion`/`q`/`index`）、`GET /resources/modrinth/shader-projects/{project}`、`GET /resources/modrinth/shader-projects/{project}/versions?gameVersion=...`，沿用 Modrinth provider、并发门禁和 Origin/Bearer 鉴权。
+- 验证：Cache 的 `shader_search_snapshot_round_trips_through_its_own_cache`、ZIP/Iris 选择和项目路由单测通过；`shader_discovery_live_metadata_smoke` 使用真实 Modrinth 搜索、项目 `HVnmMxH1` 和 1.21.1 版本列表通过（ignored，手动执行）。
+- B 仍未做：下载 ZIP、复用 `import_shader_pack`、进度/取消、页面浏览/版本选择，以及 CurseForge 光影。不能把当前只读接口说成已可下载。
 
 ## 用户流程
 

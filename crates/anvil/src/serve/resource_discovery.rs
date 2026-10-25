@@ -1,5 +1,6 @@
 //! Instance-independent read-only discovery. Installation remains instance-scoped.
 use super::api::{ApiError, AppState};
+use anvil_core::modrinth::ShaderDiscoveryQuery;
 use axum::{
   Json,
   extract::{Path, Query, State},
@@ -49,6 +50,42 @@ impl Search {
     Ok(())
   }
 }
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct ShaderSearch {
+  #[serde(default)]
+  q: String,
+  game_version: Option<String>,
+  #[serde(default)]
+  index: u32,
+  #[serde(default)]
+  refresh: bool,
+  after: Option<u64>,
+}
+impl ShaderSearch {
+  fn validate(&self) -> Result<(), ApiError> {
+    if self
+      .game_version
+      .as_deref()
+      .is_some_and(|g| !anvil_core::metadata::is_valid_version_id(g))
+      || self.q.len() > 128
+      || self.q.chars().any(char::is_control)
+      || self.index > 9980
+    {
+      return Err(ApiError::new(StatusCode::BAD_REQUEST, "光影查询无效。"));
+    }
+    Ok(())
+  }
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct ShaderVersions {
+  game_version: String,
+  #[serde(default)]
+  refresh: bool,
+  after: Option<u64>,
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Refresh {
@@ -132,6 +169,91 @@ pub(super) async fn project(
     }
   };
   result
+    .map(Json)
+    .map_err(|e| ApiError::new(StatusCode::BAD_GATEWAY, e))
+}
+
+pub(super) async fn shader_search(
+  State(state): State<AppState>,
+  Query(q): Query<ShaderSearch>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+  q.validate()?;
+  let _slot = state.modrinth.slot()?;
+  let provider = state.modrinth.provider()?;
+  let query = ShaderDiscoveryQuery::Search {
+    game: q.game_version,
+    text: q.q.trim().into(),
+    index: q.index,
+  };
+  query.identity().map_err(super::api::resource_error)?;
+  state
+    .modrinth
+    .shader_discovery
+    .get(
+      state.runtime.context.clone(),
+      provider,
+      query,
+      q.refresh,
+      q.after,
+    )
+    .await
+    .map(Json)
+    .map_err(|e| ApiError::new(StatusCode::BAD_GATEWAY, e))
+}
+
+pub(super) async fn shader_project(
+  State(state): State<AppState>,
+  Path(project): Path<String>,
+  Query(q): Query<Refresh>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+  let _slot = state.modrinth.slot()?;
+  let provider = state.modrinth.provider()?;
+  let query = ShaderDiscoveryQuery::Project { project };
+  query.identity().map_err(super::api::resource_error)?;
+  state
+    .modrinth
+    .shader_discovery
+    .get(
+      state.runtime.context.clone(),
+      provider,
+      query,
+      q.refresh,
+      q.after,
+    )
+    .await
+    .map(Json)
+    .map_err(|e| ApiError::new(StatusCode::BAD_GATEWAY, e))
+}
+
+pub(super) async fn shader_versions(
+  State(state): State<AppState>,
+  Path(project): Path<String>,
+  Query(q): Query<ShaderVersions>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+  if !anvil_core::metadata::is_valid_version_id(&q.game_version) {
+    return Err(ApiError::new(
+      StatusCode::BAD_REQUEST,
+      "光影查询的游戏版本无效。",
+    ));
+  }
+  let _slot = state.modrinth.slot()?;
+  let provider = state.modrinth.provider()?;
+  let query = ShaderDiscoveryQuery::Files {
+    game: q.game_version,
+    project,
+  };
+  query.identity().map_err(super::api::resource_error)?;
+  state
+    .modrinth
+    .shader_discovery
+    .get(
+      state.runtime.context.clone(),
+      provider,
+      query,
+      q.refresh,
+      q.after,
+    )
+    .await
     .map(Json)
     .map_err(|e| ApiError::new(StatusCode::BAD_GATEWAY, e))
 }

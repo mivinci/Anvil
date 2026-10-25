@@ -94,7 +94,7 @@ Shell 版本以 Tauri 安装包的 `tauri.conf.json` 版本为准，不使用 Ru
 
 ### 本地资源包当前边界
 
-Core 资源清单 schema 5 保留 resourcePacks、Modrinth 来源和版本依赖记录，新增独立 shaderPacks；旧 schema 1–4 兼容读取，成功变更才升级。资源包 ZIP 导入与模组共用内容摘要仓库、实例/仓库锁和修订检查，解析有界 pack.mcmeta，不推断游戏兼容性。Core 已共用现有资源事务应用到 game/resourcepacks，并在启动前恢复/补回受管副本，支持原版与 Fabric；Runtime 已提供鉴权资源包列表/上传/移除 API，UI 已接本地 ZIP 确认导入、列表与移除，概览按需读取受管引用数量，不改写游戏内资源包选择与顺序。执行项及验收状态见 client-resources。光影 Core 已接本地 ZIP 识别、共享引用、game/shaderpacks 独立副本、移除与启动前恢复；Runtime 光影列表/上传/移除与受管 Fabric 环境识别已接入鉴权和请求限额；有界识别嵌套模组和唯一提供者别名，重复版本/别名冲突或不支持的版本约束返回无法确认，UI 已接本地 ZIP 确认导入、搜索、同步、移除及环境提示，概览按需读取数量；Iris 兼容版本、依赖确认和窗口级安装任务已接入，提交前校验实际 JAR 的受管依赖环境；指定真实 Iris/Sodium 的隔离缓存提交，以及 Runtime 在线计划、q2q-http 下载、后台任务幂等提交和环境读取均已验收；使用临时游戏记录，游戏本体安装、启动及渲染仍待验收。执行项与隔离验证范围见[实例光影管理](../todos/client-shaders.md)。
+Core 资源清单 schema 5 保留 resourcePacks、Modrinth 来源和版本依赖记录，新增独立 shaderPacks；旧 schema 1–4 兼容读取，成功变更才升级。资源包 ZIP 导入与模组共用内容摘要仓库、实例/仓库锁和修订检查，解析有界 pack.mcmeta，不推断游戏兼容性。Core 已共用现有资源事务应用到 game/resourcepacks，并在启动前恢复/补回受管副本，支持原版与 Fabric；Runtime 已提供鉴权资源包列表/上传/移除 API，UI 已接本地 ZIP 确认导入、列表与移除，概览按需读取受管引用数量，不改写游戏内资源包选择与顺序。执行项及验收状态见 client-resources。光影 Core 已接本地 ZIP 识别、共享引用、game/shaderpacks 独立副本、移除与启动前恢复；Runtime 光影列表/上传/移除与受管 Fabric 环境识别已接入鉴权和请求限额；有界识别嵌套模组和唯一提供者别名，重复版本/别名冲突或不支持的版本约束返回无法确认，UI 已接本地 ZIP 确认导入、搜索、同步、移除及环境提示，概览按需读取数量；Iris 兼容版本、依赖确认和窗口级安装任务已接入，提交前校验实际 JAR 的受管依赖环境；指定真实 Iris/Sodium 的隔离缓存提交，以及 Runtime 在线计划、q2q-http 下载、后台任务幂等提交和环境读取均已验收；使用临时游戏记录，游戏本体安装、启动及渲染仍待验收。另已接入 Modrinth 光影只读搜索/项目/版本与独立 5 分钟有界缓存；下载导入和页面入口尚未实现。执行项与隔离验证范围见[实例光影管理](../todos/client-shaders.md)。
 
 ### 离线测试入口
 
