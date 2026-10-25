@@ -52,7 +52,11 @@
 		<div role="status" class="flex min-h-40 flex-1 items-center justify-center gap-2 text-xs text-muted-foreground"><LoaderCircle size={15} class="animate-spin motion-reduce:animate-none" aria-hidden="true" />读取资源包…</div>
 	{:else if packs.collection}
 		{#if packs.collection.packs.length === 0}
-			<div class="flex min-h-52 flex-1 flex-col items-center justify-center gap-2.5 text-center"><Image size={26} strokeWidth={1.4} class="text-primary/60" aria-hidden="true" /><p class="text-[13px]">还没有资源包</p><p class="text-[11px] text-muted-foreground">导入一个 ZIP，为这个实例换一套纹理。</p></div>
+			<div class="mt-3 flex flex-wrap items-center gap-3 rounded-lg bg-card px-3.5 py-3">
+				<span class="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/8 text-primary"><Image size={18} strokeWidth={1.5} aria-hidden="true" /></span>
+				<div class="min-w-0 flex-1"><p class="text-[13px] font-medium">还没有资源包</p><p class="mt-1 text-[11px] leading-4 text-muted-foreground">导入一个 ZIP，为这个实例换一套纹理。</p></div>
+				<button type="button" disabled={locked} onclick={() => input.click()} class="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40"><Plus size={13} aria-hidden="true" />导入资源包</button>
+			</div>
 		{:else}
 			<label class="mt-4 flex h-8 items-center gap-2 rounded-lg bg-chrome-hover px-2.5 text-muted-foreground focus-within:ring-1 focus-within:ring-ring"><Search size={14} aria-hidden="true" /><input type="search" bind:value={search} placeholder="搜索名称或描述" aria-label="搜索资源包" class="min-w-0 flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground" />{#if search}<button type="button" onclick={() => search = ''} aria-label="清空搜索" class="rounded p-0.5 focus-visible:outline-2 focus-visible:outline-ring"><X size={12} aria-hidden="true" /></button>{/if}</label>
 			<ul aria-label="本实例资源包" aria-busy={packs.busy} class="mt-3 shrink-0 divide-y divide-border rounded-lg bg-card px-3">
