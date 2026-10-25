@@ -19,13 +19,14 @@
 	onMount(() => { void library.refresh(); });
 </script>
 
-<section class="flex h-full min-w-0 flex-col rounded-lg bg-card p-3" aria-labelledby="home-play-title">
+<section class="relative isolate flex h-full min-w-0 flex-col overflow-hidden rounded-lg bg-card p-3" aria-labelledby="home-play-title">
 	{#if featured}
-		<div class="flex items-center justify-between gap-3">
+		<div class="relative z-10 flex items-center justify-between gap-3">
 			<h2 id="home-play-title" class="flex items-center gap-2 text-[13px] font-semibold"><Gamepad2 size={15} class="text-primary" aria-hidden="true" />最近游玩</h2>
 			<a href={resolve('/clients/[name]', { name: featured.name.toLowerCase() })} class={link}>管理实例<ChevronRight size={12} aria-hidden="true" /></a>
 		</div>
-		<div class="flex flex-1 items-center justify-between gap-4 pt-3">
+		<div class="pointer-events-none absolute -right-6 -bottom-8 h-44 w-80 text-primary/25 min-[1200px]:h-52 min-[1200px]:w-96" aria-hidden="true"><ClientArtwork id={featured.id} /></div>
+		<div class="relative z-10 flex flex-1 items-center pt-3">
 			<div class="min-w-0 flex-1">
 				<a href={resolve('/clients/[name]', { name: featured.name.toLowerCase() })} class="block truncate rounded text-xl font-semibold tracking-tight hover:text-primary focus-visible:outline-2 focus-visible:outline-ring" title={featured.name}>{featured.name}</a>
 				<p class="mt-1 truncate text-[11px] text-muted-foreground">Minecraft {featured.versionId} · {featured.loader ? `Fabric ${featured.loader.version}` : '原版'}</p>
@@ -36,7 +37,6 @@
 				{/if}
 				<div class="mt-3"><ClientLaunchControls client={featured} large /></div>
 			</div>
-			<div class="hidden h-16 w-24 shrink-0 self-center text-primary min-[480px]:block min-[1200px]:h-24 min-[1200px]:w-40" aria-hidden="true"><ClientArtwork id={featured.id} /></div>
 		</div>
 	{:else if library.error}
 		<div class="flex flex-1 flex-col items-start justify-center gap-2" role="alert">
