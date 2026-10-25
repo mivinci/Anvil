@@ -61,7 +61,7 @@ impl ResourceManager {
           verify_object(&object_path(data, &sha256), &sha256, entry.size)?;
           return Ok(manifest);
         }
-        if manifest.mods.len() + manifest.resource_packs.len() >= MAX_ENTRIES {
+        if manifest.entry_count() >= MAX_ENTRIES {
           return Err(Error::Invalid(
             "at most 1024 managed resources per instance".into(),
           ));
@@ -316,34 +316,40 @@ fn safe_entry(name: &[u8], directory: bool) -> Result<()> {
   }
   Ok(())
 }
+pub(super) fn validate_zip_entry<R: Read>(file: &zip::read::ZipFile<'_, R>) -> Result<()> {
+  safe_entry(file.name_raw(), file.is_dir())?;
+  if file.encrypted()
+    || file.is_symlink()
+    || file
+      .unix_mode()
+      .is_some_and(|m| !matches!(m & 0o170000, 0 | 0o040000 | 0o100000))
+  {
+    return Err(invalid());
+  }
+  // Per-entry ZIP64 fields can appear even without a ZIP64 end-of-directory record.
+  let mut extra = file.extra_data().unwrap_or_default();
+  while !extra.is_empty() {
+    if extra.len() < 4 {
+      return Err(invalid());
+    }
+    let tag = u16::from_le_bytes([extra[0], extra[1]]);
+    let length = u16::from_le_bytes([extra[2], extra[3]]) as usize;
+    if tag == 1 || length > extra.len() - 4 {
+      return Err(invalid());
+    }
+    extra = &extra[4 + length..];
+  }
+  Ok(())
+}
 fn inspect_zip(bytes: &[u8]) -> Result<PackMetadata> {
   let mut archive = open_zip(bytes)?;
   let mut found = None;
   let mut names = HashSet::new();
   for index in 0..archive.len() {
     let mut file = archive.by_index(index).map_err(|_| invalid())?;
-    safe_entry(file.name_raw(), file.is_dir())?;
-    if !names.insert(file.name().to_owned())
-      || file.encrypted()
-      || file.is_symlink()
-      || file
-        .unix_mode()
-        .is_some_and(|m| !matches!(m & 0o170000, 0 | 0o040000 | 0o100000))
-    {
+    validate_zip_entry(&file)?;
+    if !names.insert(file.name().to_owned()) {
       return Err(invalid());
-    }
-    // Per-entry ZIP64 fields can appear even without a ZIP64 end-of-directory record.
-    let mut extra = file.extra_data().unwrap_or_default();
-    while !extra.is_empty() {
-      if extra.len() < 4 {
-        return Err(invalid());
-      }
-      let tag = u16::from_le_bytes([extra[0], extra[1]]);
-      let length = u16::from_le_bytes([extra[2], extra[3]]) as usize;
-      if tag == 1 || length > extra.len() - 4 {
-        return Err(invalid());
-      }
-      extra = &extra[4 + length..];
     }
     if file.name() == "pack.mcmeta" {
       if found.is_some() || file.is_dir() || file.size() > MAX_METADATA_BYTES {

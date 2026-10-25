@@ -2,8 +2,9 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { untrack } from 'svelte';
-	import { listClientResourcePacks } from '#lib/runtime.js';
+	import { listClientResources } from '#lib/runtime.js';
 	import { validateClientResourcePacks } from '#lib/client-resource-pack-state.svelte.js';
+	import { validateShaderPackChange } from '#lib/shader-packs.js';
 	import ClientScreenPreview from '#lib/components/clients/client-screen-preview.svelte';
 	import ClientLaunchControls from '#lib/components/clients/client-launch-controls.svelte';
 	import { getClientLaunchState, launchActive, launchLabel } from '#lib/client-launch-state.svelte.js';
@@ -12,6 +13,7 @@
 	const detail = getClientDetailState();
 	const name = $derived(page.params.name ?? '');
 	let packCount = $state<number | null>(null);
+	let shaderCount = $state<number | null>(null);
 	let countLoading = $state(false);
 	let countError = $state(false);
 	let countRequest: AbortController | null = null;
@@ -20,17 +22,21 @@
 		const controller = new AbortController(); countRequest = controller;
 		countLoading = true; countError = false;
 		try {
-			const result = validateClientResourcePacks(await listClientResourcePacks(target, AbortSignal.any([controller.signal, AbortSignal.timeout(20_000)])));
-			if (countRequest === controller && !controller.signal.aborted) packCount = result.packs.length;
+			const manifest = await listClientResources(target, AbortSignal.any([controller.signal, AbortSignal.timeout(20_000)]));
+			if (![1, 2, 3, 4, 5].includes(manifest.schemaVersion)) throw new Error('资源清单版本无效');
+			const common = { revision: manifest.revision, appliedRevision: manifest.appliedRevision ?? null };
+			const textures = validateClientResourcePacks({ ...common, packs: manifest.resourcePacks ?? [] });
+			const shaders = validateShaderPackChange({ ...common, packs: manifest.shaderPacks ?? [] });
+			if (countRequest === controller && !controller.signal.aborted) { packCount = textures.packs.length; shaderCount = shaders.packs.length; }
 		} catch {
-			if (countRequest === controller && !controller.signal.aborted) { packCount = null; countError = true; }
+			if (countRequest === controller && !controller.signal.aborted) { packCount = null; shaderCount = null; countError = true; }
 		} finally {
 			if (countRequest === controller) { countRequest = null; countLoading = false; }
 		}
 	}
 	$effect(() => {
 		const target = name;
-		untrack(() => { packCount = null; void loadCount(target); });
+		untrack(() => { packCount = null; shaderCount = null; void loadCount(target); });
 		return () => { countRequest?.abort(); countRequest = null; };
 	});
 	function refresh() { void detail.load(name); void loadCount(name); }
@@ -39,8 +45,8 @@
 	const status = $derived(operation && launchActive(operation) ? launchLabel(operation) : '未运行');
 	const links = $derived(detail.client ? [
 		{ title: '模组', hint: '管理与添加模组', icon: Boxes, href: resolve('/clients/[name]/mods', { name: detail.client.name.toLowerCase() }) },
-		{ title: '资源包', hint: packCount !== null ? `${packCount} 个资源包` : countLoading ? '读取数量…' : '查看与管理资源包', icon: Image, href: resolve('/clients/[name]/resource-packs', { name: detail.client.name.toLowerCase() }) },
-		{ title: '光影', hint: '功能准备中', icon: Sparkles, href: resolve('/clients/[name]/shader-packs', { name: detail.client.name.toLowerCase() }) },
+		{ title: '资源包', hint: packCount !== null ? `${packCount} 个资源包` : countLoading ? '读取数量…' : countError ? '数量暂不可用' : '查看与管理资源包', icon: Image, href: resolve('/clients/[name]/resource-packs', { name: detail.client.name.toLowerCase() }) },
+		{ title: '光影', hint: shaderCount !== null ? `${shaderCount} 个光影` : countLoading ? '读取数量…' : countError ? '数量暂不可用' : '查看与管理光影', icon: Sparkles, href: resolve('/clients/[name]/shader-packs', { name: detail.client.name.toLowerCase() }) },
 	] : []);
 	let copied = $state<string | null>(null);
 	let copyError = $state<string | null>(null);
@@ -75,7 +81,7 @@
 		</div>
 		<div class="mt-5 grid grid-cols-3 gap-2">
 			{#each links as item (item.title)}
-				<a href={item.href} title={item.title === '资源包' && countError ? '数量暂时无法读取，点击进入管理；可刷新概览重试。' : undefined} class="group min-w-0 rounded-xl bg-card p-3 transition-colors hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring"><div class="flex items-center justify-between"><item.icon size={19} strokeWidth={1.5} class="text-primary" aria-hidden="true" /><ArrowUpRight size={13} class="text-muted-foreground/50 transition-transform motion-safe:group-hover:-translate-y-0.5 motion-safe:group-hover:translate-x-0.5" aria-hidden="true" /></div><h2 class="mt-3 text-[13px] font-medium">{item.title}</h2><p class="mt-1 text-[11px] leading-4 text-muted-foreground">{item.hint}</p></a>
+				<a href={item.href} title={(item.title === '资源包' || item.title === '光影') && countError ? '数量暂时无法读取，点击进入管理；可刷新概览重试。' : undefined} class="group min-w-0 rounded-xl bg-card p-3 transition-colors hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring"><div class="flex items-center justify-between"><item.icon size={19} strokeWidth={1.5} class="text-primary" aria-hidden="true" /><ArrowUpRight size={13} class="text-muted-foreground/50 transition-transform motion-safe:group-hover:-translate-y-0.5 motion-safe:group-hover:translate-x-0.5" aria-hidden="true" /></div><h2 class="mt-3 text-[13px] font-medium">{item.title}</h2><p class="mt-1 text-[11px] leading-4 text-muted-foreground">{item.hint}</p></a>
 			{/each}
 		</div>
 		<details class="group mt-5 border-t border-border pt-3">

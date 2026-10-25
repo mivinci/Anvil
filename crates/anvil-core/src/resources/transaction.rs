@@ -15,6 +15,8 @@ pub(super) struct Layout {
     skip_serializing_if = "Vec::is_empty"
   )]
   pub(super) resource_packs: Vec<ResourcePackEntry>,
+  #[serde(default, rename = "shaderPacks", skip_serializing_if = "Vec::is_empty")]
+  pub(super) shader_packs: Vec<ShaderPackEntry>,
 }
 #[derive(
   Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
@@ -24,18 +26,20 @@ enum Kind {
   #[default]
   Mod,
   ResourcePack,
+  ShaderPack,
 }
 impl Kind {
   fn directory(self, root: &Path) -> PathBuf {
     root.join(match self {
       Self::Mod => "game/mods",
       Self::ResourcePack => "game/resourcepacks",
+      Self::ShaderPack => "game/shaderpacks",
     })
   }
   fn validate_filename(self, filename: &str) -> Result<()> {
     match self {
       Self::Mod => validate_filename(filename),
-      Self::ResourcePack => validate_resource_filename(filename, "zip"),
+      Self::ResourcePack | Self::ShaderPack => validate_resource_filename(filename, "zip"),
     }
   }
 }
@@ -45,30 +49,35 @@ impl Kind {
 enum Entry {
   Mod(ResourceEntry),
   Pack(ResourcePackEntry),
+  Shader(ShaderPackEntry),
 }
 impl Entry {
   fn kind(&self) -> Kind {
     match self {
       Self::Mod(_) => Kind::Mod,
       Self::Pack(_) => Kind::ResourcePack,
+      Self::Shader(_) => Kind::ShaderPack,
     }
   }
   fn filename(&self) -> &str {
     match self {
       Self::Mod(e) => &e.filename,
       Self::Pack(e) => &e.filename,
+      Self::Shader(e) => &e.filename,
     }
   }
   fn hash(&self) -> &str {
     match self {
       Self::Mod(e) => &e.sha256,
       Self::Pack(e) => &e.sha256,
+      Self::Shader(e) => &e.sha256,
     }
   }
   fn size(&self) -> u64 {
     match self {
       Self::Mod(e) => e.size,
       Self::Pack(e) => e.size,
+      Self::Shader(e) => e.size,
     }
   }
 }
@@ -76,6 +85,12 @@ impl Layout {
   fn entries(&self, kind: Kind) -> Vec<Entry> {
     match kind {
       Kind::Mod => self.mods.iter().cloned().map(Entry::Mod).collect(),
+      Kind::ShaderPack => self
+        .shader_packs
+        .iter()
+        .cloned()
+        .map(Entry::Shader)
+        .collect(),
       Kind::ResourcePack => self
         .resource_packs
         .iter()
@@ -92,6 +107,12 @@ impl Layout {
         .find(|e| e.filename == filename)
         .cloned()
         .map(Entry::Mod),
+      Kind::ShaderPack => self
+        .shader_packs
+        .iter()
+        .find(|e| e.filename == filename)
+        .cloned()
+        .map(Entry::Shader),
       Kind::ResourcePack => self
         .resource_packs
         .iter()
@@ -142,11 +163,12 @@ fn sync_file(path: &Path) -> Result<()> {
 }
 fn validate_layout(layout: &Layout) -> Result<()> {
   let manifest = ResourceManifest {
-    schema_version: 4,
+    schema_version: 5,
     revision: 0,
     applied_revision: None,
     mods: layout.mods.clone(),
     resource_packs: layout.resource_packs.clone(),
+    shader_packs: layout.shader_packs.clone(),
   };
   super::platform::validate_layout_entries(&manifest)?;
   if layout.mods.iter().any(|entry| !entry.enabled) {
@@ -175,6 +197,7 @@ fn desired(manifest: &ResourceManifest) -> Layout {
       .cloned()
       .collect(),
     resource_packs: manifest.resource_packs.clone(),
+    shader_packs: manifest.shader_packs.clone(),
   }
 }
 
@@ -195,7 +218,12 @@ pub(crate) fn sync_for_launch(
     ));
   }
   // Vanilla instances without managed game files need no new resource record.
-  if !fabric && manifest.resource_packs.is_empty() && layout.resource_packs.is_empty() {
+  if !fabric
+    && manifest.resource_packs.is_empty()
+    && layout.resource_packs.is_empty()
+    && manifest.shader_packs.is_empty()
+    && layout.shader_packs.is_empty()
+  {
     return Ok(());
   }
   // Reconcile and verify even when the revision was previously applied: local
@@ -218,7 +246,7 @@ pub(super) fn transact(
   let new_layout = desired(after);
   ensure_directory(&directory.join("game"), false)?;
   let mut changes = Vec::new();
-  for kind in [Kind::Mod, Kind::ResourcePack] {
+  for kind in [Kind::Mod, Kind::ResourcePack, Kind::ShaderPack] {
     let old_entries = old_layout.entries(kind);
     let new_entries = new_layout.entries(kind);
     let folder = kind.directory(directory);
@@ -279,7 +307,7 @@ pub(super) fn transact(
     ));
   }
   let mut journal = Journal {
-    schema_version: 2,
+    schema_version: 3,
     before: before.clone(),
     after: after.clone(),
     old_layout,
@@ -372,8 +400,20 @@ fn apply_transaction(
   Ok(())
 }
 fn validate_journal(journal: &Journal) -> Result<()> {
-  if !matches!(journal.schema_version, 1 | 2) || journal.changes.len() > 2 * MAX_ENTRIES {
+  if !matches!(journal.schema_version, 1..=3) || journal.changes.len() > 2 * MAX_ENTRIES {
     return Err(Error::Conflict("invalid resource transaction".into()));
+  }
+  if journal.schema_version < 3
+    && (!journal.before.shader_packs.is_empty()
+      || !journal.after.shader_packs.is_empty()
+      || !journal.old_layout.shader_packs.is_empty()
+      || !journal.new_layout.shader_packs.is_empty()
+      || journal
+        .changes
+        .iter()
+        .any(|change| change.kind == Kind::ShaderPack))
+  {
+    return Err(Error::Conflict("invalid legacy shader transaction".into()));
   }
   if journal.schema_version == 1
     && (!journal.before.resource_packs.is_empty()
@@ -437,7 +477,7 @@ pub(super) fn recover(directory: &Path) -> Result<()> {
   let journal: Journal = storage::read_json_bounded(&path, MAX_JOURNAL_BYTES)?;
   validate_journal(&journal)?;
   ensure_directory(&directory.join("game"), false)?;
-  for kind in [Kind::Mod, Kind::ResourcePack] {
+  for kind in [Kind::Mod, Kind::ResourcePack, Kind::ShaderPack] {
     let folder = kind.directory(directory);
     if !journal.old_layout.entries(kind).is_empty()
       || !journal.new_layout.entries(kind).is_empty()

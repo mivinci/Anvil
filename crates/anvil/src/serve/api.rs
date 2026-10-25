@@ -237,6 +237,20 @@ pub(super) async fn serve(
       axum::routing::delete(super::client_resources::remove_pack)
         .layer(middleware::from_fn(limit_resource_requests)),
     )
+    .route(
+      "/clients/{name}/shader-packs",
+      get(super::client_resources::shader_packs)
+        .post(super::client_resources::import_shader_pack)
+        .layer(DefaultBodyLimit::max(
+          anvil_core::resources::MAX_IMPORT_BYTES,
+        ))
+        .layer(middleware::from_fn(limit_resource_requests)),
+    )
+    .route(
+      "/clients/{name}/shader-packs/{sha256}",
+      axum::routing::delete(super::client_resources::remove_shader_pack)
+        .layer(middleware::from_fn(limit_resource_requests)),
+    )
     .route("/clients/install", post(install_client))
     .route("/operations", get(operations))
     .route("/operations/{id}", get(operation).delete(cancel_operation))

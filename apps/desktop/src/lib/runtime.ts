@@ -264,11 +264,12 @@ export interface ClientResourceEntry {
 	modrinthOrigin?: { projectId: string; versionId: string; projectName: string; sha1: string; direct: boolean; requiredVersions: Record<string, string>; incompatibleVersions: Record<string, string | null> };
 }
 export interface ClientResourceManifest {
-	schemaVersion: 1 | 2 | 3 | 4;
+	schemaVersion: 1 | 2 | 3 | 4 | 5;
 	revision: number;
 	appliedRevision?: number | null;
 	mods: ClientResourceEntry[];
 	resourcePacks?: ClientResourcePack[];
+	shaderPacks?: ClientShaderPack[];
 }
 export const listClientResources = (name: string, signal: AbortSignal) =>
 	runtimeRequest<ClientResourceManifest>(`/clients/${encodeURIComponent(name)}/resources`, { signal, cache: 'no-store' });
@@ -276,6 +277,25 @@ export const importClientMod = (name: string, file: File, revision: number, sign
 	runtimeRequest<ClientResourceManifest>(`/clients/${encodeURIComponent(name)}/resources?${new URLSearchParams({ filename: file.name, revision: String(revision) })}`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file, signal });
 export const changeClientMod = (name: string, sha256: string, revision: number, enabled: boolean | null, signal: AbortSignal) =>
 	runtimeRequest<ClientResourceManifest>(`/clients/${encodeURIComponent(name)}/resources/${encodeURIComponent(sha256)}${enabled === null ? `?revision=${revision}` : '/enabled'}`, enabled === null ? { method: 'DELETE', signal } : { method: 'POST', body: JSON.stringify({ revision, enabled }), signal });
+
+export interface ClientShaderPack {
+	sha256: string; filename: string; size: number; source: 'local';
+}
+export interface ShaderMod { version: string; enabled: boolean }
+export interface ShaderEnvironment {
+	status: 'requires_fabric' | 'missing_iris' | 'iris_disabled' | 'missing_dependencies' | 'unconfirmed' | 'ready';
+	iris: ShaderMod | null; sodium: ShaderMod | null; managedOnly: boolean; reason: string;
+}
+export interface ClientShaderPackChange {
+	revision: number; appliedRevision: number | null; packs: ClientShaderPack[];
+}
+export interface ClientShaderPacks extends ClientShaderPackChange { environment: ShaderEnvironment }
+export const listClientShaderPacks = (name: string, signal: AbortSignal) =>
+	runtimeRequest<ClientShaderPacks>(`/clients/${encodeURIComponent(name)}/shader-packs`, { signal, cache: 'no-store' });
+export const importClientShaderPack = (name: string, file: File, revision: number, signal: AbortSignal) =>
+	runtimeRequest<ClientShaderPackChange>(`/clients/${encodeURIComponent(name)}/shader-packs?${new URLSearchParams({ filename: file.name, revision: String(revision) })}`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file, signal });
+export const removeClientShaderPack = (name: string, sha256: string, revision: number, signal: AbortSignal) =>
+	runtimeRequest<ClientShaderPackChange>(`/clients/${encodeURIComponent(name)}/shader-packs/${encodeURIComponent(sha256)}?revision=${revision}`, { method: 'DELETE', signal });
 
 export interface ResourcePackFormat { major: number; minor: number }
 export interface ClientResourcePack {

@@ -1,3 +1,4 @@
+import { localPackFileError, localPackSize } from './local-pack';
 import {
 	listClientResourcePacks, importClientResourcePack, removeClientResourcePack, syncClientResources,
 	type ClientResourcePacks, type ClientResourcePack, type ResourcePackFormat,
@@ -26,9 +27,7 @@ export function validateClientResourcePacks(result: ClientResourcePacks): Client
 	}
 	return result;
 }
-export function resourcePackSize(bytes: number) {
-	return bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KiB` : `${(bytes / 1024 / 1024).toFixed(1)} MiB`;
-}
+export const resourcePackSize = localPackSize;
 export function resourcePackFormat(pack: ClientResourcePack) {
 	const { minFormat: min, maxFormat: max } = pack.metadata;
 	if (min.minor === 0 && max.minor === MAX_FORMAT) return min.major === max.major ? `${min.major}` : `${min.major}–${max.major}`;
@@ -63,12 +62,8 @@ export class ClientResourcePackState {
 	pick(file: File) {
 		if (this.busy || this.uncertain || !this.collection) return;
 		this.selected = null; this.removing = null; this.message = null;
-		if (!file.name.toLowerCase().endsWith('.zip') || file.size === 0 || file.size > MAX_BYTES) {
-			this.error = '请选择不超过 64 MiB 的非空 ZIP 文件。'; return;
-		}
-		if (!/^[a-z0-9][a-z0-9._+ -]*\.zip$/i.test(file.name) || file.name.length > 128 || /^(con|prn|aux|nul|com\d|lpt\d)(\.|$)/i.test(file.name)) {
-			this.error = '请调整 ZIP 文件名：以英文字母或数字开头，仅使用英文字母、数字、空格和 . _ + -，最多 128 字符。'; return;
-		}
+		const error = localPackFileError(file);
+		if (error) { this.error = error; return; }
 		this.selected = file; this.error = null;
 	}
 	async importSelected() {

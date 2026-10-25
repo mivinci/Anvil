@@ -17,6 +17,12 @@ pub const MAX_IMPORT_BYTES: usize = 64 * 1024 * 1024;
 const MAX_ENTRIES: usize = 1024;
 const MAX_RECORD_BYTES: usize = 1024 * 1024;
 
+mod shader_environment;
+pub use shader_environment::{
+  ShaderEnvironment, ShaderEnvironmentStatus, ShaderMod, ShaderPackCollection,
+};
+mod shaders;
+pub use shaders::ShaderPackEntry;
 mod packs;
 pub use packs::{PackFormat, PackMetadata, ResourcePackEntry};
 mod modrinth;
@@ -72,6 +78,13 @@ pub struct ResourceManifest {
   pub mods: Vec<ResourceEntry>,
   #[serde(default, skip_serializing_if = "Vec::is_empty")]
   pub resource_packs: Vec<ResourcePackEntry>,
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub shader_packs: Vec<ShaderPackEntry>,
+}
+impl ResourceManifest {
+  fn entry_count(&self) -> usize {
+    self.mods.len() + self.resource_packs.len() + self.shader_packs.len()
+  }
 }
 impl Default for ResourceManifest {
   fn default() -> Self {
@@ -81,6 +94,7 @@ impl Default for ResourceManifest {
       applied_revision: None,
       mods: Vec::new(),
       resource_packs: Vec::new(),
+      shader_packs: Vec::new(),
     }
   }
 }
@@ -122,7 +136,7 @@ impl ResourceManager {
           verify_object(&object_path(data, &sha256), &sha256, entry.size)?;
           return Ok(manifest);
         }
-        if manifest.mods.len() + manifest.resource_packs.len() >= MAX_ENTRIES {
+        if manifest.entry_count() >= MAX_ENTRIES {
           return Err(Error::Invalid(
             "at most 1024 managed resources per instance".into(),
           ));
@@ -266,8 +280,8 @@ fn read_manifest(directory: &Path) -> Result<ResourceManifest> {
   Ok(manifest)
 }
 fn validate_manifest(manifest: &ResourceManifest) -> Result<()> {
-  if !matches!(manifest.schema_version, 1..=4)
-    || manifest.mods.len() + manifest.resource_packs.len() > MAX_ENTRIES
+  if !matches!(manifest.schema_version, 1..=5)
+    || manifest.entry_count() > MAX_ENTRIES
     || manifest.revision > 9_007_199_254_740_990
     || manifest
       .applied_revision
@@ -308,6 +322,12 @@ fn validate_manifest(manifest: &ResourceManifest) -> Result<()> {
     ));
   }
   packs::validate_entries(&manifest.resource_packs)?;
+  if manifest.schema_version < 5 && !manifest.shader_packs.is_empty() {
+    return Err(Error::Metadata(
+      "shader packs require manifest schema 5".into(),
+    ));
+  }
+  shaders::validate_entries(&manifest.shader_packs)?;
   if serde_json::to_vec_pretty(manifest)?.len() > MAX_RECORD_BYTES {
     return Err(Error::Metadata(
       "resource manifest exceeds size limit".into(),
@@ -346,7 +366,7 @@ fn commit_cancel(
   cancel: &crate::CancellationToken,
 ) -> Result<()> {
   let before = read_manifest(directory)?;
-  manifest.schema_version = 4;
+  manifest.schema_version = 5;
   validate_manifest(manifest)?;
   if cancel.is_cancelled() {
     return Err(Error::Cancelled);

@@ -203,3 +203,69 @@ pub(super) async fn remove_pack(
   );
   Ok(Json(manifest.into()))
 }
+
+/// Mutations return the committed references. Environment is refreshed explicitly via GET,
+/// so an inspection failure after a successful write cannot turn that write into an error.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct ShaderPackChange {
+  revision: u64,
+  applied_revision: Option<u64>,
+  packs: Vec<anvil_core::resources::ShaderPackEntry>,
+}
+impl From<ResourceManifest> for ShaderPackChange {
+  fn from(manifest: ResourceManifest) -> Self {
+    Self {
+      revision: manifest.revision,
+      applied_revision: manifest.applied_revision,
+      packs: manifest.shader_packs,
+    }
+  }
+}
+pub(super) async fn shader_packs(
+  State(state): State<AppState>,
+  RoutePath(name): RoutePath<String>,
+) -> Result<Json<anvil_core::resources::ShaderPackCollection>, ApiError> {
+  ResourceManager::new(state.runtime.context.clone())
+    .shader_packs(&name)
+    .await
+    .map(Json)
+    .map_err(resource_error)
+}
+pub(super) async fn import_shader_pack(
+  State(state): State<AppState>,
+  RoutePath(name): RoutePath<String>,
+  Query(query): Query<ImportResourceQuery>,
+  bytes: Bytes,
+) -> Result<Json<ShaderPackChange>, ApiError> {
+  let manifest = ResourceManager::new(state.runtime.context.clone())
+    .import_shader_pack(&name, query.filename, bytes.to_vec(), query.revision)
+    .await
+    .map_err(resource_error)?;
+  tracing::info!(
+    revision = manifest.revision,
+    pack_count = manifest.shader_packs.len(),
+    "Local shader pack imported and applied"
+  );
+  Ok(Json(manifest.into()))
+}
+pub(super) async fn remove_shader_pack(
+  State(state): State<AppState>,
+  RoutePath((name, sha256)): RoutePath<(String, String)>,
+  Query(query): Query<ResourceRevision>,
+) -> Result<Json<ShaderPackChange>, ApiError> {
+  let manifest = ResourceManager::new(state.runtime.context.clone())
+    .remove_shader_pack(&name, sha256, query.revision)
+    .await
+    .map_err(resource_error)?;
+  tracing::info!(
+    revision = manifest.revision,
+    pack_count = manifest.shader_packs.len(),
+    "Local shader pack removed"
+  );
+  Ok(Json(manifest.into()))
+}
+
+#[cfg(test)]
+#[path = "../../tests/support/shader_api.rs"]
+mod shader_tests;

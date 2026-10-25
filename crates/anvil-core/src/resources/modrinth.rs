@@ -7,6 +7,9 @@ use crate::{
 use std::collections::{BTreeMap, BTreeSet};
 use tokio::sync::watch;
 
+/// Official Iris project on Modrinth; installation remains a normal resource task.
+pub const IRIS_PROJECT_ID: &str = "YL57xq9U";
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ModrinthOrigin {
@@ -42,6 +45,7 @@ pub struct ModrinthInstallPlan {
   before: ResourceManifest,
   files: Vec<Planned>,
   summary: Vec<ModrinthPlanFile>,
+  shader_support: bool,
 }
 impl ModrinthInstallPlan {
   pub fn name(&self) -> &str {
@@ -249,8 +253,36 @@ impl ResourceManager {
         let r = record(directory)?;
         let before = read_manifest(directory)?;
         check_revision(&before, revision)?;
+        let shader_support = preview
+          .items
+          .iter()
+          .any(|item| item.direct && item.project.id == IRIS_PROJECT_ID);
+        if shader_support {
+          let environment =
+            super::shader_environment::inspect_environment(directory, data, &before, &r, true);
+          if environment.status != ShaderEnvironmentStatus::MissingIris {
+            return Err(Error::Conflict(format!(
+              "无法自动安装 Iris：{}",
+              environment.reason
+            )));
+          }
+          // Do not silently enable an installed dependency, even when its version matches.
+          for item in &preview.items {
+            if before.mods.iter().any(|entry| {
+              !entry.enabled
+                && entry
+                  .modrinth_origin
+                  .as_ref()
+                  .is_some_and(|origin| origin.project_id == item.project.id)
+            }) {
+              return Err(Error::Conflict(
+                "计划包含已停用的模组，请先在模组管理中处理。".into(),
+              ));
+            }
+          }
+        }
         let mut after = before.clone();
-        after.schema_version = 4;
+        after.schema_version = 5;
         let mut files = Vec::new();
         let mut summary = Vec::new();
         let mut projects = HashSet::new();
@@ -318,6 +350,7 @@ impl ResourceManager {
             .loader
             .ok_or_else(|| Error::Conflict("Fabric loader is missing".into()))?,
           before,
+          shader_support,
           files,
           summary,
         })
@@ -363,15 +396,35 @@ impl ResourceManager {
           return Err(Error::Cancelled);
         }
         let mut after = plan.before.clone();
-        after.schema_version = 4;
+        after.schema_version = 5;
         for (file, hash) in plan.files.iter().zip(objects) {
           verify_object(&object_path(data, &hash), &hash, file.file.size)?;
           merge(&mut after, file, hash)?;
         }
         validate_manifest(&after)?;
+        if plan.shader_support {
+          // Inspect the downloaded, hash-verified JARs before publishing any instance changes.
+          let environment = super::shader_environment::inspect_environment(
+            directory,
+            data,
+            &after,
+            &record(directory)?,
+            false,
+          );
+          if environment.status != ShaderEnvironmentStatus::Ready {
+            return Err(Error::Conflict(format!(
+              "Iris 文件校验后无法确认依赖环境：{}；实例未修改。",
+              environment.reason
+            )));
+          }
+        }
         commit_cancel(directory, data, &mut after, fabric, &cancel)?;
         Ok(after)
       })
       .await
   }
 }
+
+#[cfg(test)]
+#[path = "../../tests/shader_install.rs"]
+mod tests;
