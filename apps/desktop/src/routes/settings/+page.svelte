@@ -50,7 +50,7 @@
 			{#if selected === 'appearance'}<AppearanceSettings />
 			{:else if selected === 'about'}<AboutSettings />
 			{:else}
-				<div class="rounded-xl border border-border bg-card p-4"><p class="text-[13px] font-medium">尚未开放</p><p class="mt-2 text-[11px] leading-5 text-muted-foreground">{pending[selected as keyof typeof pending]}</p></div>
+				<div class="rounded-xl bg-card p-4"><p class="text-[13px] font-medium">尚未开放</p><p class="mt-2 text-[11px] leading-5 text-muted-foreground">{pending[selected as keyof typeof pending]}</p></div>
 			{/if}
 		</div>
 	</section>

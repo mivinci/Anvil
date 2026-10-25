@@ -98,7 +98,7 @@
 			<h3 class="text-[13px] font-medium">版本信息</h3>
 			<button type="button" aria-label="检查更新" title="检查更新" disabled={!isTauri() || checkingUpdates} onclick={() => void checkUpdates()} class="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[12px] text-muted-foreground transition-colors hover:bg-chrome-hover hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40"><RefreshCw size={13} class={checkingUpdates ? 'animate-spin motion-reduce:animate-none' : ''} aria-hidden="true" />{checkingUpdates ? '检查中' : '检查更新'}</button>
 		</div>
-		<div class="divide-y divide-border rounded-lg border border-border bg-card px-3.5 text-[13px]">
+		<div class="divide-y divide-border rounded-lg bg-card px-3.5 text-[13px]">
 			{#each [['Shell 版本', info?.shellVersion], ['Desktop App 版本', info?.appVersion], ['Runtime 版本', runtime?.runtimeVersion], ['Runtime API 协议', runtime?.apiVersion], ['目标平台', info?.targetPlatform]] as [label, value]}
 				<div class="flex min-h-10 items-center justify-between gap-4 py-2"><span>{label}</span><span class="select-text text-right text-muted-foreground">{loading ? '读取中…' : value ?? (isTauri() ? '不可用' : '仅桌面端可用')}</span></div>
 			{/each}
@@ -116,7 +116,7 @@
 			<h3 class="text-[13px] font-medium">日志</h3>
 			<button type="button" aria-label="刷新日志状态" title="刷新日志状态" disabled={!isTauri() || logsLoading} onclick={() => void loadLogs()} class="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40"><RefreshCw size={13} aria-hidden="true" /></button>
 		</div>
-		<div class="divide-y divide-border rounded-lg border border-border bg-card px-3.5 text-[13px]">
+		<div class="divide-y divide-border rounded-lg bg-card px-3.5 text-[13px]">
 			<div class="flex items-center justify-between gap-3 py-2">
 				<div class="min-w-0"><p>日志目录</p><p class="mt-1 select-text break-all text-[11px] leading-4 text-muted-foreground">{logging?.directory ?? (logsLoading ? '读取中…' : isTauri() ? '目录不可用' : '仅桌面端可用')}</p></div>
 				<button type="button" disabled={!logging?.directory || logsOpening} onclick={() => void openLogs()} class="flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-[12px] text-muted-foreground transition-colors hover:bg-chrome-hover hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40"><FolderOpen size={14} aria-hidden="true" />{logsOpening ? '打开中…' : '打开目录'}</button>
@@ -128,6 +128,6 @@
 		<p class="text-[11px] leading-4 text-muted-foreground">shell.log / runtime.log · 每份 10 MiB，各保留 4 份历史文件</p>
 		{#if logsError}<p role="alert" class="text-[12px] text-destructive">{logsError}</p>{/if}
 	</section>
-	<a href="https://github.com/mivinci/Anvil" target="_blank" rel="noreferrer" onclick={openProject} class="flex items-center justify-between rounded-lg border border-border bg-card px-3.5 py-3 text-[13px] transition-colors hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring">项目地址<ExternalLink size={14} class="text-muted-foreground" aria-hidden="true" /></a>
+	<a href="https://github.com/mivinci/Anvil" target="_blank" rel="noreferrer" onclick={openProject} class="flex items-center justify-between rounded-lg bg-card px-3.5 py-3 text-[13px] transition-colors hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring">项目地址<ExternalLink size={14} class="text-muted-foreground" aria-hidden="true" /></a>
 	{#if error}<div role="alert" class="text-[13px] text-destructive">{error}<button type="button" disabled={loading} onclick={() => void load()} class="ml-2 underline underline-offset-2">重试</button></div>{/if}
 </div>
