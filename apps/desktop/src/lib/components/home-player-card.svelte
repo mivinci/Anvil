@@ -181,5 +181,4 @@
 	{#if stats.error}
 		<p role="status" class="mt-2 text-[10px] leading-4 text-muted-foreground">统计暂不可用 <button type="button" class="text-primary hover:underline" onclick={() => void stats.refresh()}>重试</button></p>
 	{/if}
-	<p class="mt-2 text-[10px] leading-4 text-muted-foreground">统计仅保存在本机</p>
 </section>
