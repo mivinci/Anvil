@@ -80,7 +80,16 @@
 		</div>
 		<div class="mt-5 grid grid-cols-3 gap-2">
 			{#each links as item (item.title)}
-				<a href={item.href} title={(item.title === '模组' || item.title === '资源包' || item.title === '光影') && countError ? '数量暂时无法读取，点击进入管理；可刷新概览重试。' : undefined} class="group min-w-0 rounded-xl bg-card p-3 transition-colors hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring"><div class="flex items-center justify-between"><item.icon size={19} strokeWidth={1.5} class="text-primary" aria-hidden="true" /><ArrowUpRight size={13} class="text-muted-foreground/50 transition-transform motion-safe:group-hover:-translate-y-0.5 motion-safe:group-hover:translate-x-0.5" aria-hidden="true" /></div><h2 class="mt-3 text-[13px] font-medium">{item.title}</h2><p class="mt-1 text-[11px] leading-4 text-muted-foreground">{item.hint}</p></a>
+				<a href={item.href} title={(item.title === '模组' || item.title === '资源包' || item.title === '光影') && countError ? '数量暂时无法读取，点击进入管理；可刷新概览重试。' : undefined} class="group flex min-w-0 items-start gap-2.5 rounded-xl bg-card p-2.5 transition-colors hover:bg-card-hover focus-visible:outline-2 focus-visible:outline-ring">
+					<span class="grid size-8 shrink-0 place-items-center rounded-lg bg-primary/8 text-primary"><item.icon size={17} strokeWidth={1.5} aria-hidden="true" /></span>
+					<div class="min-w-0 flex-1">
+						<div class="flex items-start justify-between gap-2">
+							<h2 class="truncate text-[13px] font-medium">{item.title}</h2>
+							<ArrowUpRight size={13} class="mt-0.5 shrink-0 text-muted-foreground/50 transition-transform motion-safe:group-hover:-translate-y-0.5 motion-safe:group-hover:translate-x-0.5" aria-hidden="true" />
+						</div>
+						<p class="mt-1 truncate text-[11px] leading-4 text-muted-foreground" title={item.hint}>{item.hint}</p>
+					</div>
+				</a>
 			{/each}
 		</div>
 		<details class="group mt-5 border-t border-border pt-3">
