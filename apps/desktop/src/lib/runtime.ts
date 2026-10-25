@@ -376,6 +376,19 @@ export interface ModrinthInstallPlan extends Omit<CurseForgeInstallPlan, 'items'
 	files: { projectId: string; fileId: string; projectName: string; filename: string; size: number; direct: boolean; reuse: boolean }[];
 	optionalProjects: string[];
 }
+export interface ShaderProjectPage extends CatalogStatus { items: ModProjectSummary[]; nextIndex: number | null }
+export interface ShaderProjectDetails extends CatalogStatus { project: ModProjectSummary }
+export interface ShaderVersionPage extends CatalogStatus { items: ModrinthFile[]; nextIndex: null }
+export const searchShaderProjects = (q: string, index: number, gameVersion: string, signal: AbortSignal, options: CatalogOptions = {}) =>
+	runtimeRequest<ShaderProjectPage>(`/resources/modrinth/shader-projects?${new URLSearchParams({
+		q, index: String(index), gameVersion, ...catalogQuery(options),
+	})}`, { signal });
+export const getShaderProject = (project: string, signal: AbortSignal, options?: CatalogOptions) =>
+	runtimeRequest<ShaderProjectDetails>(`/resources/modrinth/shader-projects/${encodeURIComponent(project)}?${new URLSearchParams(catalogQuery(options))}`, { signal });
+export const listShaderVersions = (project: string, gameVersion: string, signal: AbortSignal, options?: CatalogOptions) =>
+	runtimeRequest<ShaderVersionPage>(`/resources/modrinth/shader-projects/${encodeURIComponent(project)}/versions?${new URLSearchParams({ gameVersion, ...catalogQuery(options) })}`, { signal });
+export const downloadShaderPack = (name: string, project: string, version: string, revision: number, signal: AbortSignal) =>
+	runtimeRequest<ClientShaderPackChange>(`/clients/${encodeURIComponent(name)}/shader-packs/modrinth`, { method: 'POST', body: JSON.stringify({ project, version, revision }), signal });
 export const listModrinthFiles = (name: string, project: string, index: number, signal: AbortSignal, options?: CatalogOptions) =>
 	runtimeRequest<CurseForgePage<ModrinthFile>>(`/clients/${encodeURIComponent(name)}/modrinth/projects/${encodeURIComponent(project)}/files?${new URLSearchParams({ index: String(index), ...catalogQuery(options) })}`, { signal });
 export const createModrinthInstallPlan = (name: string, project: string, file: string, signal: AbortSignal) =>

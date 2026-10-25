@@ -8,9 +8,11 @@
 	import { shaderEnvironmentLabels } from '#lib/shader-packs.js';
 	import { getResourceInstallState } from '#lib/resource-install-state.svelte.js';
 	import { getClientLaunchState, launchActive } from '#lib/client-launch-state.svelte.js';
+	import ShaderOnline from '#lib/components/clients/shader-online.svelte';
 	import ModVersionInstaller from '#lib/components/mods/mod-version-installer.svelte';
 	import { getClientDetailState } from '#lib/client-detail-state.svelte.js';
 	const detail = getClientDetailState();
+	const gameVersion = $derived(detail.client?.versionId ?? null);
 	let installerOpen = $state(false);
 	let installerFooter = $state<HTMLElement>();
 	const packs = new ClientShaderPackState();
@@ -55,6 +57,7 @@
 		<div class="flex items-center gap-1">
 			{#if packs.collection?.packs.length}<button type="button" class={secondary} disabled={locked} onclick={() => void packs.sync()} title="校验并补回本实例受管资源文件">{packs.activity === 'syncing' ? '同步中…' : applied ? '同步文件' : '应用到目录'}</button>{/if}
 			<button type="button" class={`${secondary} w-7 px-0`} disabled={packs.busy} onclick={() => void packs.refresh()} aria-label="刷新光影清单" title="刷新清单"><RefreshCw size={14} class={packs.busy ? 'animate-spin motion-reduce:animate-none' : ''} aria-hidden="true" /></button>
+			<ShaderOnline name={name} {gameVersion} revision={packs.collection?.revision ?? null} onImported={() => { packs.selected = null; void packs.refresh(); }} />
 			<button type="button" disabled={locked || !packs.collection} onclick={() => input.click()} class="inline-flex h-7 items-center gap-1.5 rounded-lg bg-primary px-2.5 text-xs font-medium text-primary-foreground focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40"><Plus size={13} aria-hidden="true" />导入光影</button>
 		</div>
 	</header>

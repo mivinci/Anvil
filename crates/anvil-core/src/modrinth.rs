@@ -558,6 +558,29 @@ impl Modrinth {
       next_index: None,
     })
   }
+  pub async fn shader_file(
+    &self,
+    game: &str,
+    project: &str,
+    version: &str,
+  ) -> Result<(ModFile, String)> {
+    query(game, 0)?;
+    id(project)?;
+    id(version)?;
+    let versions = self.versions_with_loader(game, project, "iris").await?;
+    let selected = versions
+      .into_iter()
+      .find(|value| value.id == version)
+      .ok_or_else(|| Error::NotFound("Modrinth 光影版本不存在。".into()))?;
+    let file = selected.shader_file(game)?;
+    let url = selected
+      .files
+      .iter()
+      .find(|value| value.filename == file.file_name)
+      .map(|value| value.url.clone())
+      .ok_or_else(|| Error::Metadata("Modrinth 光影文件缺失。".into()))?;
+    Ok((file, url))
+  }
   pub async fn shader_files(&self, game: &str, project: &str) -> Result<Page<ModFile>> {
     let mut versions = self.versions_with_loader(game, project, "iris").await?;
     versions.sort_by(|a, b| {
@@ -880,6 +903,32 @@ mod shader_discovery_tests {
         .items
         .iter()
         .all(|file| file.file_name.to_ascii_lowercase().ends_with(".zip"))
+    );
+    let (file, url) = provider
+      .shader_file("1.21.1", "HVnmMxH1", &files.items[0].id)
+      .await
+      .unwrap();
+    assert!(file.file_name.to_ascii_lowercase().ends_with(".zip"));
+    let root = tempfile::tempdir().unwrap();
+    let context = crate::Context::new(crate::Paths {
+      data: root.path().join("data"),
+      cache: root.path().join("cache"),
+    })
+    .unwrap();
+    let destination = root.path().join(&file.file_name);
+    context
+      .download_file_sha1(
+        &url::Url::parse(&url).unwrap(),
+        &destination,
+        Some(&file.sha1),
+        Some(file.file_length),
+        &crate::CancellationToken::new(),
+      )
+      .await
+      .unwrap();
+    assert_eq!(
+      std::fs::read(destination).unwrap().len() as u64,
+      file.file_length
     );
   }
 }

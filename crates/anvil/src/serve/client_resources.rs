@@ -1,5 +1,6 @@
 //! Local mod and resource-pack APIs; storage and layout rules remain in Core.
 use super::api::{ApiError, AppState};
+use anvil_core::client::ClientInstaller;
 use anvil_core::resources::{ResourceManager, ResourceManifest, ResourcePackEntry};
 use axum::{
   Json,
@@ -16,7 +17,7 @@ pub(super) async fn fabric_game(
   runtime: &super::operations::RuntimeState,
   name: &str,
 ) -> Result<String, ApiError> {
-  let (_, record) = anvil_core::client::ClientInstaller::new(runtime.context.clone())
+  let (_, record) = ClientInstaller::new(runtime.context.clone())
     .details(name)
     .await
     .map_err(resource_error)?;
@@ -29,6 +30,16 @@ pub(super) async fn fabric_game(
       "当前仅支持为 Fabric 实例浏览模组。",
     ));
   }
+  Ok(record.version_id)
+}
+pub(super) async fn client_game(
+  runtime: &super::operations::RuntimeState,
+  name: &str,
+) -> Result<String, ApiError> {
+  let (_, record) = ClientInstaller::new(runtime.context.clone())
+    .details(name)
+    .await
+    .map_err(resource_error)?;
   Ok(record.version_id)
 }
 pub(super) async fn limit_resource_requests(request: Request<Body>, next: Next) -> Response {
@@ -262,6 +273,62 @@ pub(super) async fn remove_shader_pack(
     revision = manifest.revision,
     pack_count = manifest.shader_packs.len(),
     "Local shader pack removed"
+  );
+  Ok(Json(manifest.into()))
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct ShaderDownloadRequest {
+  project: String,
+  version: String,
+  revision: u64,
+}
+pub(super) async fn download_shader_pack(
+  State(state): State<AppState>,
+  RoutePath(name): RoutePath<String>,
+  Json(request): Json<ShaderDownloadRequest>,
+) -> Result<Json<ShaderPackChange>, ApiError> {
+  ClientInstaller::validate_name(&name).map_err(super::api::resource_error)?;
+  let game = client_game(&state.runtime, &name).await?;
+  let _slot = state.modrinth.slot()?;
+  let provider = state.modrinth.provider()?;
+  let (file, url) = provider
+    .shader_file(&game, &request.project, &request.version)
+    .await
+    .map_err(super::api::resource_error)?;
+  let url = url::Url::parse(&url)
+    .map_err(|_| ApiError::new(StatusCode::BAD_GATEWAY, "光影下载地址无效。"))?;
+  let temporary = tempfile::Builder::new()
+    .prefix("anvil-shader-")
+    .tempdir()
+    .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "无法准备光影下载目录。"))?;
+  let destination = temporary.path().join("shader.zip");
+  state
+    .runtime
+    .context
+    .download_file_sha1(
+      &url,
+      &destination,
+      Some(&file.sha1),
+      Some(file.file_length),
+      &anvil_core::CancellationToken::new(),
+    )
+    .await
+    .map_err(super::api::resource_error)?;
+  let bytes = std::fs::read(&destination).map_err(|_| {
+    ApiError::new(
+      StatusCode::INTERNAL_SERVER_ERROR,
+      "无法读取下载的光影文件。",
+    )
+  })?;
+  let manifest = ResourceManager::new(state.runtime.context.clone())
+    .import_shader_pack(&name, file.file_name.clone(), bytes, request.revision)
+    .await
+    .map_err(super::api::resource_error)?;
+  tracing::info!(
+    pack_count = manifest.shader_packs.len(),
+    "Online shader pack downloaded and imported"
   );
   Ok(Json(manifest.into()))
 }
