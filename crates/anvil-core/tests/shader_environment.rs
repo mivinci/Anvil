@@ -458,6 +458,8 @@ async fn shader_aliases_resolve_dependencies_but_reject_ambiguous_owners() {
 #[test]
 fn shader_stable_versions_compare_to_prerelease_bounds_conservatively() {
   for (version, requirement, expected) in [
+    ("26.3", "~26.3-", Some(true)),
+    ("26.2", "~26.3-", Some(false)),
     ("1.21.1", ">=1.15-alpha.19.39.a", Some(true)),
     ("1.15", ">1.15-alpha.19.39.a", Some(true)),
     ("1.14.4", ">=1.15-alpha.19.39.a", Some(false)),

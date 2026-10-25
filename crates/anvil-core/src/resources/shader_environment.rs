@@ -612,8 +612,11 @@ fn matches_requirement(version: &str, requirement: &Value) -> Option<bool> {
     if token == "*" {
       continue;
     }
-    let value = token.trim_start_matches(['=', '>', '<', '~', '^']);
-    let operator = &token[..token.len() - value.len()];
+    let raw_value = token.trim_start_matches(['=', '>', '<', '~', '^']);
+    let operator = &token[..token.len() - raw_value.len()];
+    // Fabric accepts a trailing hyphen to include prereleases of a version, e.g. `~26.3-`.
+    // A stable installed version is still within that range, so compare its base version.
+    let value = raw_value.strip_suffix('-').unwrap_or(raw_value);
     if !matches!(operator, "" | "=" | ">" | ">=" | "<" | "<=" | "~" | "^") {
       return None;
     }
