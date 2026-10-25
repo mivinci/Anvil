@@ -90,6 +90,14 @@ jobs:
           else
             npm run desktop:build
           fi
+      - name: Verify macOS App signature
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="target/release/bundle/macos/Anvil.app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign --display --verbose=4 "$app"
       - name: Package update payload and collect installers
         env:
           RELEASE_TAG: ${{ github.ref_name }}

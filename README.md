@@ -1,6 +1,6 @@
 # Anvil
 
-Anvil 是面向 Windows、macOS 和 Linux 的轻量 Minecraft Java 版命令行启动器与服务端管理工具。目前项目仍在开发中，暂未提供可直接安装的发布包。
+Anvil 是面向 Windows、macOS 和 Linux 的轻量 Minecraft Java 版命令行启动器与服务端管理工具。目前项目仍在开发中，桌面内测安装包见 [Releases](https://github.com/mivinci/Anvil/releases)。
 
 ## 现在可以做什么
 
@@ -15,7 +15,9 @@ CLI 已提供以上功能。桌面端使用 Tauri + SvelteKit + shadcn-svelte + 
 
 ## 试用方式
 
-目前需要从源码运行，并安装 Rust 1.90 或更新版本，以及 Node.js 22.17 或更新版本和 npm。
+桌面内测包按平台与 CPU 架构下载。macOS 打包配置使用免费的 ad-hoc 签名，尚未经过 Apple 公证，首次启动仍可能需要在“系统设置 → 隐私与安全性”中手动允许。该配置用于后续重新构建的版本，旧版 `desktop/v0.1.4-alpha.3` 的 DMG 存在签名问题，重新下载该版本不能修复。
+
+从源码运行需要安装 Rust 1.90 或更新版本，以及 Node.js 22.17 或更新版本和 npm。
 
 安装桌面端前端依赖并启动桌面开发模式：
 
