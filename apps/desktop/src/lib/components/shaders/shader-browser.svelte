@@ -101,6 +101,9 @@
 		error = null;
 		message = null;
 	}
+	function releaseLabel(type: number) {
+		return type === 1 ? 'Release' : type === 2 ? 'Beta' : 'Alpha';
+	}
 	function choose(file: ModrinthFile) {
 		if (installing) return;
 		pending = file;
@@ -161,16 +164,14 @@
 			{:else if versions.length === 0}
 				<p class="py-16 text-center text-xs text-muted-foreground">没有 Minecraft {gameVersion} 可用的 Iris 光影版本</p>
 			{:else}
-				<ul class="mt-3 divide-y divide-border/70 rounded-lg bg-card px-1" aria-label="光影版本">
+				<div class="mt-3 space-y-0.5" aria-label="选择兼容版本">
 					{#each versions as file (file.id)}
-						<li class="flex items-center gap-3 py-2.5">
-							<button type="button" aria-pressed={pending?.id === file.id} disabled={installing !== null} onclick={() => choose(file)} class={`flex w-full items-center gap-3 rounded-md px-2 py-2 text-left transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring disabled:opacity-40 ${pending?.id === file.id ? 'bg-chrome-selected' : 'hover:bg-chrome-hover'}`}>
-								<span class="min-w-0 flex-1"><span class="block truncate text-[13px] font-medium" title={file.displayName}>{file.displayName}</span><span class="mt-0.5 block text-[11px] text-muted-foreground">{file.fileDate.slice(0, 10)} · {formatBytes(file.fileLength)}</span></span>
-								{#if pending?.id === file.id}<Check size={14} class="shrink-0 text-primary" aria-hidden="true" />{/if}
-							</button>
-						</li>
+						<button type="button" aria-pressed={pending?.id === file.id} disabled={installing !== null} onclick={() => choose(file)} class={`flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring disabled:opacity-40 ${pending?.id === file.id ? 'bg-chrome-selected' : 'hover:bg-chrome-hover'}`}>
+							<span class="min-w-0 flex-1"><span class="block truncate text-xs font-medium" title={file.displayName}>{file.displayName}</span><span class="mt-1 block truncate text-[11px] text-muted-foreground" title={file.fileName}>{file.fileDate.slice(0, 10)} · {releaseLabel(file.releaseType)} · {formatBytes(file.fileLength)}</span></span>
+							{#if pending?.id === file.id}<Check size={14} class="shrink-0 text-primary" aria-hidden="true" />{/if}
+						</button>
 					{/each}
-				</ul>
+				</div>
 				<button type="button" class="mt-2 flex w-full items-center justify-center gap-1 rounded-lg py-2 text-xs text-muted-foreground hover:bg-chrome-hover disabled:opacity-40" disabled={loadingVersions} onclick={() => { if (selected) void select(selected); }}><RefreshCw size={12} aria-hidden="true" />刷新版本</button>
 			{/if}
 		{/if}
