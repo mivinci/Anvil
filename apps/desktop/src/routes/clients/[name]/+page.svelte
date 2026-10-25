@@ -98,7 +98,6 @@
 				{#each fields as field (field.label)}<div class="min-w-0"><dt class="text-[11px] text-muted-foreground">{field.label}</dt><dd class="mt-1 select-text break-all text-xs">{field.value}</dd></div>{/each}
 			</dl>
 			<div class="mt-2 flex gap-3">{#each [{ label: '实例名称', value: detail.client.name }, { label: '游戏版本', value: detail.client.versionId }] as item}<button type="button" disabled={copying} onclick={() => void copy(item.label, item.value)} class="inline-flex items-center gap-1 rounded px-1 py-1 text-[11px] text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring">{#if copied === item.label}<Check size={12} aria-hidden="true" />{:else}<Copy size={12} aria-hidden="true" />{/if}复制{item.label}</button>{/each}</div>
-			<p class="mt-2 text-[11px] leading-5 text-muted-foreground">以上来自安装记录，尚未检查游戏文件完整性；Java 要求不代表已安装的 Java 版本。</p>
 		</details>
 	{/if}
 	{#if copied}<p role="status" class="mt-2 text-[11px] text-muted-foreground">已复制{copied}</p>{/if}
