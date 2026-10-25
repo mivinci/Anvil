@@ -72,7 +72,7 @@
 	}
 </script>
 
-<section class="flex h-full min-w-0 flex-col rounded-lg border border-border bg-card p-3" aria-labelledby="home-player-title">
+<section class="flex h-full min-w-0 flex-col rounded-lg bg-card p-3" aria-labelledby="home-player-title">
 	<h2 id="home-player-title" class="sr-only">玩家</h2>
 
 	{#if current}

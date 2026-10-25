@@ -19,7 +19,7 @@
 	onMount(() => { void library.refresh(); });
 </script>
 
-<section class="flex h-full min-w-0 flex-col rounded-lg border border-border bg-card p-3.5" aria-labelledby="home-play-title">
+<section class="flex h-full min-w-0 flex-col rounded-lg bg-card p-3.5" aria-labelledby="home-play-title">
 	{#if featured}
 		<div class="flex items-center justify-between gap-3">
 			<h2 id="home-play-title" class="flex items-center gap-2 text-[13px] font-semibold"><Gamepad2 size={15} class="text-primary" aria-hidden="true" />最近游玩</h2>
