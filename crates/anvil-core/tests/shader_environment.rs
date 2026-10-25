@@ -539,3 +539,86 @@ async fn shader_environment_coalesces_root_and_nested_identical_payloads() {
     }
   }
 }
+
+#[tokio::test]
+async fn shader_environment_coalesces_nested_copies_with_the_same_contract() {
+  let (_root, manager, directory) = fixture();
+  fabric(&directory);
+  let metadata = serde_json::to_vec(
+    &json!({"schemaVersion": 1, "id": "library", "version": "1.0.0",
+      "depends": {"java": ">=21"}}),
+  )
+  .unwrap();
+  let first = zip(&[
+    ("fabric.mod.json", metadata.as_slice()),
+    ("first.txt", b"first"),
+  ]);
+  let second = zip(&[
+    ("fabric.mod.json", metadata.as_slice()),
+    ("second.txt", b"second"),
+  ]);
+  import_enabled(
+    &manager,
+    "iris.jar",
+    bundle("iris", json!({}), &[("META-INF/jars/library.jar", &first)]),
+  )
+  .await;
+  import_enabled(
+    &manager,
+    "another.jar",
+    bundle(
+      "another",
+      json!({}),
+      &[("META-INF/jars/library.jar", &second)],
+    ),
+  )
+  .await;
+  import_enabled(&manager, "sodium.jar", bundle("sodium", json!({}), &[])).await;
+  let environment = manager.shader_packs("test").await.unwrap().environment;
+  assert_eq!(
+    environment.status,
+    ShaderEnvironmentStatus::Ready,
+    "{environment:?}"
+  );
+}
+
+#[tokio::test]
+async fn shader_environment_lets_fabric_resolve_nested_version_differences() {
+  let (_root, manager, directory) = fixture();
+  fabric(&directory);
+  let first = bundle("library", json!({"java": ">=21"}), &[]);
+  let second = {
+    let metadata = serde_json::to_vec(
+      &json!({"schemaVersion": 1, "id": "library", "version": "2.0.0",
+        "depends": {"java": ">=22"}}),
+    )
+    .unwrap();
+    zip(&[
+      ("fabric.mod.json", metadata.as_slice()),
+      ("second.txt", b"second"),
+    ])
+  };
+  import_enabled(
+    &manager,
+    "iris.jar",
+    bundle("iris", json!({}), &[("META-INF/jars/library.jar", &first)]),
+  )
+  .await;
+  import_enabled(
+    &manager,
+    "another.jar",
+    bundle(
+      "another",
+      json!({}),
+      &[("META-INF/jars/library.jar", &second)],
+    ),
+  )
+  .await;
+  import_enabled(&manager, "sodium.jar", bundle("sodium", json!({}), &[])).await;
+  let environment = manager.shader_packs("test").await.unwrap().environment;
+  assert_eq!(
+    environment.status,
+    ShaderEnvironmentStatus::Ready,
+    "{environment:?}"
+  );
+}

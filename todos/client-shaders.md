@@ -63,7 +63,7 @@ Core 从真实实例记录和受管资源状态提供环境摘要，不由页面
 - 单次受管 JAR 声明大小合计最多 128 MiB，每份 `fabric.mod.json` 最多 256 KiB；超限、损坏或完整性失败返回 `unconfirmed` 和原因，不把它当作缺失。启用模组的实例副本也必须存在且摘要匹配。
 - 识别 Fabric schema 1 的顶层模组和声明的嵌套 JAR；嵌套最多 4 层、合计 128 个，单份不超过 64 MiB，顶层和嵌套原始字节合计最多 128 MiB。另设内置库解压内容合计 128 MiB 预算，逐条流式摘要，不解压到磁盘。缺失声明目标、路径歧义/链接/加密、损坏归档、超限或无法解析的元数据返回 `unconfirmed`。
 - 内置库来自多个父模组时，只有所有具名条目的解压内容完全相同才合并识别，可忽略 ZIP 压缩、时间戳和归档注释差异。不同内容或版本、顶层与嵌套同 ID，以及重复顶层 ID 均拒绝自动选择；不模拟 Fabric 的多版本求解。
-- 嵌套模组继承父模组的启停条件，并检查自身必需依赖。`provides` 别名使用提供者的版本参与依赖与双向不兼容检查；别名与真实 ID、其他提供者或 Minecraft/Fabric/Java 标识冲突时返回 `unconfirmed`。
+- 嵌套模组继承父模组的启停条件，并检查自身必需依赖。root 与 nested 原始字节相同、或 nested 之间依赖契约相同的重复库合并；nested 版本差异交由 Fabric 解析，同版本不同契约仍返回无法确认。`provides` 别名使用提供者的版本参与依赖与双向不兼容检查；别名与真实 ID、其他提供者或 Minecraft/Fabric/Java 标识冲突时返回 `unconfirmed`。
 - 必需依赖从 Iris 的 `depends` 及实际加载的嵌套模组开始递归检查，包含 Minecraft、Fabric Loader 和实例声明的 Java 版本；不无条件要求 Sodium。检查必需依赖闭包的 `breaks`，以及其他启用模组对该闭包的反向不兼容声明。
 - 版本约束支持普通稳定版（最多三个数字分量）、比较、`~`/`^`、数字通配符、空格 AND 和数组 OR；裸版本按精确版本处理，忽略版本 build 后缀。实际稳定版另可与普通 SemVer 预发布上下界比较（如 `>=1.15-alpha.19.39.a`）。实际预发布、快照和更多数字分量只接受明确相同的字面版本；其他未支持的范围和 Fabric 扩展约束返回 `unconfirmed`，不改写依赖。依据见 [Fabric 元数据规范](https://wiki.fabricmc.net/documentation:fabric_mod_json_spec)。
 - 环境状态为 `requires_fabric`、`missing_iris`、`iris_disabled`、`missing_dependencies`、`unconfirmed`、`ready`；`ready` 仅表示受管 Iris 的已支持依赖检查通过，不等于整个模组集合、光影包或 GPU 已通过实际运行验证。

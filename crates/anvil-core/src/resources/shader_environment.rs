@@ -96,6 +96,18 @@ fn object_bytes(data: &Path, entry: &ResourceEntry) -> Result<Vec<u8>> {
   }
   Ok(bytes)
 }
+fn metadata_contract(meta: &Metadata) -> String {
+  serde_json::json!({
+    "schema": meta.schema,
+    "id": meta.id,
+    "version": meta.version,
+    "environment": meta.environment,
+    "depends": meta.depends,
+    "breaks": meta.breaks,
+    "provides": meta.provides,
+  })
+  .to_string()
+}
 fn metadata(bytes: &[u8]) -> Result<Metadata> {
   let mut archive = open_zip(bytes)?;
   let mut index = None;
@@ -168,6 +180,14 @@ struct Inspected {
   nested: bool,
   raw_hash: String,
   content_hash: Option<String>,
+  contract: String,
+}
+struct SeenMod {
+  raw_hash: String,
+  content_hash: Option<String>,
+  nested: bool,
+  contract: String,
+  version: String,
 }
 struct ScanBudget {
   bytes: u64,
@@ -242,6 +262,7 @@ fn scan_jar(
   } else {
     Vec::new()
   };
+  let contract = metadata_contract(&meta);
   output.push(Inspected {
     meta,
     enabled,
@@ -250,6 +271,7 @@ fn scan_jar(
     content_hash: (depth > 0)
       .then(|| nested_content_hash(bytes, budget))
       .transpose()?,
+    contract,
   });
   if declarations.is_empty() {
     return Ok(());
@@ -364,7 +386,7 @@ pub(super) fn inspect_environment(
     }
   }
   let mut scanned = Vec::new();
-  let mut ids = BTreeMap::<String, (String, Option<String>, bool)>::new();
+  let mut ids = BTreeMap::<String, SeenMod>::new();
   let mut nested_ids = Vec::new();
   for candidate in candidates {
     let Inspected {
@@ -373,21 +395,34 @@ pub(super) fn inspect_environment(
       nested,
       raw_hash,
       content_hash,
+      contract,
     } = candidate;
-    if let Some((existing_raw, existing_content, existing_nested)) = ids.get(&meta.id) {
-      // A root JAR may be bundled verbatim by another mod. Compare raw bytes first;
-      // for nested libraries also allow different ZIP encodings of identical content.
-      let identical = existing_raw == &raw_hash
+    if let Some(existing) = ids.get(&meta.id) {
+      // A root JAR may be bundled verbatim by another mod; Fabric API and Mod Menu also
+      // carry different builds of the same nested library. Fabric resolves nested versions
+      // itself, so only same-version nested copies with different contracts remain conflicts.
+      let identical = existing.raw_hash == raw_hash
+        || (nested && existing.nested && existing.version != meta.version)
+        || ((nested || existing.nested) && existing.contract == contract)
         || (nested
-          && *existing_nested
-          && existing_content.is_some()
-          && existing_content == &content_hash);
+          && existing.nested
+          && existing.content_hash.is_some()
+          && existing.content_hash == content_hash);
       if identical {
         continue;
       }
       issue = Some(format!("发现重复或版本冲突的受管模组 ID：{}。", meta.id));
     } else {
-      ids.insert(meta.id.clone(), (raw_hash, content_hash, nested));
+      ids.insert(
+        meta.id.clone(),
+        SeenMod {
+          raw_hash,
+          content_hash,
+          nested,
+          contract,
+          version: meta.version.clone(),
+        },
+      );
     }
     if matches!(meta.id.as_str(), "minecraft" | "fabricloader" | "java") {
       issue = Some("受管模组 ID 与运行环境标识冲突。".into());
