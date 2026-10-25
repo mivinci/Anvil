@@ -15,6 +15,7 @@ use tokio::{
 
 struct Server {
   port: u16,
+  timeout: std::time::Duration,
   stop: oneshot::Sender<()>,
   task: tokio::task::JoinHandle<std::io::Result<()>>,
 }
@@ -32,7 +33,12 @@ impl Server {
     let port = listener.local_addr().unwrap().port();
     let (stop, rx) = oneshot::channel();
     let task = tokio::spawn(api::serve(listener, state, rx));
-    Self { port, stop, task }
+    Self {
+      port,
+      timeout: std::time::Duration::from_secs(5),
+      stop,
+      task,
+    }
   }
   async fn request(
     &self,
@@ -57,13 +63,10 @@ impl Server {
     stream.write_all(header.as_bytes()).await.unwrap();
     stream.write_all(body).await.unwrap();
     let mut response = Vec::new();
-    tokio::time::timeout(
-      std::time::Duration::from_secs(5),
-      stream.read_to_end(&mut response),
-    )
-    .await
-    .unwrap()
-    .unwrap();
+    tokio::time::timeout(self.timeout, stream.read_to_end(&mut response))
+      .await
+      .unwrap()
+      .unwrap();
     let response = String::from_utf8(response).unwrap();
     let (head, body) = response.split_once("\r\n\r\n").unwrap();
     (
@@ -304,4 +307,95 @@ async fn shader_api_rejects_invalid_uploads_paths_and_oversized_requests() {
       .exists()
   );
   server.shutdown().await;
+}
+
+/// Explicit online acceptance of the same authenticated endpoints used by Desktop.
+#[tokio::test]
+#[ignore = "live Modrinth/CDN download smoke; set ANVIL_SHADER_LIVE_SMOKE=1"]
+async fn shader_api_live_plan_background_download_and_idempotent_submit() {
+  assert_eq!(std::env::var("ANVIL_SHADER_LIVE_SMOKE").as_deref(), Ok("1"));
+  let _serial = TEST_SERVER.lock().await;
+  let root = tempfile::tempdir().unwrap();
+  fixture(root.path());
+  let record_path = root.path().join("instances/client-test/installed.json");
+  let mut record: Value = serde_json::from_slice(&std::fs::read(&record_path).unwrap()).unwrap();
+  record["loader"] = json!({"kind":"fabric", "version":"0.16.10"});
+  std::fs::write(record_path, serde_json::to_vec(&record).unwrap()).unwrap();
+  let mut server = Server::start(root.path()).await;
+  server.timeout = std::time::Duration::from_secs(60);
+  let (status, body) = server
+    .request(
+      "POST",
+      "/clients/test/shader-packs?filename=Light.zip&revision=0",
+      &shader(),
+      true,
+      ORIGIN,
+      None,
+    )
+    .await;
+  assert_eq!(status, 200, "{body}");
+  let path = "/clients/test/modrinth/projects/YL57xq9U/files/A99vfwJc/plan";
+  let (status, body) = server.request("POST", path, b"", true, ORIGIN, None).await;
+  assert_eq!(status, 200, "{body}");
+  let plan: Value = serde_json::from_str(&body).unwrap();
+  let id = plan["planId"].as_u64().unwrap();
+  assert_eq!(plan["gameVersion"], "1.21.1");
+  assert_eq!(plan["revision"], 1);
+  assert_eq!(plan["files"].as_array().unwrap().len(), 2);
+  assert!(
+    plan["files"]
+      .as_array()
+      .unwrap()
+      .iter()
+      .all(|file| file["reuse"] == false)
+  );
+  assert!(plan["downloadBytes"].as_u64().unwrap() > 0);
+  let path = format!("/clients/test/resource-plans/{id}/install");
+  for _ in 0..2 {
+    let (status, body) = server.request("POST", &path, b"", true, ORIGIN, None).await;
+    assert_eq!(status, 202, "{body}");
+    assert_eq!(serde_json::from_str::<Value>(&body).unwrap()["id"], id);
+  }
+  let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(180);
+  let terminal = loop {
+    let (status, body) = server
+      .request("GET", "/resource-operations", b"", true, ORIGIN, None)
+      .await;
+    assert_eq!(status, 200, "{body}");
+    let tasks: Vec<Value> = serde_json::from_str(&body).unwrap();
+    assert_eq!(tasks.len(), 1, "same plan must not spawn duplicate tasks");
+    let task = &tasks[0];
+    assert_eq!(task["id"], id);
+    if task["state"] != "running" {
+      break task.clone();
+    }
+    if tokio::time::Instant::now() >= deadline {
+      let _ = server
+        .request(
+          "DELETE",
+          &format!("/resource-operations/{id}"),
+          b"",
+          true,
+          ORIGIN,
+          None,
+        )
+        .await;
+      server.shutdown().await;
+      panic!("live resource operation exceeded its acceptance deadline");
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+  };
+  let (status, body) = server
+    .request("GET", "/clients/test/shader-packs", b"", true, ORIGIN, None)
+    .await;
+  let snapshot: Value = serde_json::from_str(&body).unwrap();
+  server.shutdown().await;
+  assert_eq!(terminal["state"], "completed", "{terminal}");
+  assert_eq!(terminal["revision"], 2);
+  assert_eq!(terminal["progress"]["completedFiles"], 2);
+  assert!(terminal["progress"]["receivedBytes"].as_u64().unwrap() > 0);
+  assert_eq!(status, 200, "{body}");
+  assert_eq!(snapshot["environment"]["status"], "ready", "{body}");
+  assert_eq!(snapshot["packs"].as_array().unwrap().len(), 1);
+  assert_eq!(snapshot["revision"], 2);
 }

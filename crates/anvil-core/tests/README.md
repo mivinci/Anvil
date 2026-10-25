@@ -13,7 +13,7 @@
 - `resource_transfer.rs`：下载返回路径与目标的规范化比较，覆盖 Windows verbatim 路径、不同文件、缺失文件和目录拒绝；Unix 另验证符号链接拒绝。仅使用临时文件，无真实下载。
 - `shader_packs.rs`：旧资源清单兼容、光影 ZIP 结构及路径/链接/大小边界、总引用数、公共导入/移除、跨实例共享与副本隔离、运行锁/外部文件冲突、模组及资源包保留、启动前修复和事务恢复。仅使用内存 ZIP 与临时实例，不安装或启动真实游戏。
 - `shader_environment.rs`：受管 Fabric ID/版本/启停、必需依赖与反向不兼容、重复/损坏元数据、嵌套依赖/路径/深度/数量/字节预算、内置库内容去重、别名及双向冲突、实例副本完整性及读取预算；不启动游戏或请求在线平台。
-- `shader_install.rs`：Iris 的受限必需依赖计划、缓存提交、实际 ID/依赖冲突、禁用条目、取消、陈旧 revision 及光影引用保留。普通用例仅用临时实例和内存 JAR；指定官方 Iris/Sodium JAR 的验收默认 ignored，文件路径通过 `ANVIL_SHADER_SMOKE_IRIS` / `ANVIL_SHADER_SMOKE_SODIUM` 提供，测试核对固定 SHA-1，不下载或启动游戏。
+- `shader_install.rs`：Iris 的受限必需依赖计划、缓存提交、实际 ID/依赖冲突、禁用条目、取消、陈旧 revision 及光影引用保留。普通用例仅用临时实例和内存 JAR；指定官方 Iris/Sodium JAR 的验收默认 ignored，文件路径通过 `ANVIL_SHADER_SMOKE_IRIS` / `ANVIL_SHADER_SMOKE_SODIUM` 提供，测试核对固定 SHA-1，不下载或启动游戏。另有默认 ignored 的 `shader_install_live_modrinth_plan_download_and_commit`，显式设置 `ANVIL_SHADER_LIVE_SMOKE=1` 后读取真实 Modrinth 计划并用 q2q-http 下载模组，仅提交临时实例，不启动游戏。
 - `account_microsoft.rs`：本地 HTTP fixture 覆盖 Microsoft 设备码轮询、用户拒绝/取消、Xbox/XSTS 与 Minecraft profile 交换和刷新令牌轮换；不访问真实账户服务。
 - `client.rs`：客户端文件缓存、q2q-http 并发/校验/取消、实例原子提交与失败重试，以及结构化启动参数和 natives 会话生命周期。
 - `metadata.rs`：Mojang 版本清单、客户端与服务端版本 JSON 校验。

@@ -1,6 +1,6 @@
 # 实例光影管理
 
-状态：第 1–6 项完成，本地光影管理、Runtime 接口、受管 Fabric 环境识别、实例光影页和 Iris 安装确认已接入；隔离测试与指定真实 JAR 的缓存提交验收通过，游戏加载与渲染尚未验收。首期交付本地光影管理和 Fabric / Iris 安装入口；在线光影发现另行排期。逐项推进，每项结束汇报并确认下一项。
+状态：第 1–6 项完成，本地光影管理、Runtime 接口、受管 Fabric 环境识别、实例光影页和 Iris 安装确认已接入；隔离测试、指定真实 JAR 的缓存提交及 Runtime 在线资源安装链路验收通过，游戏加载与渲染尚未验收。首期交付本地光影管理和 Fabric / Iris 安装入口；在线光影发现另行排期。逐项推进，每项结束汇报并确认下一项。
 
 ## 执行项
 
@@ -100,8 +100,23 @@ Core 对以 Iris 为直接项目的 Modrinth 计划统一执行检查：现有�
 
 `shader_install.rs` 中的 `shader_install_official_iris_and_sodium_in_isolated_instance` 默认 ignored，显式设置 `ANVIL_SHADER_SMOKE_IRIS`、`ANVIL_SHADER_SMOKE_SODIUM` 为上述官方文件路径后用 `--ignored` 运行。测试固定校验摘要，不自动下载，不运行 JAR，不接触用户实例。
 
+### 在线资源安装链路
+
+Core 的 `shader_install_live_modrinth_plan_download_and_commit` 从空缓存读取官方 Iris `1.8.7+mc1.21.1`（`A99vfwJc`）计划，由其元数据选择固定 Sodium 依赖 `0.6.9+mc1.21.1`（`26nVNc41`）；通过生产 `q2q-http` 路径实际下载、校验和提交，环境读取为 `ready`。
+
+Runtime 的 `shader_api_live_plan_background_download_and_idempotent_submit` 通过真实 loopback HTTP、Origin/Bearer 鉴权和页面同款接口执行：先导入测试 ZIP，再在线生成计划、两次提交同一个 plan ID、轮询同一个后台任务直到完成，读取最终光影环境及清单。确认只有一个任务、实际接收字节大于 0、两个模组提交完成、revision 从 1 变为 2、原光影 ZIP 保留。Core 与 Runtime 在线验收均通过。
+
+这两项用临时安装记录声明 Minecraft 1.21.1 / Fabric 0.16.10，实际下载的是模组，不下载或启动 Minecraft 本体。数据、缓存和任务都随临时实例清理，不接触用户实例。在线测试默认 ignored，普通 CI 不联网；显式使用：
+
+```sh
+ANVIL_SHADER_LIVE_SMOKE=1 cargo test --locked -p anvil-core shader_install_live_modrinth -- --ignored
+ANVIL_SHADER_LIVE_SMOKE=1 cargo test --locked -p anvil shader_api_live -- --ignored
+```
+
 ## 尚未验收与限制
 
-真实 JAR 验收使用预先下载并校验的缓存对象及指定兼容版本组合，不等于 Modrinth 在线计划到 q2q-http 下载的完整端到端验收。未固定版本的项目依赖仍沿用现有受限解析器；若它选到与实际 JAR 约束不符的版本，提交前明确拒绝，不自动寻找替代版本。
+全量并行验证曾出现一次临时实例锁 `Busy`，之后在允许 loopback 的环境复验未重现；未据此修改生产锁规则。沙箱禁止本地监听导致的 HTTP fixture 失败不作为业务逻辑失败。
+
+在线验收覆盖上述固定版本及其元数据固定的依赖组合，不代表所有 Iris/Minecraft 版本都兼容。未固定版本的项目依赖仍沿用现有受限解析器；若它选到与实际 JAR 约束不符的版本，提交前明确拒绝，不自动寻找替代版本。
 
 真实光影 ZIP、原生 WebView 操作、Minecraft/Fabric 启动、游戏内选择、不同 GPU 和 macOS 渲染效果仍由维护者验收。`ready` 只代表已支持规则下的受管依赖检查通过。

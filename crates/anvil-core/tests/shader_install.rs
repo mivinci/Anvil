@@ -339,3 +339,62 @@ async fn shader_install_official_iris_and_sodium_in_isolated_instance() {
   assert_eq!(environment.iris.unwrap().version, "1.8.8+mc1.21.1");
   assert_eq!(environment.sodium.unwrap().version, "0.6.9+mc1.21.1");
 }
+
+/// Opt-in network acceptance: actual Modrinth metadata and q2q-http downloads, empty cache.
+#[tokio::test]
+#[ignore = "live Modrinth/CDN download smoke; set ANVIL_SHADER_LIVE_SMOKE=1"]
+async fn shader_install_live_modrinth_plan_download_and_commit() {
+  assert_eq!(std::env::var("ANVIL_SHADER_LIVE_SMOKE").as_deref(), Ok("1"));
+  let (_root, manager, directory) = fixture();
+  fabric(&directory);
+  let provider = crate::modrinth::Modrinth::new().unwrap();
+  // This official 1.21.1 release pins its Sodium dependency in platform metadata.
+  let preview = provider
+    .preview("1.21.1", IRIS_PROJECT_ID, "A99vfwJc", &BTreeMap::new())
+    .await
+    .unwrap();
+  assert_eq!(preview.items.len(), 2);
+  assert!(
+    preview
+      .items
+      .iter()
+      .any(|item| item.direct && item.project.id == IRIS_PROJECT_ID && item.file.id == "A99vfwJc")
+  );
+  assert!(
+    preview
+      .items
+      .iter()
+      .any(|item| !item.direct && item.project.id == "AANobbMI" && item.file.id == "26nVNc41")
+  );
+  let plan = manager.plan_modrinth("test", preview, 0).await.unwrap();
+  assert!(plan.files().iter().all(|file| !file.reuse));
+  assert_eq!(plan.download_bytes(), plan.total_bytes());
+  let progress = progress(&plan);
+  let token = CancellationToken::new();
+  let deadline_token = token.clone();
+  let deadline = tokio::spawn(async move {
+    tokio::time::sleep(std::time::Duration::from_secs(180)).await;
+    deadline_token.cancel();
+  });
+  let result = manager
+    .install_modrinth(plan, token, progress.clone())
+    .await;
+  deadline.abort();
+  let installed = result.unwrap();
+  assert_eq!(installed.mods.len(), 2);
+  assert_eq!(installed.revision, 1);
+  assert_eq!(progress.borrow().completed_files, 2);
+  assert!(progress.borrow().received_bytes > 0);
+  for entry in &installed.mods {
+    assert!(entry.enabled);
+    assert!(directory.join("game/mods").join(&entry.filename).is_file());
+  }
+  let environment = manager.shader_packs("test").await.unwrap().environment;
+  assert_eq!(
+    environment.status,
+    ShaderEnvironmentStatus::Ready,
+    "{environment:?}"
+  );
+  assert_eq!(environment.iris.unwrap().version, "1.8.7+mc1.21.1");
+  assert_eq!(environment.sodium.unwrap().version, "0.6.9+mc1.21.1");
+}
