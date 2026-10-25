@@ -7,8 +7,11 @@
 	import ClientLaunchControls from './clients/client-launch-controls.svelte';
 	import ClientArtwork from './clients/client-artwork.svelte';
 	import ClientCard from './clients/client-card.svelte';
+	let { part = 'all' }: { part?: 'continue' | 'instances' | 'all' } = $props();
 	const library = getClientLibraryState();
 	const launches = getClientLaunchState();
+	const showContinue = $derived(part !== 'instances');
+	const showInstances = $derived(part !== 'continue');
 	const ordered = $derived([...library.clients].sort((a, b) => {
 		const active = (name: string) => launches.forClient(name)?.phase === 'running';
 		const time = (name: string) => launches.recentPlays.find(value => value.name === name.toLowerCase())?.playedAt ?? 0;
@@ -20,22 +23,22 @@
 	onMount(() => { void library.refresh(); });
 </script>
 
-<div class="min-w-0 space-y-3">
-	{#if library.error}
+<div class={`min-w-0 space-y-3 ${part === 'continue' ? 'h-full' : ''}`}>
+	{#if showContinue && library.error}
 		<div role="alert" class="flex items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2 text-[11px] text-muted-foreground">
 			<span>{library.loaded ? '刷新失败，保留已有实例' : '暂时无法读取实例'}</span>
 			<button type="button" disabled={library.loading} class={link} onclick={() => void library.refresh()}><RefreshCw size={12} aria-hidden="true" />重试</button>
 		</div>
 	{/if}
 
-	{#if featured}
-		<section class="rounded-lg border border-border bg-card" aria-labelledby="home-play-title">
-			<div class="flex flex-col px-4 pt-3.5 pb-3">
+	{#if showContinue && featured}
+		<section class="h-full rounded-lg border border-border bg-card" aria-labelledby="home-play-title">
+			<div class="flex h-full flex-col px-4 pt-3.5 pb-3">
 				<div class="flex items-center justify-between gap-3">
 					<h2 id="home-play-title" class="flex items-center gap-2 text-[13px] font-semibold"><Gamepad2 size={15} class="text-primary" aria-hidden="true" />最近游玩</h2>
 					<a href={resolve('/clients/[name]', { name: featured.name.toLowerCase() })} class={link}>管理实例<ChevronRight size={12} aria-hidden="true" /></a>
 				</div>
-				<div class="flex items-end justify-between gap-5 pt-4">
+				<div class="flex flex-1 items-end justify-between gap-5 pt-4">
 					<div class="min-w-0 flex-1">
 						<a href={resolve('/clients/[name]', { name: featured.name.toLowerCase() })} class="block truncate rounded text-2xl font-semibold tracking-tight hover:text-primary focus-visible:outline-2 focus-visible:outline-ring" title={featured.name}>{featured.name}</a>
 						<p class="mt-1 truncate text-xs text-muted-foreground">Minecraft {featured.versionId} · {featured.loader ? `Fabric ${featured.loader.version}` : '原版'}</p>
@@ -50,7 +53,9 @@
 				</div>
 			</div>
 		</section>
+	{/if}
 
+	{#if showInstances && featured}
 		<section aria-labelledby="home-instances-title" class="min-w-0">
 			<div class="mb-2 flex items-center justify-between gap-3 px-1">
 				<h2 id="home-instances-title" class="text-[13px] font-semibold">全部实例 <span class="font-normal text-muted-foreground">{library.clients.length}</span></h2>
@@ -60,11 +65,13 @@
 				{#each ordered as client (client.id)}<ClientCard {client} />{/each}
 			</ul>
 		</section>
-	{:else if !library.loaded && !library.error}
+	{/if}
+
+	{#if showContinue && !featured && !library.loaded && !library.error}
 		<section class="rounded-lg border border-border bg-card px-4 py-12 text-center" role="status">
 			<p class="text-xs text-muted-foreground">正在读取实例…</p>
 		</section>
-	{:else if library.loaded}
+	{:else if showContinue && !featured && library.loaded}
 		<section class="rounded-lg border border-border bg-card px-4 py-10">
 			<p class="text-[13px] font-medium">创建你的第一个世界</p>
 			<p class="mt-1 text-[11px] text-muted-foreground">先安装一个 Minecraft 版本，就可以开始游玩。</p>

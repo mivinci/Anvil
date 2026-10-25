@@ -2,13 +2,13 @@
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { DropdownMenu } from 'bits-ui';
-	import { Check, ChevronDown, Clock3, Gamepad2, LogIn, LogOut, RefreshCw, UserRound } from '@lucide/svelte';
+	import { Check, ChevronDown, Gamepad2, LogIn, LogOut, RefreshCw, UserRound } from '@lucide/svelte';
 	import AccountAvatar from './account-avatar.svelte';
 	import { getAccountState } from '../account-state.svelte.js';
 	import { getClientLibraryState } from '../client-library-state.svelte.js';
 	import { getClientLaunchState, launchActive } from '../client-launch-state.svelte.js';
 	import { PlayStatsState } from '../play-stats-state.svelte.js';
-	import { formatPlayCount, formatPlayDuration, formatPlayMoment, mostPlayedInstance, playStatsAccount } from '../play-stats.js';
+	import { formatPlayCount, formatPlayDuration, mostPlayedInstance, playStatsAccount } from '../play-stats.js';
 
 	const accounts = getAccountState();
 	const library = getClientLibraryState();
@@ -33,17 +33,6 @@
 		if (client) return client.name;
 		return library.loaded ? '已删除实例' : id;
 	}
-	function instanceHref(id: string | null | undefined) {
-		const client = clientFor(id);
-		return client ? resolve('/clients/[name]', { name: client.name.toLowerCase() }) : null;
-	}
-
-	const statsLoaded = $derived(stats.snapshot !== null);
-	const lastInstanceId = $derived(accountStats?.lastInstanceId ?? (!statsLoaded ? launches.recentPlays[0]?.name ?? null : null));
-	const lastPlayedAt = $derived(accountStats?.lastPlayedAt ?? (!statsLoaded ? launches.recentPlays[0]?.playedAt ?? null : null));
-	const lastClientName = $derived(instanceName(lastInstanceId));
-	const lastHref = $derived(instanceHref(lastInstanceId));
-	const lastMoment = $derived(formatPlayMoment(lastPlayedAt, now));
 	const mostPlayedLabel = $derived(instanceName(mostPlayedInstance(accountStats)) ?? '—');
 	const totalLabel = $derived(accountStats && accountStats.totalMs > 0
 		? formatPlayDuration(accountStats.totalMs)
@@ -139,6 +128,7 @@
 		</div>
 	{/if}
 
+	{#if current}
 	<div class="mt-3 grid grid-cols-3 gap-2 min-[900px]:grid-cols-2" aria-busy={stats.loading}>
 		<div class="rounded-lg bg-chrome-hover px-2 py-1.5">
 			<p class="text-[10px] text-muted-foreground">总游玩</p>
@@ -157,28 +147,18 @@
 			<p class="mt-1 truncate text-[14px] font-semibold" title={mostPlayedLabel}>{mostPlayedLabel}</p>
 		</div>
 	</div>
-
-	<div class="mt-3 hidden min-[900px]:block">
-		<p class="text-[10px] text-muted-foreground">上次游玩</p>
-		{#if lastClientName}
-			<a href={lastHref ?? resolve('/clients')} class="mt-1 flex items-center gap-2 rounded-lg bg-chrome-hover px-2 py-1.5 text-[11px] hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring">
-				<Clock3 size={12} class="shrink-0 text-muted-foreground" aria-hidden="true" />
-				<span class="min-w-0 flex-1 truncate">{lastClientName}</span>
-				<span class="shrink-0 text-[10px] text-muted-foreground">{lastMoment}</span>
-			</a>
-		{:else}
-			<p class="mt-1 text-[11px] text-muted-foreground">还没有游玩记录</p>
-		{/if}
-	</div>
+	{/if}
 
 	<div class="mt-3 flex flex-wrap items-center gap-1.5">
 		<a href={resolve('/clients')} class={actionClass}><Gamepad2 size={13} aria-hidden="true" />管理实例</a>
-		<button type="button" class={`${actionClass} w-7 justify-center px-0`} disabled={stats.loading} onclick={() => void stats.refresh()} aria-label="刷新游玩统计" title="刷新游玩统计">
-			<RefreshCw size={13} class={stats.loading ? 'animate-spin motion-reduce:animate-none' : ''} aria-hidden="true" />
-		</button>
+		{#if current}
+			<button type="button" class={`${actionClass} w-7 justify-center px-0`} disabled={stats.loading} onclick={() => void stats.refresh()} aria-label="刷新游玩统计" title="刷新游玩统计">
+				<RefreshCw size={13} class={stats.loading ? 'animate-spin motion-reduce:animate-none' : ''} aria-hidden="true" />
+			</button>
+		{/if}
 	</div>
 
-	{#if stats.error}
+	{#if current && stats.error}
 		<p role="status" class="mt-2 text-[10px] leading-4 text-muted-foreground">统计暂不可用 <button type="button" class="text-primary hover:underline" onclick={() => void stats.refresh()}>重试</button></p>
 	{/if}
 </section>
