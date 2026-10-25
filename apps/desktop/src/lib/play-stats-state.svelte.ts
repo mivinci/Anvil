@@ -1,4 +1,4 @@
-import { getPlayStats, type PlayStatsSnapshot } from './runtime';
+import { getPlayStats, RuntimeRequestError, type PlayStatsSnapshot } from './runtime';
 
 /** On-demand reads; the Runtime records sessions, the UI never uploads timings. */
 export class PlayStatsState {
@@ -25,6 +25,11 @@ export class PlayStatsState {
 			this.snapshot = snapshot;
 		} catch (reason) {
 			if (this.request !== controller || controller.signal.aborted) return;
+			// An older Runtime with the same API version may not serve this endpoint.
+			if (reason instanceof RuntimeRequestError && reason.status === 404) {
+				this.snapshot = { schemaVersion: 1, accounts: {} };
+				return;
+			}
 			this.error = reason instanceof Error ? reason.message : '暂时无法读取游玩统计。';
 		} finally {
 			if (this.request === controller) {

@@ -29,7 +29,9 @@
 	}
 	function instanceName(id: string | null | undefined) {
 		if (!id) return null;
-		return clientFor(id)?.name ?? id;
+		const client = clientFor(id);
+		if (client) return client.name;
+		return library.loaded ? '已删除实例' : id;
 	}
 	function instanceHref(id: string | null | undefined) {
 		const client = clientFor(id);

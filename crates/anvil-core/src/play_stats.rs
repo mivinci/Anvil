@@ -366,10 +366,10 @@ impl Pruner {
           .retain(|session| account.instances.contains_key(&session.instance_id));
       }
     }
+    prune_total_sessions(file);
     file.accounts.retain(|account, value| {
       valid_account(account) && (!value.instances.is_empty() || !value.sessions.is_empty())
     });
-    prune_total_sessions(file);
     if file.accounts.len() > MAX_ACCOUNTS {
       let mut ids: Vec<_> = file
         .accounts
