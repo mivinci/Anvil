@@ -106,9 +106,11 @@ impl ResourceManager {
     }
     progress.send_modify(|value| value.stage = ResourceInstallStage::Publishing);
     let bytes = std::fs::read(object_path(&self.context.paths.data, &sha256))?;
-    self
+    let manifest = self
       .import_shader_pack(&plan.name, plan.file_name, bytes, plan.revision)
-      .await
+      .await?;
+    progress.send_modify(|value| value.completed_files = 1);
+    Ok(manifest)
   }
 
   /// Remove only this instance's reference; shared objects are retained.

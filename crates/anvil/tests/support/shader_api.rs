@@ -512,6 +512,11 @@ async fn shader_api_live_plan_background_download_and_import() {
   }
   let final_state = final_state.expect("shader operation did not finish");
   assert_eq!(final_state["state"], "completed", "{final_state}");
+  assert_eq!(
+    final_state["progress"]["completedFiles"], 1,
+    "{final_state}"
+  );
+  assert_eq!(final_state["progress"]["totalFiles"], 1, "{final_state}");
   let (status, body) = server
     .request("GET", "/clients/test/shader-packs", b"", true, ORIGIN, None)
     .await;
