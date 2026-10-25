@@ -75,8 +75,8 @@
 		<div class="flex flex-col gap-4">
 			<div class="flex min-w-0 items-center gap-1.5">
 				<Popover.Root bind:open={pickerOpen}>
-					<Popover.Trigger disabled={navigating} aria-label={targetName ? `选择安装目标，当前请求 ${targetName}` : '选择安装目标，当前未选择实例'} class="inline-flex h-8 min-w-0 flex-1 items-center gap-2 rounded-lg border border-input px-2.5 text-xs focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40">
-						<Gamepad2 size={14} class="shrink-0 text-muted-foreground" aria-hidden="true" /><span class="truncate">{confirmed?.name ?? targetName ?? (context.hasInstance ? '无效实例' : '选择实例')}</span><ChevronDown size={12} class="shrink-0 text-muted-foreground" aria-hidden="true" />
+					<Popover.Trigger disabled={navigating} aria-label={targetName ? `选择安装目标，当前请求 ${targetName}` : '选择安装目标，当前未选择实例'} class="inline-flex h-8 min-w-0 flex-1 items-center gap-2 rounded-lg border border-input px-2.5 text-left text-xs focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40">
+						<Gamepad2 size={14} class="shrink-0 text-muted-foreground" aria-hidden="true" /><span class="min-w-0 flex-1 truncate">{confirmed?.name ?? targetName ?? (context.hasInstance ? '无效实例' : '选择实例')}</span><ChevronDown size={12} class="shrink-0 text-muted-foreground" aria-hidden="true" />
 					</Popover.Trigger>
 					{#if pickerOpen}<Popover.Portal to=".app-window">
 					<Popover.Content side="bottom" align="start" sideOffset={8} collisionPadding={12} class="z-30 w-80 max-w-[calc(100vw-32px)] rounded-xl border border-border bg-popover p-2 text-popover-foreground shadow-lg outline-none" aria-label="选择模组安装目标">

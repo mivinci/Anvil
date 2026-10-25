@@ -63,16 +63,18 @@
 </script>
 
 {#if updateReady}
-	<NavButton
-		disabled={restarting}
-		aria-label={buttonTitle}
-		title={buttonTitle}
-		onclick={() => void restartForUpdate()}
-		class="border border-primary/25 bg-primary/10 text-primary shadow-sm hover:bg-primary/15 disabled:opacity-60"
-	>
-		<ArrowUp size={18} strokeWidth={1.9} aria-hidden="true" />
-		<span class="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-primary ring-2 ring-background" aria-hidden="true"></span>
-	</NavButton>
+	<div class="relative grid size-9 place-items-center">
+		<NavButton
+			disabled={restarting}
+			aria-label={buttonTitle}
+			title={buttonTitle}
+			onclick={() => void restartForUpdate()}
+			class="bg-primary/10 text-primary hover:bg-primary/15 disabled:opacity-60"
+		>
+			<ArrowUp size={17} strokeWidth={2} aria-hidden="true" />
+		</NavButton>
+		<span class="pointer-events-none absolute -right-0.5 -top-0.5 size-2 rounded-full bg-primary ring-2 ring-background" aria-hidden="true"></span>
+	</div>
 {:else if busy}
 	<div class="grid size-9 place-items-center text-primary" role="status" aria-label={`正在准备更新${status?.totalBytes ? ` ${Math.round(progress)}%` : ''}`} title={`正在准备更新${status?.totalBytes ? ` ${Math.round(progress)}%` : ''}`}>
 		<LoaderCircle size={17} strokeWidth={1.8} class="animate-spin motion-reduce:animate-none" aria-hidden="true" />

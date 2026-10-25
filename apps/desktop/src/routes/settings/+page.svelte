@@ -45,7 +45,8 @@
 	</aside>
 	<section class="min-h-0 min-w-0 overflow-y-auto overscroll-contain" aria-labelledby="settings-title">
 		<div class="mx-auto w-full max-w-3xl px-5 py-6 lg:px-7">
-			<header class="mb-5"><h2 id="settings-title" class="text-xl font-semibold tracking-tight">{current.label}</h2></header>
+			{#if selected === 'about'}<h2 id="settings-title" class="sr-only">关于</h2>
+			{:else}<header class="mb-5"><h2 id="settings-title" class="text-xl font-semibold tracking-tight">{current.label}</h2></header>{/if}
 			{#if selected === 'appearance'}<AppearanceSettings />
 			{:else if selected === 'about'}<AboutSettings />
 			{:else}

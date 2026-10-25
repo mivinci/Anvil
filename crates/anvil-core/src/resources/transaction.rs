@@ -134,6 +134,12 @@ fn sync_directory(_path: &Path) -> Result<()> {
   File::open(_path)?.sync_all()?;
   Ok(())
 }
+fn sync_file(path: &Path) -> Result<()> {
+  // Windows FlushFileBuffers requires a write handle; a read-only handle fails
+  // with ERROR_ACCESS_DENIED even when the file itself is writable.
+  fs::OpenOptions::new().write(true).open(path)?.sync_all()?;
+  Ok(())
+}
 fn validate_layout(layout: &Layout) -> Result<()> {
   let manifest = ResourceManifest {
     schema_version: 4,
@@ -339,7 +345,7 @@ fn apply_transaction(
     let target = change.kind.directory(directory).join(&change.filename);
     if let Some(entry) = &change.before {
       verify_file(&target, entry.hash(), entry.size())?;
-      File::open(&target)?.sync_all()?;
+      sync_file(&target)?;
       fs::rename(&target, work.join("backup").join(index.to_string()))?;
       sync_directory(&work.join("backup"))?;
       sync_directory(&change.kind.directory(directory))?;
@@ -545,5 +551,18 @@ fn publish_private(source: &Path, target: &Path) -> Result<()> {
       }
       Err(Error::Io(io_error))
     }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn syncs_a_regular_file_with_a_writable_handle() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("resource.bin");
+    fs::write(&path, b"resource").unwrap();
+    sync_file(&path).unwrap();
   }
 }

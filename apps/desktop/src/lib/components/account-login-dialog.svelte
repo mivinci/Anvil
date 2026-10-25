@@ -166,7 +166,7 @@
 		</div>
 
 		<div class="mt-5 flex items-center justify-end gap-1.5">
-			{#if phase !== 'success'}
+			{#if import.meta.env.DEV && phase !== 'success'}
 				<button type="button" class={`${secondaryClass} mr-auto`} disabled={accounts.loginStarting || accounts.loginRunning || accounts.loginCancelling} title="使用本地玩家 AnvilTester" onclick={() => accounts.useOfflineMode()}><FlaskConical size={13} aria-hidden="true" />离线模式</button>
 			{/if}
 			{#if phase === 'success'}

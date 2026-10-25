@@ -118,10 +118,17 @@ pub(super) fn validate_entries(manifest: &ResourceManifest, graph: bool) -> Resu
           origin.project_name
         ))
       })?;
-      if &other.version_id != v || (entry.enabled && !dependency.enabled) {
-        return Err(Error::Conflict(
-          "Modrinth 必需依赖版本不符或已停用。".into(),
-        ));
+      if &other.version_id != v {
+        return Err(Error::Conflict(format!(
+          "“{}”需要“{}”的特定版本，当前版本不符合。",
+          origin.project_name, other.project_name
+        )));
+      }
+      if entry.enabled && !dependency.enabled {
+        return Err(Error::Conflict(format!(
+          "“{}”仍需要“{}”，请先停用“{}”。",
+          origin.project_name, other.project_name, origin.project_name
+        )));
       }
     }
     if entry.enabled

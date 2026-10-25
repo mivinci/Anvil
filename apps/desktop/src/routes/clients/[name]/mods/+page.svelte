@@ -6,8 +6,10 @@
 	let refreshedOperation = $state<number | null>(null);
 	const detail = getClientDetailState();
 	import { page } from '$app/state';
-	import { Boxes, FileArchive, LoaderCircle, Plus, RefreshCw, Trash2 } from '@lucide/svelte';
-	import { listClientResources, importClientMod, changeClientMod, syncClientResources, type ClientResourceManifest, type ClientResourceEntry } from '../../../../lib/runtime';
+	import { onDestroy } from 'svelte';
+	import { Popover } from 'bits-ui';
+	import { Boxes, Check, Copy, FileArchive, Hash, LoaderCircle, Pause, Play, Plus, RefreshCw, Trash2 } from '@lucide/svelte';
+	import { listClientResources, importClientMod, changeClientMod, syncClientResources, RuntimeRequestError, type ClientResourceManifest, type ClientResourceEntry } from '../../../../lib/runtime';
 	let manifest = $state<ClientResourceManifest | null>(null);
 	let busy = $state(false);
 	let error = $state<string | null>(null);
@@ -15,6 +17,9 @@
 	let selected = $state<File | null>(null);
 	let removing = $state<string | null>(null);
 	let search = $state('');
+	let copyTarget = $state<string | null>(null);
+	let copyOk = $state(false);
+	let copyTimer: ReturnType<typeof setTimeout> | undefined;
 	let input: HTMLInputElement;
 	let request: AbortController | null = null;
 	const fabric = $derived(detail.client?.loader?.kind === 'fabric');
@@ -23,6 +28,25 @@
 	const canBrowse = $derived(fabric && !busy && !uncertain);
 	const discoveryHref = $derived(`${resolve('/mods')}?${new URLSearchParams({ instance: name.toLowerCase() })}`);
 	const visible = $derived(manifest?.mods.filter((mod) => mod.filename.toLowerCase().includes(search.trim().toLowerCase())) ?? []);
+	type ModRelation = { requires: string[]; requiredBy: { name: string; enabled: boolean }[] };
+	const relations = $derived.by(() => {
+		const map = new Map<string, ModRelation>();
+		const mods = manifest?.mods ?? [];
+		const idOf = (entry: ClientResourceEntry) => entry.modrinthOrigin?.projectId ?? entry.origin?.projectId;
+		const dependenciesOf = (entry: ClientResourceEntry): (string | number)[] => entry.modrinthOrigin ? Object.keys(entry.modrinthOrigin.requiredVersions) : entry.origin ? entry.origin.requiredProjects : [];
+		const nameOf = (id: string | number) => {
+			const entry = mods.find((candidate) => String(idOf(candidate)) === String(id));
+			return entry ? entry.modrinthOrigin?.projectName ?? entry.origin?.projectName ?? entry.filename : `项目 ${id}`;
+		};
+		for (const mod of mods) {
+			const own = idOf(mod);
+			const requiredBy = own === undefined ? [] : mods
+				.filter((other) => other.sha256 !== mod.sha256 && dependenciesOf(other).some((id) => String(id) === String(own)))
+				.map((other) => ({ name: other.modrinthOrigin?.projectName ?? other.origin?.projectName ?? other.filename, enabled: other.enabled }));
+			map.set(mod.sha256, { requires: dependenciesOf(mod).map(nameOf), requiredBy });
+		}
+		return map;
+	});
 	function validate(result: ClientResourceManifest) {
 		if (!result || ![1, 2, 3, 4].includes(result.schemaVersion) || !Number.isSafeInteger(result.revision) || !Array.isArray(result.mods) || result.mods.length > 1024 || result.mods.some((entry) => typeof entry.filename !== 'string' || !/^[a-f0-9]{64}$/.test(entry.sha256) || !Number.isSafeInteger(entry.size) || typeof entry.enabled !== 'boolean' || !['local', 'curseforge', 'modrinth'].includes(entry.source))) throw new Error('资源清单格式不正确。');
 		return result;
@@ -36,8 +60,11 @@
 			if (!controller.signal.aborted) { manifest = result; uncertain = false; if (mutation) { selected = null; removing = null; } }
 		} catch (reason) {
 			if (!controller.signal.aborted) {
-				if (mutation) uncertain = true;
-				error = mutation ? `操作未确认，请刷新清单后再操作。${reason instanceof Error ? reason.message : ''}` : '暂时无法读取资源清单，请刷新重试。';
+				const rejected = reason instanceof RuntimeRequestError && reason.status >= 400 && reason.status < 500;
+				if (mutation && !rejected) uncertain = true;
+				error = rejected
+					? reason instanceof Error ? reason.message : '无法应用此变更。'
+					: mutation ? `操作未确认，请刷新清单后再操作。${reason instanceof Error ? reason.message : ''}` : '暂时无法读取资源清单，请刷新重试。';
 			}
 		} finally { if (request === controller) { request = null; busy = false; } }
 	}
@@ -78,6 +105,13 @@
 		void run((signal) => syncClientResources(target, revision, signal), true);
 	}
 	function size(bytes: number) { return bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KiB` : `${(bytes / 1024 / 1024).toFixed(1)} MiB`; }
+	async function copyHash(hash: string) {
+		if (copyTimer) clearTimeout(copyTimer);
+		try { await navigator.clipboard.writeText(hash); copyTarget = hash; copyOk = true; }
+		catch { copyTarget = hash; copyOk = false; }
+		copyTimer = setTimeout(() => { copyTarget = null; copyTimer = undefined; }, 1500);
+	}
+	onDestroy(() => { if (copyTimer) clearTimeout(copyTimer); });
 </script>
 
 <svelte:head><title>模组 · Anvil</title></svelte:head>
@@ -97,9 +131,9 @@
 			<input type="search" bind:value={search} placeholder="搜索模组文件名" aria-label="搜索模组" class="mt-4 h-8 w-full rounded-lg bg-chrome-hover px-2.5 text-xs outline-none focus:ring-1 focus:ring-ring" />
 			<ul class="mt-3 divide-y divide-border rounded-lg border border-border bg-card px-3" aria-label="本实例模组引用">
 				{#each visible as mod (mod.sha256)}
-					<li class="py-2.5"><div class="flex items-center gap-2"><div class="min-w-0 flex-1"><p class="truncate text-[13px]" title={mod.filename}>{mod.modrinthOrigin?.projectName ?? mod.origin?.projectName ?? mod.filename}</p><p class="mt-1 text-[11px] text-muted-foreground">{mod.source === 'modrinth' ? `Modrinth · ${mod.modrinthOrigin?.direct ? '直接添加' : '必需依赖'}` : mod.source === 'curseforge' ? `CurseForge · ${mod.origin?.direct ? '直接添加' : '必需依赖'}` : '本地导入'} · {size(mod.size)} · {mod.enabled ? applied ? '已启用' : '待应用' : '已停用'}</p></div><button type="button" disabled={busy || uncertain || (!fabric && !mod.enabled)} aria-pressed={mod.enabled} aria-label={`${mod.enabled ? '停用' : '启用'} ${mod.filename}`} onclick={() => change(mod, !mod.enabled)} class="h-7 shrink-0 rounded-md px-2 text-xs text-muted-foreground hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40">{mod.enabled ? '停用' : '启用'}</button><button type="button" disabled={busy || uncertain} aria-label={`移除 ${mod.filename}`} title="移除本实例引用" onclick={() => removing = mod.sha256} class="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-chrome-hover hover:text-destructive focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40"><Trash2 size={13} aria-hidden="true" /></button></div>
+					{@const relation = relations.get(mod.sha256) ?? { requires: [], requiredBy: [] }}
+					<li class="py-2.5"><div class="flex items-center gap-2"><div class="min-w-0 flex-1"><p class="truncate text-[13px]" title={mod.filename}>{mod.modrinthOrigin?.projectName ?? mod.origin?.projectName ?? mod.filename}</p><p class="mt-1 text-[11px] text-muted-foreground">{mod.source === 'modrinth' ? `Modrinth · ${mod.modrinthOrigin?.direct ? '直接添加' : '必需依赖'}` : mod.source === 'curseforge' ? `CurseForge · ${mod.origin?.direct ? '直接添加' : '必需依赖'}` : '本地导入'} · {size(mod.size)} · {mod.enabled ? applied ? '已启用' : '待应用' : '已停用'}</p></div><button type="button" disabled={busy || uncertain || (!fabric && !mod.enabled)} aria-pressed={mod.enabled} aria-label={`${mod.enabled ? '停用' : '启用'} ${mod.filename}`} title={mod.enabled ? '停用' : '启用'} onclick={() => change(mod, !mod.enabled)} class="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-chrome-hover hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40">{#if mod.enabled}<Pause size={13} aria-hidden="true" />{:else}<Play size={13} aria-hidden="true" />{/if}</button><Popover.Root><Popover.Trigger aria-label="查看文件身份" title="文件身份" class="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring"><Hash size={13} aria-hidden="true" /></Popover.Trigger><Popover.Portal to=".app-window"><Popover.Content side="bottom" align="end" sideOffset={6} collisionPadding={8} class="z-30 w-80 max-w-[calc(100vw-32px)] rounded-xl border border-border bg-popover p-3 text-popover-foreground shadow-lg outline-none" aria-label="文件身份"><p class="truncate text-xs font-medium" title={mod.filename}>{mod.filename}</p><p class="mt-1 text-[11px] text-muted-foreground">{mod.source === 'modrinth' ? 'Modrinth' : mod.source === 'curseforge' ? 'CurseForge' : '本地导入'} · {size(mod.size)}</p><p class="mt-2 text-[10px] text-muted-foreground">SHA-256</p><p class="mt-1 select-all break-all font-mono text-[10px] leading-4">{mod.sha256}</p>{#if relation.requires.length || relation.requiredBy.length}<div class="mt-2 space-y-1 border-t border-border pt-2 text-[11px] leading-5">{#if relation.requires.length}<p><span class="text-muted-foreground">依赖：</span>{relation.requires.join('、')}</p>{/if}{#if relation.requiredBy.length}<p><span class="text-muted-foreground">被依赖：</span>{relation.requiredBy.map((item) => `${item.name}${item.enabled ? '' : '（已停用）'}`).join('、')}</p>{/if}</div>{/if}<div class="mt-2 flex justify-end"><button type="button" onclick={() => void copyHash(mod.sha256)} class="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-xs text-primary hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring">{#if copyTarget === mod.sha256 && copyOk}<Check size={12} aria-hidden="true" />{:else}<Copy size={12} aria-hidden="true" />{/if}{copyTarget === mod.sha256 ? (copyOk ? '已复制' : '复制失败') : '复制 SHA-256'}</button></div></Popover.Content></Popover.Portal></Popover.Root><button type="button" disabled={busy || uncertain} aria-label={`移除 ${mod.filename}`} title="移除本实例引用" onclick={() => removing = mod.sha256} class="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-chrome-hover hover:text-destructive focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40"><Trash2 size={13} aria-hidden="true" /></button></div>
 						{#if removing === mod.sha256}<div class="mt-2 flex flex-wrap items-center justify-end gap-2 rounded-md bg-chrome-hover px-2 py-2 text-[11px]"><span class="mr-auto text-muted-foreground">只移除此实例引用，共享原件保留。</span><button type="button" disabled={busy} onclick={() => removing = null} class="rounded px-1.5 py-1 text-muted-foreground">取消</button><button type="button" disabled={busy || uncertain} onclick={() => change(mod, null)} class="rounded px-1.5 py-1 text-destructive disabled:opacity-40">确认移除</button></div>{/if}
-						<details class="mt-1 text-[11px] text-muted-foreground"><summary>文件身份</summary><p class="mt-1 select-text break-all">SHA-256 · {mod.sha256}</p></details>
 					</li>
 				{/each}
 			</ul>

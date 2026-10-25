@@ -564,3 +564,16 @@ launch.rs 保留安装记录/计划身份校验，Fabric 的 classpath 改为已
 - 维护者安装 Fabric API 时在下载完成后收到 unexpected resource download path；Runtime 日志记录资源任务因 conflict 停止。只读检查确认完整暂存文件仍在，长度 1778588 字节。q2q-http 会规范化目标父目录，Windows 返回 verbatim 路径；模组传输使用 PathBuf 文本比较，导致同一文件被误判。Minecraft/服务端下载已使用规范化位置检查，此处分支此前遗漏。
 - 模组传输改为先拒绝非普通文件/符号链接，再比较 canonicalize 后的位置；继续保留原目标读取、上游 SHA-1 复核、共享对象发布和实例事务提交边界，不删除用户暂存文件或绕过校验。
 - Windows 两项离线回归通过，覆盖普通与 verbatim 路径等价，以及不同/缺失文件、目录拒绝；Rust 格式和 Core/Runtime 编译通过。Clippy 允许此前记录的 news.rs 既有 chunks_exact_to_as_chunks 提示后通过。未替用户重试真实安装、改写实例或重启 dev；需完整重启 desktop:dev 后重新生成计划确认安装，真实提交结果待维护者确认。
+
+## Windows 禁用/移除模组 os error 5 修复
+
+- 维护者点击停用后 Runtime 返回 `filesystem operation failed: 拒绝访问 (os error 5)`；日志为 `/clients/{name}/resources/{sha256}/enabled` 的 `io`。实例文件 ACL 正常，单独 rename 成功。
+- 根因是资源事务在把已有 `game/mods` 文件移到 backup 前，用只读句柄调用 `sync_all`；Windows `FlushFileBuffers` 要求写权限，只读句柄返回 ERROR_ACCESS_DENIED。最小 Rust 程序复现：只读句柄 `Err(5)`，写句柄 `Ok`。
+- 改为 `sync_file` 以写句柄同步，其他仅 Unix 执行的目录 sync 路径不变；新增回归测试 `syncs_a_regular_file_with_a_writable_handle`。
+- `cargo fmt --check`、该测试和 `cargo check --workspace --locked --offline` 通过；需重启 dev 重建 baseline Runtime 后验证停用/移除。未修改用户实例清单。
+
+## 模组依赖冲突提示
+
+- 停用仍被其他已启用模组依赖的项目时（例如 Mod Menu 依赖 Fabric API 与 Text Placeholder API），Core 返回冲突并点名依赖方与被依赖方；先停用依赖方，再停用其依赖，启用时反向。
+- 前端把 4xx 冲突视为明确拒绝，不再套用“操作未确认”或设置 uncertain 锁住整页动作；5xx、网络或超时仍按未知结果处理并提示刷新。
+- 文件身份 popover 同时显示该项目依赖的模组和被哪些模组依赖；被停用的依赖方标注“（已停用）”，停用前即可看到依赖关系。
