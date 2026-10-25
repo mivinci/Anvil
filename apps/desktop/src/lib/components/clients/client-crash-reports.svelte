@@ -65,9 +65,9 @@
 		</div>
 	</div>
 	{#if listError}<p role="alert" class="text-[11px] text-destructive">{listError}{catalog ? ' 保留上次读取的列表。' : ''}</p>{/if}
-	<div class="flex min-h-0 flex-1 overflow-hidden rounded-lg border border-border bg-card">
+	<div class="flex min-h-0 flex-1 overflow-hidden rounded-lg bg-card">
 		{#if catalog?.reports.length}
-			<nav aria-label="崩溃报告列表" class="w-40 shrink-0 space-y-1 overflow-y-auto overscroll-contain border-r border-border p-1.5 lg:w-48">
+			<nav aria-label="崩溃报告列表" class="w-40 shrink-0 space-y-1 overflow-y-auto overscroll-contain p-1.5 lg:w-48">
 				{#each catalog.reports as entry (entry.name)}
 					<button type="button" disabled={listing} aria-pressed={selected === entry.name} onclick={() => { if (detail.client) void select(detail.client.name, entry); }} title={entry.name} class={`block w-full rounded-md px-2 py-2 text-left focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50 ${selected === entry.name ? 'bg-chrome-selected text-accent-foreground' : 'hover:bg-chrome-hover'}`}>
 						<span class="block truncate text-[12px] leading-4">{entry.name}</span>

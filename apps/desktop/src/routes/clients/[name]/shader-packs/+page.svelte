@@ -60,7 +60,7 @@
 	</header>
 	<input bind:this={input} type="file" accept=".zip,application/zip" onchange={pick} aria-label="选择本地光影 ZIP" class="hidden" />
 	<p class="mt-2 text-[11px] leading-5 text-muted-foreground">支持本地光影 ZIP，最大 64 MiB。添加后在游戏内选择和调整效果；需要对应的光影加载支持。</p>
-	<aside aria-labelledby="shader-environment-title" class="mt-3 rounded-lg border border-border bg-card px-3 py-2.5">
+	<aside aria-labelledby="shader-environment-title" class="mt-3 rounded-lg bg-card px-3 py-2.5">
 		<div class="flex flex-wrap items-center justify-between gap-2">
 			<h2 id="shader-environment-title" class="text-xs font-medium">{packs.environment ? shaderEnvironmentLabels[packs.environment.status] : packs.busy ? '正在读取光影环境…' : '光影环境尚未确认'}</h2>
 			{#if packs.environment?.status === 'requires_fabric'}<a href={resolve('/clients')} class="rounded text-[11px] text-primary underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-ring">前往客户端</a>
@@ -74,7 +74,7 @@
 		{:else if !packs.busy}<p class="mt-1.5 text-[11px] leading-5 text-muted-foreground">请刷新以读取环境状态。已添加的光影文件仍保留。</p>{/if}
 	</aside>
 	{#if installerOpen && detail.client}
-		<section aria-label="安装 Iris 光影支持" class="mt-3 shrink-0 overflow-hidden rounded-lg border border-border bg-card">
+		<section aria-label="安装 Iris 光影支持" class="mt-3 shrink-0 overflow-hidden rounded-lg bg-card">
 			<div class="flex items-center justify-between px-3 pt-3"><h2 class="text-xs font-medium">Iris · Minecraft {detail.client.versionId}</h2><button type="button" class={secondary} onclick={() => installerOpen = false} aria-label="关闭 Iris 安装"><X size={13} aria-hidden="true" /></button></div>
 			<p class="px-3 pt-1 text-[11px] leading-5 text-muted-foreground">选择兼容版本，再确认必需依赖及下载量。安装任务离开页面后仍继续。无法确认的模组冲突会拒绝安装。</p>
 			<div class="flex h-48 min-h-0 flex-col px-3 pb-2"><ModVersionInstaller source="modrinth" {name} gameVersion={detail.client.versionId} project="YL57xq9U" footerTarget={installerFooter} blocked={packs.busy || packs.blocked || running} /></div>
@@ -99,7 +99,7 @@
 			<div class="flex min-h-52 flex-1 flex-col items-center justify-center gap-2.5 text-center"><Sparkles size={26} strokeWidth={1.4} class="text-primary/60" aria-hidden="true" /><p class="text-[13px]">还没有光影</p><p class="text-[11px] text-muted-foreground">导入本地光影 ZIP，再到游戏中选择效果。</p></div>
 		{:else}
 			<label class="mt-4 flex h-8 items-center gap-2 rounded-lg bg-chrome-hover px-2.5 text-muted-foreground focus-within:ring-1 focus-within:ring-ring"><Search size={14} aria-hidden="true" /><input type="search" bind:value={search} placeholder="搜索光影名称" aria-label="搜索光影" class="min-w-0 flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground" />{#if search}<button type="button" onclick={() => search = ''} aria-label="清空搜索" class="rounded p-0.5 focus-visible:outline-2 focus-visible:outline-ring"><X size={12} aria-hidden="true" /></button>{/if}</label>
-			<ul aria-label="本实例光影" aria-busy={packs.busy} class="mt-3 shrink-0 divide-y divide-border rounded-lg border border-border bg-card px-3">
+			<ul aria-label="本实例光影" aria-busy={packs.busy} class="mt-3 shrink-0 divide-y divide-border rounded-lg bg-card px-3">
 				{#each visible as pack (pack.sha256)}
 					<li class="py-3">
 						<div class="flex items-start gap-2.5"><div class="mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg bg-primary/8 text-primary"><FileArchive size={17} strokeWidth={1.5} aria-hidden="true" /></div><div class="min-w-0 flex-1"><h2 class="truncate text-[13px] font-medium" title={pack.filename}>{pack.filename}</h2><p class="mt-1.5 text-[11px] text-muted-foreground">{localPackSize(pack.size)} · 兼容性未确认 · {applied ? '已添加到实例' : '待同步到目录'}</p></div><button type="button" class={`${secondary} w-7 px-0 hover:text-destructive`} disabled={locked} aria-label={`移除 ${pack.filename}`} title="从此实例移除" onclick={() => { packs.selected = null; packs.removing = pack.sha256; }}><Trash2 size={13} aria-hidden="true" /></button></div>

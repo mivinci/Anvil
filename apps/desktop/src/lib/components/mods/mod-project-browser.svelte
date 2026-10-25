@@ -120,7 +120,7 @@
 	{:else if configError}<div role="alert" class="rounded-lg border border-border p-4 text-xs"><p>{configError}</p><button type="button" class={`${button} mt-2`} onclick={() => configRevision++}>重新检查来源</button></div>
 	{:else if configured}
 	<div class="grid min-h-0 flex-1 grid-cols-1 gap-3 min-[1100px]:grid-cols-[minmax(240px,2fr)_minmax(0,3fr)]">
-		<div class={`flex min-h-0 flex-col rounded-lg border border-border bg-card ${projectId ? 'hidden min-[1100px]:flex' : ''}`}>
+		<div class={`flex min-h-0 flex-col rounded-lg bg-card ${projectId ? 'hidden min-[1100px]:flex' : ''}`}>
 			<div bind:this={listElement} onscroll={() => { if (!projectId && listElement?.getClientRects().length) savedScroll = listElement.scrollTop; }} tabindex="-1" role="region" class="min-h-0 flex-1 space-y-0.5 scrollbar-subtle overflow-y-auto overscroll-contain p-1 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring" aria-label="模组项目" aria-busy={projects.busy}>
 				{#each projects.items as item (item.id)}
 					<button type="button" aria-pressed={projectId === String(item.id)} onclick={() => void navigate({ project: String(item.id) })} class={`group flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring ${projectId === String(item.id) ? 'bg-chrome-selected' : 'hover:bg-chrome-hover'}`}>
@@ -140,7 +140,7 @@
 		<div class={`flex min-h-0 flex-col overflow-hidden ${!projectId ? 'hidden min-[1100px]:flex' : ''}`}>
 			<div class="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden" role="region" aria-label="模组详情内容">
 			{#if projectId}
-				<section aria-label="模组介绍" class="max-h-[45%] shrink-0 scrollbar-subtle overflow-y-auto overscroll-contain rounded-lg border border-border bg-card p-3.5">
+				<section aria-label="模组介绍" class="max-h-[45%] shrink-0 scrollbar-subtle overflow-y-auto overscroll-contain rounded-lg bg-card p-3.5">
 				{#if !validProject}<p role="alert" class="text-xs text-destructive">项目链接无效，请从列表重新选择。</p>{/if}
 				{#if details.busy}<p role="status" class="text-xs text-muted-foreground">正在读取项目摘要…</p>{/if}
 				{#if details.error || details.value?.refreshError}<p role="alert" class="mb-3 text-xs text-destructive">{details.error ?? details.value?.refreshError}{details.value ? '（保留上次摘要）' : ''}<button type="button" class={button} disabled={details.busy} onclick={() => void loadDetails(true)}>重试</button></p>{/if}
@@ -153,7 +153,7 @@
 				{/if}
 				</section>
 				{#if validProject}
-				<section aria-label="兼容版本" class={`flex min-h-0 flex-col rounded-lg border border-border bg-card p-3.5 ${target ? 'flex-1' : 'shrink-0'}`}><div class="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1"><h3 class="text-sm font-medium">兼容版本</h3>{#if target}<p class="min-w-0 break-words text-[11px] text-muted-foreground">Minecraft {target.version} · Fabric · {target.name}</p>{/if}</div>
+				<section aria-label="兼容版本" class={`flex min-h-0 flex-col rounded-lg bg-card p-3.5 ${target ? 'flex-1' : 'shrink-0'}`}><div class="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1"><h3 class="text-sm font-medium">兼容版本</h3>{#if target}<p class="min-w-0 break-words text-[11px] text-muted-foreground">Minecraft {target.version} · Fabric · {target.name}</p>{/if}</div>
 				{#if !target}<p class="mt-2 text-xs leading-5 text-muted-foreground">选择实例以查看兼容版本。</p><button class={`${button} mt-2`} onclick={chooseInstance}>选择实例</button>
 				{:else}
 					<ModVersionInstaller {source} name={target.name} gameVersion={target.version} project={projectId!} footerTarget={installFooter} />
