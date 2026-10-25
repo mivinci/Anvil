@@ -161,5 +161,4 @@
 			{/if}
 		{/if}
 	</div>
-	<p class="mt-3 shrink-0 text-[10px] leading-4 text-muted-foreground">下载使用 q2q-http 校验和实例事务；完成后仍需在游戏内选择光影。暂不支持取消或 CurseForge 光影。</p>
 </div>
