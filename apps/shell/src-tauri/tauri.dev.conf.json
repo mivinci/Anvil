@@ -9,8 +9,8 @@
 				"url": "index.html",
 				"width": 900,
 				"height": 620,
-        "minWidth": 800,
-        "minHeight": 520,
+        "minWidth": 620,
+        "minHeight": 420,
 				"titleBarStyle": "Overlay",
 				"trafficLightPosition": {
 					"x": 12,

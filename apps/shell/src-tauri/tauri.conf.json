@@ -17,8 +17,8 @@
         "url": "anvil-app://localhost/",
         "width": 900,
         "height": 620,
-        "minWidth": 800,
-        "minHeight": 520,
+        "minWidth": 620,
+        "minHeight": 420,
         "windowEffects": {
           "effects": [
             "liquidGlassRegular",
