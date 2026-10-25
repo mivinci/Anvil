@@ -92,7 +92,13 @@
 </script>
 
 <div class="space-y-5">
-	<div><p class="text-xl font-semibold tracking-tight">Anvil</p><p class="mt-2 text-[11px] leading-5 text-muted-foreground">Minecraft Java 版启动与服务端管理工具</p></div>
+	<div class="flex items-center gap-3">
+		<img src="/logo.png" alt="" width="40" height="40" class="size-10 shrink-0 rounded-xl object-cover" />
+		<div class="min-w-0">
+			<p class="text-xl font-semibold tracking-tight">Anvil</p>
+			<p class="mt-1 text-[11px] leading-5 text-muted-foreground">Minecraft Java 版启动与服务端管理工具</p>
+		</div>
+	</div>
 	<section aria-label="版本信息" class="space-y-2">
 		<div class="flex items-center justify-between gap-3">
 			<h3 class="text-[13px] font-medium">版本信息</h3>
