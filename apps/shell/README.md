@@ -32,7 +32,7 @@ ANVIL_APP_MANIFEST=../../desktop/manifests/x86_64-pc-windows-msvc.json \
   --target x86_64-pc-windows-msvc
 ```
 
-Shell 构建脚本会校验 manifest schema、App ID、目标 triple、API 版本和包内相对入口。`npm run desktop:package` 按 Tauri 构建目标生成 SvelteKit 静态页面、匹配平台的 `anvil-desktop` sidecar 和 manifest，组成 `apps/desktop/baseline`；Tauri `bundle.resources` 将其随 `.app` 或安装包分发。首次启动时 Shell 校验包、复制到 staging、原子发布并激活。已有活动版本不会被基线包覆盖。
+Shell 构建脚本会校验 manifest schema、App ID、目标 triple、API 版本和包内相对入口。`npm run desktop:package` 按 Tauri 构建目标生成 SvelteKit 静态页面、匹配平台的 `anvil-desktop` sidecar 和 manifest，组成 `apps/desktop/baseline`；Tauri `bundle.resources` 将其随 `.app` 或安装包分发。首次启动时 Shell 校验包、复制到 staging、原子发布并激活。已有活动版本不会被静默覆盖；若安装包基线版本更新，则发布为待启用版本，经健康确认后激活，失败时回滚到上一个健康版本。
 
 Rust 库中的 `app_storage` 提供按 App ID 隔离的本地版本目录、schema 2 原子状态文件（兼容读取 schema 1）、staging 发布和只读包入口解析；`app_protocol` 将活动版本页面安全地提供给 Tauri WebView。Shell 运行时从活动 App 包启动 sidecar、等待受限 ready 握手、监控进程退出，并在 Shell 关闭时请求有序停止。sidecar 仅监听动态 loopback 端口并提供带会话凭据的 `/health`。待启用版本在下次启动时进入健康确认；页面加载或 API 检查失败、Runtime 启动失败以及 30 秒超时都会回滚到上一个健康版本，异常退出后也会在下次启动恢复。首次安装、页面加载和本机健康请求的验收见 [Shell 执行清单](../../todos/shell-milestone.md) 第 7 项，激活和回滚见第 9 项。
 

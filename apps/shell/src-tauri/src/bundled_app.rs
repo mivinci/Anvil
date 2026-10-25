@@ -19,6 +19,13 @@ pub enum BundledAppInstallOutcome {
   Installed(Version),
   RecoveredPublished(Version),
   AlreadyInstalled(Version),
+  Pending(Version),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PublishOutcome {
+  Published,
+  AlreadyPublished,
 }
 
 #[derive(Debug, Error)]
@@ -41,8 +48,9 @@ pub enum BundledAppInstallError {
   Io(#[from] io::Error),
 }
 
-/// Install the package shipped with this Shell build if no App version is active.
-/// The package is copied into staging, validated there, published immutably, then activated.
+/// Install the package shipped with this Shell build. With no active version it
+/// is activated directly; with an active version, a newer baseline is published
+/// and staged as pending so the normal startup health check activates it.
 pub fn install_bundled_app(
   storage: &AppStorage,
   package_directory: Option<&Path>,
@@ -53,9 +61,15 @@ pub fn install_bundled_app(
 ) -> Result<BundledAppInstallOutcome, BundledAppInstallError> {
   let store = storage.app(expected_app_id)?;
   if let Some(active) = store.resolve_active()? {
-    return Ok(BundledAppInstallOutcome::AlreadyInstalled(
-      active.version().clone(),
-    ));
+    return stage_newer_bundled_app(
+      &store,
+      package_directory,
+      expected_app_id,
+      expected_target,
+      shell_api_version,
+      bundled_app_version,
+      &active,
+    );
   }
 
   let package_directory = package_directory.ok_or(BundledAppInstallError::PackageUnavailable)?;
@@ -69,8 +83,104 @@ pub fn install_bundled_app(
   )?;
   let version = Version::parse(&manifest.version)
     .map_err(|error| BundledAppInstallError::InvalidPackage(error.to_string()))?;
+  let outcome = publish_bundled_package(
+    &store,
+    &source_root,
+    &version,
+    expected_app_id,
+    expected_target,
+    shell_api_version,
+    bundled_app_version,
+  )?;
+  activate(&store, version.clone())?;
+  Ok(match outcome {
+    PublishOutcome::Published => BundledAppInstallOutcome::Installed(version),
+    PublishOutcome::AlreadyPublished => BundledAppInstallOutcome::RecoveredPublished(version),
+  })
+}
 
-  match store.published_version(&version) {
+fn stage_newer_bundled_app(
+  store: &crate::app_storage::AppVersionStore,
+  package_directory: Option<&Path>,
+  expected_app_id: &str,
+  expected_target: &str,
+  shell_api_version: &str,
+  bundled_app_version: &str,
+  active: &PublishedAppVersion,
+) -> Result<BundledAppInstallOutcome, BundledAppInstallError> {
+  let Some(package_directory) = package_directory else {
+    return Ok(BundledAppInstallOutcome::AlreadyInstalled(
+      active.version().clone(),
+    ));
+  };
+  let result = (|| -> Result<Option<Version>, BundledAppInstallError> {
+    let source_root = canonical_package_root(package_directory)?;
+    let manifest = validate_package(
+      &source_root,
+      expected_app_id,
+      expected_target,
+      shell_api_version,
+      bundled_app_version,
+    )?;
+    let version = Version::parse(&manifest.version)
+      .map_err(|error| BundledAppInstallError::InvalidPackage(error.to_string()))?;
+    let state = store.state()?;
+    if &version <= active.version() || state.failed_version.as_ref() == Some(&version) {
+      return Ok(None);
+    }
+    publish_bundled_package(
+      store,
+      &source_root,
+      &version,
+      expected_app_id,
+      expected_target,
+      shell_api_version,
+      bundled_app_version,
+    )?;
+    let mut state = store.state()?;
+    if state
+      .pending_version
+      .as_ref()
+      .is_some_and(|pending| pending >= &version)
+    {
+      return Ok(None);
+    }
+    state.pending_version = Some(version.clone());
+    store.write_state(&state)?;
+    tracing::info!(
+      active_version = %active.version(),
+      pending_version = %version,
+      "newer bundled App baseline staged"
+    );
+    Ok(Some(version))
+  })();
+  match result {
+    Ok(Some(version)) => Ok(BundledAppInstallOutcome::Pending(version)),
+    Ok(None) => Ok(BundledAppInstallOutcome::AlreadyInstalled(
+      active.version().clone(),
+    )),
+    Err(error) => {
+      tracing::warn!(
+        error = %error,
+        "newer bundled App package could not be staged; keeping the active version"
+      );
+      Ok(BundledAppInstallOutcome::AlreadyInstalled(
+        active.version().clone(),
+      ))
+    }
+  }
+}
+
+fn publish_bundled_package(
+  store: &crate::app_storage::AppVersionStore,
+  source_root: &Path,
+  version: &Version,
+  expected_app_id: &str,
+  expected_target: &str,
+  shell_api_version: &str,
+  bundled_app_version: &str,
+) -> Result<PublishOutcome, BundledAppInstallError> {
+  match store.published_version(version) {
     Ok(published) => {
       validate_published_package(
         &published,
@@ -79,48 +189,45 @@ pub fn install_bundled_app(
         shell_api_version,
         bundled_app_version,
       )?;
-      if let Some(active) = store.resolve_active()? {
-        return Ok(BundledAppInstallOutcome::AlreadyInstalled(
-          active.version().clone(),
-        ));
-      }
-      activate(&store, version.clone())?;
-      return Ok(BundledAppInstallOutcome::RecoveredPublished(version));
+      Ok(PublishOutcome::AlreadyPublished)
     }
-    Err(AppStorageError::MissingVersion(_)) => {}
-    Err(error) => return Err(error.into()),
+    Err(AppStorageError::MissingVersion(_)) => {
+      let staging = store.stage_version()?;
+      copy_package_tree(source_root, staging.directory())?;
+      validate_package(
+        staging.directory(),
+        expected_app_id,
+        expected_target,
+        shell_api_version,
+        bundled_app_version,
+      )?;
+      match staging.publish(version) {
+        Ok(published) => {
+          validate_published_package(
+            &published,
+            expected_app_id,
+            expected_target,
+            shell_api_version,
+            bundled_app_version,
+          )?;
+          Ok(PublishOutcome::Published)
+        }
+        Err(AppStorageError::VersionAlreadyExists(_)) => {
+          let published = store.published_version(version)?;
+          validate_published_package(
+            &published,
+            expected_app_id,
+            expected_target,
+            shell_api_version,
+            bundled_app_version,
+          )?;
+          Ok(PublishOutcome::AlreadyPublished)
+        }
+        Err(error) => Err(error.into()),
+      }
+    }
+    Err(error) => Err(error.into()),
   }
-
-  let staging = store.stage_version()?;
-  copy_package_tree(&source_root, staging.directory())?;
-  validate_package(
-    staging.directory(),
-    expected_app_id,
-    expected_target,
-    shell_api_version,
-    bundled_app_version,
-  )?;
-
-  let published = match staging.publish(&version) {
-    Ok(published) => published,
-    Err(AppStorageError::VersionAlreadyExists(_)) => store.published_version(&version)?,
-    Err(error) => return Err(error.into()),
-  };
-  validate_published_package(
-    &published,
-    expected_app_id,
-    expected_target,
-    shell_api_version,
-    bundled_app_version,
-  )?;
-
-  if let Some(active) = store.resolve_active()? {
-    return Ok(BundledAppInstallOutcome::AlreadyInstalled(
-      active.version().clone(),
-    ));
-  }
-  activate(&store, version.clone())?;
-  Ok(BundledAppInstallOutcome::Installed(version))
 }
 
 fn activate(

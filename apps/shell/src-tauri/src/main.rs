@@ -73,13 +73,6 @@ fn main() {
       }
       #[cfg(not(dev))]
       {
-        let activation_attempt = match activation.prepare_startup() {
-          Ok(attempt) => attempt,
-          Err(_) => {
-            runtime.mark_startup_failure(RuntimeFailure::StorageUnavailable);
-            false
-          }
-        };
         let resource_package = app
           .path()
           .resource_dir()
@@ -93,6 +86,13 @@ fn main() {
         });
 
         if cfg!(debug_assertions) && bundled_package.is_none() {
+          let activation_attempt = match activation.prepare_startup() {
+            Ok(attempt) => attempt,
+            Err(_) => {
+              runtime.mark_startup_failure(RuntimeFailure::StorageUnavailable);
+              false
+            }
+          };
           start_app_with_activation(
             app.handle().clone(),
             &runtime,
@@ -119,6 +119,13 @@ fn main() {
           });
 
         if install_result.is_ok() {
+          let activation_attempt = match activation.prepare_startup() {
+            Ok(attempt) => attempt,
+            Err(_) => {
+              runtime.mark_startup_failure(RuntimeFailure::StorageUnavailable);
+              false
+            }
+          };
           start_app_with_activation(
             app.handle().clone(),
             &runtime,
