@@ -69,7 +69,7 @@
 <svelte:head><title>{detail.client?.name ?? '实例'} · 概览 · Anvil</title></svelte:head>
 <section aria-labelledby="client-overview-title" class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 lg:px-6">
 	{#if detail.client}
-		<div class="relative isolate mt-2 flex min-h-48 items-center overflow-hidden rounded-xl bg-primary/5 px-5 py-6">
+		<div class="relative isolate flex items-center overflow-hidden rounded-xl bg-primary/5 p-5">
 			<div class="relative z-10 min-w-0 flex-1">
 				<p class="mb-2 flex items-center gap-1.5 text-[11px] text-muted-foreground"><span class={`size-1.5 rounded-full ${operation && launchActive(operation) ? 'bg-primary' : 'bg-muted-foreground/50'}`}></span>{status}</p>
 				<h1 id="client-overview-title" class="max-w-full break-all text-xl font-semibold tracking-tight">{detail.client.name}</h1>
