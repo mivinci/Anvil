@@ -499,3 +499,43 @@ async fn shader_alias_reverse_conflicts_cover_provider_and_virtual_ids() {
     );
   }
 }
+
+#[tokio::test]
+async fn shader_environment_coalesces_root_and_nested_identical_payloads() {
+  for identical in [true, false] {
+    let (_root, manager, directory) = fixture();
+    fabric(&directory);
+    let placeholder = bundle("placeholder-api", json!({"java": ">=21"}), &[]);
+    let bundled = if identical {
+      placeholder.clone()
+    } else {
+      bundle("placeholder-api", json!({"java": ">=22"}), &[])
+    };
+    import_enabled(&manager, "placeholder-api.jar", placeholder).await;
+    import_enabled(
+      &manager,
+      "modmenu.jar",
+      bundle(
+        "modmenu",
+        json!({}),
+        &[("META-INF/jars/placeholder-api.jar", &bundled)],
+      ),
+    )
+    .await;
+    import_enabled(&manager, "iris.jar", bundle("iris", json!({}), &[])).await;
+    import_enabled(&manager, "sodium.jar", bundle("sodium", json!({}), &[])).await;
+    let environment = manager.shader_packs("test").await.unwrap().environment;
+    assert_eq!(
+      environment.status,
+      if identical {
+        ShaderEnvironmentStatus::Ready
+      } else {
+        ShaderEnvironmentStatus::Unconfirmed
+      },
+      "identical={identical}: {environment:?}"
+    );
+    if !identical {
+      assert!(environment.reason.contains("placeholder-api"));
+    }
+  }
+}
