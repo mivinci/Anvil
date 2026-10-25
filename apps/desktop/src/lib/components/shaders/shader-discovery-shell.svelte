@@ -71,7 +71,6 @@
 						<label class="mb-2 flex h-8 items-center gap-2 rounded-lg bg-chrome-hover px-2.5"><Search size={13} class="shrink-0 text-muted-foreground" aria-hidden="true" /><input type="search" bind:value={instanceSearch} placeholder="搜索实例名称或版本" aria-label="搜索目标实例" class="min-w-0 flex-1 bg-transparent text-xs outline-none" /></label>
 						{#if library.error}<p role="alert" class="mb-2 px-2 text-[11px] text-destructive">{library.loaded ? '刷新失败，保留上次读取的实例。' : '暂时无法读取实例列表。'}</p>{/if}
 						<SelectableList class="max-h-64 overflow-y-auto overscroll-contain" aria-label="目标实例列表" aria-busy={library.loading}>
-							<SelectableRow selected={!targetName} onclick={() => void changeInstance(null)} class="h-9"><span class="text-xs">不选择实例</span>{#snippet trailing()}仅浏览{/snippet}</SelectableRow>
 							{#each filtered as item (item.id)}
 								<SelectableRow selected={targetName === item.name.toLowerCase()} onclick={() => void changeInstance(item.name)} class="h-12" aria-label={`${item.name}，Minecraft ${item.versionId}`}>
 									<span class="min-w-0"><span class="block truncate text-xs">{item.name}</span><span class="mt-1 block truncate text-[11px] text-muted-foreground">Minecraft {item.versionId}</span></span>
