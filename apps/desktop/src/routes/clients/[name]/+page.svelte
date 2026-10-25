@@ -8,7 +8,7 @@
 	import ClientScreenPreview from '#lib/components/clients/client-screen-preview.svelte';
 	import ClientLaunchControls from '#lib/components/clients/client-launch-controls.svelte';
 	import { getClientLaunchState, launchActive, launchLabel } from '#lib/client-launch-state.svelte.js';
-	import { Boxes, Image, Sparkles, ArrowUpRight, ChevronDown, Check, Copy, RefreshCw } from '@lucide/svelte';
+	import { Boxes, Image, Sparkles, ArrowUpRight, ChevronDown, Check, Copy } from '@lucide/svelte';
 	import { getClientDetailState } from '#lib/client-detail-state.svelte.js';
 	const detail = getClientDetailState();
 	const name = $derived(page.params.name ?? '');
@@ -39,7 +39,6 @@
 		untrack(() => { packCount = null; shaderCount = null; void loadCount(target); });
 		return () => { countRequest?.abort(); countRequest = null; };
 	});
-	function refresh() { void detail.load(name); void loadCount(name); }
 	const launches = getClientLaunchState();
 	const operation = $derived(detail.client ? launches.forClient(detail.client.name) : undefined);
 	const status = $derived(operation && launchActive(operation) ? launchLabel(operation) : '未运行');
@@ -69,7 +68,6 @@
 <svelte:head><title>{detail.client?.name ?? '实例'} · 概览 · Anvil</title></svelte:head>
 <section aria-labelledby="client-overview-title" class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 lg:px-6">
 	{#if detail.client}
-		<div class="flex items-center justify-between"><p class="text-[11px] text-muted-foreground">实例概览</p><button type="button" aria-label="刷新实例详情" title="刷新实例详情" disabled={detail.loading || countLoading} onclick={refresh} class="grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40"><RefreshCw size={14} class={detail.loading || countLoading ? 'animate-spin motion-reduce:animate-none' : ''} aria-hidden="true" /></button></div>
 		<div class="relative isolate mt-2 flex min-h-48 items-center overflow-hidden rounded-xl bg-primary/5 px-5 py-6">
 			<div class="relative z-10 min-w-0 flex-1">
 				<p class="mb-2 flex items-center gap-1.5 text-[11px] text-muted-foreground"><span class={`size-1.5 rounded-full ${operation && launchActive(operation) ? 'bg-primary' : 'bg-muted-foreground/50'}`}></span>{status}</p>
