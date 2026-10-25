@@ -14,14 +14,13 @@
 默认窗口 900×620，三列放不下，断点如下：
 
 - **≥1200px**：左玩家栏 232 + 主内容 + 右侧新闻 264。
-- **1000–1199px**：左玩家栏 216 + 主内容；新闻移到主内容下方的紧凑列表。
-- **900–999px**：玩家栏变成主内容上方的横向玩家条；新闻继续在下方。
+- **900–1199px**：左玩家栏 228 + 主内容；新闻移到主内容下方并跨两列。
 - **<900px**（未来移动端）：单列，玩家卡在上。
 
 ```text
 900px
 ┌──────────────┬──────────────────────────────────────┐
-│ 玩家卡 208px  │ 继续游玩                              │
+│ 玩家卡 228px  │ 继续游玩                              │
 │  头像 64      │  优化1.21.11 by ay2077   [切换实例 ▾] │
 │  用户名       │  Vanilla · 1.21.11 · 2 小时前         │
 │  Microsoft    │  [生成图]              [▶ 启动游戏]   │
@@ -166,7 +165,7 @@ H1/H2 可以在独立分支先做，不依赖首页视觉；H3 只改首页，�
 
 - Core：新增 `crates/anvil-core/src/play_stats.rs`，schema 1；按账户/实例聚合、保留最近 20 条会话、滚动 7 天；有界（32 账户、每账户 64 实例、每账户 256 会话、全局 2048 会话、读取 512 KiB），原子替换，损坏文件备份为 `play-stats.corrupt.json`。9 项单测覆盖聚合、短会话、上限、重载、清除、实例移除、损坏恢复、滚动窗口和文件大小。
 - Runtime：新增 `GET/DELETE /play-stats`；`launches.rs` 在进入 running 时记录、退出/取消/失败时结算，账户取启动请求，离线测试记为 `offline`；实例删除后按 `ClientRemoval.id` 清理统计。loopback API 测试覆盖鉴权、持久化读取和清除。
-- 桌面：新增 `home-player-card.svelte`、`home-news.svelte`、`play-stats-state.svelte.ts`、`play-stats.ts`；首页断点为 1000/1200，900px 下玩家卡全宽、新闻移到主内容下方；统计按当前账户过滤，启动终态后刷新，账户菜单内切换账户。
+- 桌面：新增 `home-player-card.svelte`、`home-news.svelte`、`play-stats-state.svelte.ts`、`play-stats.ts`；首页断点为 1000/1200，900px 下玩家卡 228 左栏、新闻移到主内容下方；统计按当前账户过滤，启动终态后刷新，账户菜单内切换账户。
 - 验证：`cargo test -p anvil-core -p anvil` 通过（Core 119、Runtime 单测 18、CLI 20、sidecar 1）；`cargo clippy --all-targets -- -D warnings`、`cargo fmt --check`、`npm run desktop:check`、`npm run build --workspace @anvil/desktop`、Node 前端测试 13 项（含 play-stats 5 项）通过。
 - 未验证：真实 Minecraft 启动后的会话记录；原生 WebView 首帧、900/1200px 截图与交互；`mod-discovery.browser.mjs` 的旧首页布局断言尚未随玩家卡更新，当前不能作为首页验收；清除统计 UI 入口未接入；全量真实游玩、账户切换后的统计准确性由维护者手测。
 

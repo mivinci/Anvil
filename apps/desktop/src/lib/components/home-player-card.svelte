@@ -82,7 +82,7 @@
 	}
 </script>
 
-<section class="min-w-0 self-start rounded-xl border border-border bg-card p-3.5" aria-labelledby="home-player-title">
+<section class="min-w-0 self-start rounded-lg border border-border bg-card p-3 min-[1200px]:p-3.5" aria-labelledby="home-player-title">
 	<h2 id="home-player-title" class="sr-only">玩家</h2>
 
 	{#if current}
@@ -126,7 +126,7 @@
 			<span class="grid size-16 shrink-0 place-items-center rounded-xl bg-chrome-hover text-muted-foreground"><LogIn size={22} aria-hidden="true" /></span>
 			<span class="min-w-0">
 				<span class="block text-[13px] font-medium">登录 Microsoft 账户</span>
-				<span class="mt-1 block text-[10px] text-muted-foreground">登录后可记录游玩并把统计归到账户。</span>
+				<span class="mt-1 block text-[10px] text-muted-foreground">登录后记录游玩统计。</span>
 			</span>
 		</button>
 	{/if}
@@ -139,26 +139,26 @@
 		</div>
 	{/if}
 
-	<div class="mt-3 grid grid-cols-3 gap-2 min-[1000px]:grid-cols-2" aria-busy={stats.loading}>
-		<div class="rounded-lg bg-chrome-hover px-2.5 py-2">
+	<div class="mt-3 grid grid-cols-3 gap-2 min-[900px]:grid-cols-2" aria-busy={stats.loading}>
+		<div class="rounded-lg bg-chrome-hover px-2 py-1.5">
 			<p class="text-[10px] text-muted-foreground">总游玩</p>
-			<p class="mt-1 truncate text-[15px] font-semibold tabular-nums" title={totalLabel}>{totalLabel}</p>
+			<p class="mt-1 truncate text-[14px] font-semibold tabular-nums" title={totalLabel}>{totalLabel}</p>
 		</div>
-		<div class="rounded-lg bg-chrome-hover px-2.5 py-2">
+		<div class="rounded-lg bg-chrome-hover px-2 py-1.5">
 			<p class="text-[10px] text-muted-foreground">近 7 天</p>
-			<p class="mt-1 truncate text-[15px] font-semibold tabular-nums" title={weekLabel}>{weekLabel}</p>
+			<p class="mt-1 truncate text-[14px] font-semibold tabular-nums" title={weekLabel}>{weekLabel}</p>
 		</div>
-		<div class="rounded-lg bg-chrome-hover px-2.5 py-2">
+		<div class="rounded-lg bg-chrome-hover px-2 py-1.5">
 			<p class="text-[10px] text-muted-foreground">启动次数</p>
-			<p class="mt-1 truncate text-[15px] font-semibold tabular-nums" title={launchesLabel}>{launchesLabel}</p>
+			<p class="mt-1 truncate text-[14px] font-semibold tabular-nums" title={launchesLabel}>{launchesLabel}</p>
 		</div>
-		<div class="hidden rounded-lg bg-chrome-hover px-2.5 py-2 min-[1000px]:block">
+		<div class="hidden rounded-lg bg-chrome-hover px-2 py-1.5 min-[900px]:block">
 			<p class="text-[10px] text-muted-foreground">最常玩</p>
-			<p class="mt-1 truncate text-[15px] font-semibold" title={mostPlayedLabel}>{mostPlayedLabel}</p>
+			<p class="mt-1 truncate text-[14px] font-semibold" title={mostPlayedLabel}>{mostPlayedLabel}</p>
 		</div>
 	</div>
 
-	<div class="mt-3 hidden min-[1000px]:block">
+	<div class="mt-3 hidden min-[900px]:block">
 		<p class="text-[10px] text-muted-foreground">上次游玩</p>
 		{#if lastClientName}
 			<a href={lastHref ?? resolve('/clients')} class="mt-1 flex items-center gap-2 rounded-lg bg-chrome-hover px-2 py-1.5 text-[11px] hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring">
