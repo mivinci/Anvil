@@ -279,58 +279,67 @@ pub(super) async fn remove_shader_pack(
 
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct ShaderDownloadRequest {
+pub(super) struct ShaderPlanRequest {
   project: String,
   version: String,
   revision: u64,
 }
-pub(super) async fn download_shader_pack(
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct ShaderPlanView {
+  plan_id: u64,
+  name: String,
+  revision: u64,
+  project_id: String,
+  project_name: String,
+  version_id: String,
+  version_name: String,
+  file_name: String,
+  file_size: u64,
+}
+pub(super) async fn plan_shader_pack(
   State(state): State<AppState>,
   RoutePath(name): RoutePath<String>,
-  Json(request): Json<ShaderDownloadRequest>,
-) -> Result<Json<ShaderPackChange>, ApiError> {
+  Json(request): Json<ShaderPlanRequest>,
+) -> Result<Json<ShaderPlanView>, ApiError> {
   ClientInstaller::validate_name(&name).map_err(super::api::resource_error)?;
   let game = client_game(&state.runtime, &name).await?;
   let _slot = state.modrinth.slot()?;
   let provider = state.modrinth.provider()?;
+  let project = provider
+    .shader_project(&request.project)
+    .await
+    .map_err(super::api::resource_error)?;
   let (file, url) = provider
     .shader_file(&game, &request.project, &request.version)
     .await
     .map_err(super::api::resource_error)?;
-  let url = url::Url::parse(&url)
-    .map_err(|_| ApiError::new(StatusCode::BAD_GATEWAY, "光影下载地址无效。"))?;
-  let temporary = tempfile::Builder::new()
-    .prefix("anvil-shader-")
-    .tempdir()
-    .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "无法准备光影下载目录。"))?;
-  let destination = temporary.path().join("shader.zip");
-  state
-    .runtime
-    .context
-    .download_file_sha1(
-      &url,
-      &destination,
-      Some(&file.sha1),
-      Some(file.file_length),
-      &anvil_core::CancellationToken::new(),
-    )
-    .await
-    .map_err(super::api::resource_error)?;
-  let bytes = std::fs::read(&destination).map_err(|_| {
-    ApiError::new(
-      StatusCode::INTERNAL_SERVER_ERROR,
-      "无法读取下载的光影文件。",
-    )
-  })?;
-  let manifest = ResourceManager::new(state.runtime.context.clone())
-    .import_shader_pack(&name, file.file_name.clone(), bytes, request.revision)
-    .await
-    .map_err(super::api::resource_error)?;
-  tracing::info!(
-    pack_count = manifest.shader_packs.len(),
-    "Online shader pack downloaded and imported"
-  );
-  Ok(Json(manifest.into()))
+  let plan = anvil_core::resources::ShaderInstallPlan {
+    name: name.to_ascii_lowercase(),
+    revision: request.revision,
+    project_id: project.id.clone(),
+    project_name: project.name.clone(),
+    version_id: file.id.clone(),
+    version_name: file.display_name.clone(),
+    file_name: file.file_name.clone(),
+    file_size: file.file_length,
+    sha1: file.sha1.clone(),
+    url,
+  };
+  let plan_id = state
+    .resources
+    .save(super::resource_operations::InstallPlan::Shader(plan));
+  Ok(Json(ShaderPlanView {
+    plan_id,
+    name: name.to_ascii_lowercase(),
+    revision: request.revision,
+    project_id: project.id,
+    project_name: project.name,
+    version_id: file.id,
+    version_name: file.display_name,
+    file_name: file.file_name,
+    file_size: file.file_length,
+  }))
 }
 
 #[cfg(test)]

@@ -22,7 +22,7 @@ pub use shader_environment::{
   ShaderEnvironment, ShaderEnvironmentStatus, ShaderMod, ShaderPackCollection,
 };
 mod shaders;
-pub use shaders::ShaderPackEntry;
+pub use shaders::{ShaderInstallPlan, ShaderPackEntry};
 mod packs;
 pub use packs::{PackFormat, PackMetadata, ResourcePackEntry};
 mod modrinth;

@@ -387,14 +387,20 @@ export const getShaderProject = (project: string, signal: AbortSignal, options?:
 	runtimeRequest<ShaderProjectDetails>(`/resources/modrinth/shader-projects/${encodeURIComponent(project)}?${new URLSearchParams(catalogQuery(options))}`, { signal });
 export const listShaderVersions = (project: string, gameVersion: string, signal: AbortSignal, options?: CatalogOptions) =>
 	runtimeRequest<ShaderVersionPage>(`/resources/modrinth/shader-projects/${encodeURIComponent(project)}/versions?${new URLSearchParams({ gameVersion, ...catalogQuery(options) })}`, { signal });
-export const downloadShaderPack = (name: string, project: string, version: string, revision: number, signal: AbortSignal) =>
-	runtimeRequest<ClientShaderPackChange>(`/clients/${encodeURIComponent(name)}/shader-packs/modrinth`, { method: 'POST', body: JSON.stringify({ project, version, revision }), signal });
+export interface ShaderInstallPlan {
+	planId: number; name: string; revision: number;
+	projectId: string; projectName: string;
+	versionId: string; versionName: string;
+	fileName: string; fileSize: number;
+}
+export const createShaderInstallPlan = (name: string, project: string, version: string, revision: number, signal: AbortSignal) =>
+	runtimeRequest<ShaderInstallPlan>(`/clients/${encodeURIComponent(name)}/shader-plans`, { method: 'POST', body: JSON.stringify({ project, version, revision }), signal });
 export const listModrinthFiles = (name: string, project: string, index: number, signal: AbortSignal, options?: CatalogOptions) =>
 	runtimeRequest<CurseForgePage<ModrinthFile>>(`/clients/${encodeURIComponent(name)}/modrinth/projects/${encodeURIComponent(project)}/files?${new URLSearchParams({ index: String(index), ...catalogQuery(options) })}`, { signal });
 export const createModrinthInstallPlan = (name: string, project: string, file: string, signal: AbortSignal) =>
 	runtimeRequest<ModrinthInstallPlan>(`/clients/${encodeURIComponent(name)}/modrinth/projects/${encodeURIComponent(project)}/files/${encodeURIComponent(file)}/plan`, { method: 'POST', signal });
 export interface ResourceInstallOperation {
-	id: number; name: string; state: 'running' | 'completed' | 'failed' | 'cancelled'; cancelRequested: boolean;
+	id: number; name: string; kind: 'mod' | 'shader'; state: 'running' | 'completed' | 'failed' | 'cancelled'; cancelRequested: boolean;
 	progress: { stage: 'preparing' | 'downloading' | 'publishing' | 'completed'; completedFiles: number; totalFiles: number; downloadedBytes: number; totalBytes: number; receivedBytes: number };
 	revision: number | null; error: string | null;
 }

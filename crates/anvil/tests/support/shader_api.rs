@@ -49,6 +49,49 @@ impl Server {
     origin: &str,
     declared_length: Option<usize>,
   ) -> (u16, String) {
+    self
+      .request_with_type(
+        method,
+        path,
+        body,
+        "application/octet-stream",
+        authorized,
+        origin,
+        declared_length,
+      )
+      .await
+  }
+  async fn request_json(
+    &self,
+    method: &str,
+    path: &str,
+    body: &[u8],
+    authorized: bool,
+    origin: &str,
+  ) -> (u16, String) {
+    self
+      .request_with_type(
+        method,
+        path,
+        body,
+        "application/json",
+        authorized,
+        origin,
+        None,
+      )
+      .await
+  }
+  #[allow(clippy::too_many_arguments)]
+  async fn request_with_type(
+    &self,
+    method: &str,
+    path: &str,
+    body: &[u8],
+    content_type: &str,
+    authorized: bool,
+    origin: &str,
+    declared_length: Option<usize>,
+  ) -> (u16, String) {
     let mut stream = TcpStream::connect(("127.0.0.1", self.port)).await.unwrap();
     let auth = if authorized {
       format!("Authorization: Bearer {}\r\n", "a".repeat(64))
@@ -56,7 +99,7 @@ impl Server {
       String::new()
     };
     let header = format!(
-      "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nOrigin: {origin}\r\n{auth}Content-Type: application/octet-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+      "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nOrigin: {origin}\r\n{auth}Content-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
       self.port,
       declared_length.unwrap_or(body.len())
     );
@@ -398,4 +441,83 @@ async fn shader_api_live_plan_background_download_and_idempotent_submit() {
   assert_eq!(snapshot["environment"]["status"], "ready", "{body}");
   assert_eq!(snapshot["packs"].as_array().unwrap().len(), 1);
   assert_eq!(snapshot["revision"], 2);
+}
+
+#[tokio::test]
+#[ignore = "live Modrinth shader plan/download; requires network"]
+async fn shader_api_live_plan_background_download_and_import() {
+  let _serial = TEST_SERVER.lock().await;
+  let root = tempfile::tempdir().unwrap();
+  fixture(root.path());
+  let server = Server::start(root.path()).await;
+  let (status, body) = server
+    .request(
+      "GET",
+      "/resources/modrinth/shader-projects/HVnmMxH1/versions?gameVersion=1.21.1",
+      b"",
+      true,
+      ORIGIN,
+      None,
+    )
+    .await;
+  assert_eq!(status, 200, "{body}");
+  let versions: Value = serde_json::from_str(&body).unwrap();
+  let version = versions["items"][0]["id"].as_str().unwrap();
+  let request = json!({"project": "HVnmMxH1", "version": version, "revision": 0}).to_string();
+  let (status, body) = server
+    .request_json(
+      "POST",
+      "/clients/test/shader-plans",
+      request.as_bytes(),
+      true,
+      ORIGIN,
+    )
+    .await;
+  assert_eq!(status, 200, "{body}");
+  let plan: Value = serde_json::from_str(&body).unwrap();
+  let plan_id = plan["planId"].as_u64().unwrap();
+  let (status, body) = server
+    .request(
+      "POST",
+      &format!("/clients/test/resource-plans/{plan_id}/install"),
+      b"",
+      true,
+      ORIGIN,
+      None,
+    )
+    .await;
+  assert_eq!(status, 202, "{body}");
+  let operation: Value = serde_json::from_str(&body).unwrap();
+  assert_eq!(operation["kind"], "shader");
+  let mut final_state = None;
+  for _ in 0..120 {
+    let (status, body) = server
+      .request("GET", "/resource-operations", b"", true, ORIGIN, None)
+      .await;
+    assert_eq!(status, 200, "{body}");
+    let operations: Value = serde_json::from_str(&body).unwrap();
+    let current = operations
+      .as_array()
+      .unwrap()
+      .iter()
+      .find(|value| value["id"].as_u64() == Some(plan_id));
+    if let Some(current) = current {
+      let state = current["state"].as_str().unwrap();
+      if state != "running" {
+        final_state = Some(current.clone());
+        break;
+      }
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+  }
+  let final_state = final_state.expect("shader operation did not finish");
+  assert_eq!(final_state["state"], "completed", "{final_state}");
+  let (status, body) = server
+    .request("GET", "/clients/test/shader-packs", b"", true, ORIGIN, None)
+    .await;
+  assert_eq!(status, 200, "{body}");
+  let packs: Value = serde_json::from_str(&body).unwrap();
+  assert_eq!(packs["packs"].as_array().unwrap().len(), 1);
+  assert_eq!(packs["revision"], 1);
+  server.shutdown().await;
 }

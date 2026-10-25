@@ -4,7 +4,8 @@
 	import ModProjectIcon from '../mods/mod-project-icon.svelte';
 	import { formatBytes } from '../../download-progress';
 	import { formatModDownloads, formatModUpdated } from '../../mod-project-stats';
-	import { downloadShaderPack, getShaderProject, listClientShaderPacks, listShaderVersions, searchShaderProjects, type ModProjectSummary, type ModrinthFile } from '../../runtime';
+	import { createShaderInstallPlan, getShaderProject, listClientShaderPacks, listShaderVersions, searchShaderProjects, type ModProjectSummary, type ModrinthFile, type ShaderInstallPlan } from '../../runtime';
+	import { getResourceInstallState } from '../../resource-install-state.svelte.js';
 
 	let {
 		name,
@@ -18,7 +19,9 @@
 	let query = $state('');
 	let searching = $state(false);
 	let loadingVersions = $state(false);
-	let installing = $state<string | null>(null);
+	let planning = $state(false);
+	let plan = $state<ShaderInstallPlan | null>(null);
+	let handled = $state<number | null>(null);
 	let loadingRevision = $state(true);
 	let revision = $state<number | null>(null);
 	let error = $state<string | null>(null);
@@ -29,11 +32,18 @@
 	let versions = $state<ModrinthFile[]>([]);
 	let pending = $state<ModrinthFile | null>(null);
 	let request: AbortController | null = null;
+	const resources = getResourceInstallState();
+	const operation = $derived(plan && resources.operation?.id === plan.planId ? resources.operation : null);
+	const busy = $derived(planning || resources.starting || resources.active);
+	const percent = $derived(operation && operation.progress.totalBytes > 0 ? Math.min(100, Math.round(operation.progress.receivedBytes / operation.progress.totalBytes * 100)) : null);
 	const button = 'inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs text-muted-foreground hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40';
 
 	function abort() {
 		request?.abort();
 		request = null;
+		searching = false;
+		loadingVersions = false;
+		planning = false;
 	}
 	function begin() {
 		abort();
@@ -58,6 +68,7 @@
 		const controller = begin();
 		searching = true;
 		pending = null;
+		plan = null;
 		error = null;
 		message = null;
 		try {
@@ -76,6 +87,7 @@
 		selected = project;
 		versions = [];
 		pending = null;
+		plan = null;
 		loadingVersions = true;
 		error = null;
 		message = null;
@@ -98,36 +110,68 @@
 		selected = null;
 		versions = [];
 		pending = null;
+		plan = null;
 		error = null;
 		message = null;
 	}
 	function releaseLabel(type: number) {
 		return type === 1 ? 'Release' : type === 2 ? 'Beta' : 'Alpha';
 	}
-	function choose(file: ModrinthFile) {
-		if (installing) return;
+	async function choose(file: ModrinthFile) {
+		if (!selected || revision === null || planning || busy) return;
+		const controller = begin();
 		pending = file;
-		error = null;
-		message = null;
-	}
-	async function install() {
-		const file = pending;
-		if (!selected || !file || revision === null || installing) return;
-		installing = file.id;
+		plan = null;
+		handled = null;
+		planning = true;
 		error = null;
 		message = null;
 		try {
-			await downloadShaderPack(name, String(selected.id), file.id, revision, AbortSignal.timeout(120_000));
-			pending = null;
-			message = '已添加到此实例，可在游戏内选择光影。';
-			await loadRevision();
-			onImported?.();
+			const value = await createShaderInstallPlan(name, String(selected.id), file.id, revision, AbortSignal.any([controller.signal, AbortSignal.timeout(20_000)]));
+			if (request !== controller || controller.signal.aborted) return;
+			plan = value;
 		} catch (reason) {
-			error = reason instanceof Error ? reason.message : '下载未确认，请刷新后重试。';
+			if (request === controller && !controller.signal.aborted) error = reason instanceof Error ? reason.message : '无法生成下载计划。';
 		} finally {
-			installing = null;
+			if (request === controller) { request = null; planning = false; }
 		}
 	}
+	async function install() {
+		if (!plan || !resources.canSubmit(plan.planId)) return;
+		error = null;
+		message = null;
+		if (!(await resources.start(name, plan.planId))) error = resources.error;
+	}
+	async function cancelOperation() {
+		await resources.cancel();
+		if (resources.error) error = resources.error;
+	}
+	function resetPending() {
+		abort();
+		pending = null;
+		plan = null;
+		error = null;
+		message = null;
+	}
+	function downloads() {
+		document.querySelector<HTMLButtonElement>('[data-download-tasks-trigger]')?.click();
+	}
+	$effect(() => {
+		const value = operation;
+		if (!value || !plan || handled === value.id) return;
+		if (value.state === 'completed') {
+			handled = value.id;
+			message = '光影已添加到此实例，可在游戏内选择。';
+			pending = null;
+			plan = null;
+			void loadRevision();
+			onImported?.();
+		} else if (value.state === 'failed' || value.state === 'cancelled') {
+			handled = value.id;
+			error = value.error ?? (value.state === 'cancelled' ? '下载已取消。' : '下载失败，请重新生成计划。');
+			plan = null;
+		}
+	});
 	onMount(() => { void (async () => { await loadRevision(); await search(0); })(); });
 </script>
 
@@ -166,7 +210,7 @@
 			{:else}
 				<div class="mt-3 space-y-0.5" aria-label="选择兼容版本">
 					{#each versions as file (file.id)}
-						<button type="button" aria-pressed={pending?.id === file.id} disabled={installing !== null} onclick={() => choose(file)} class={`flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring disabled:opacity-40 ${pending?.id === file.id ? 'bg-chrome-selected' : 'hover:bg-chrome-hover'}`}>
+						<button type="button" aria-pressed={pending?.id === file.id} disabled={planning || resources.starting || resources.active} onclick={() => void choose(file)} class={`flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring disabled:opacity-40 ${pending?.id === file.id ? 'bg-chrome-selected' : 'hover:bg-chrome-hover'}`}>
 							<span class="min-w-0 flex-1"><span class="block truncate text-xs font-medium" title={file.displayName}>{file.displayName}</span><span class="mt-1 block truncate text-[11px] text-muted-foreground" title={file.fileName}>{file.fileDate.slice(0, 10)} · {releaseLabel(file.releaseType)} · {formatBytes(file.fileLength)}</span></span>
 							{#if pending?.id === file.id}<Check size={14} class="shrink-0 text-primary" aria-hidden="true" />{/if}
 						</button>
@@ -180,19 +224,34 @@
 		<section aria-label="确认光影下载" class="mt-3 shrink-0 rounded-lg bg-card px-3 py-2.5">
 			<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
 				<div class="min-w-0 flex-1 text-xs">
-					{#if installing}
-						<p role="status" class="flex items-center gap-2 text-muted-foreground"><LoaderCircle size={13} class="animate-spin motion-reduce:animate-none" aria-hidden="true" />正在下载并导入 {pending.displayName}…</p>
+					{#if planning}
+						<p role="status" class="flex items-center gap-2 text-muted-foreground"><LoaderCircle size={13} class="animate-spin motion-reduce:animate-none" aria-hidden="true" />正在生成下载计划…</p>
+					{:else if operation?.state === 'running'}
+						<p role="status" class="flex items-center gap-2 text-muted-foreground">{#if operation.cancelRequested}正在取消…{:else if operation.progress.stage === 'publishing'}正在应用光影…{:else if operation.progress.stage === 'downloading'}正在下载并校验光影{percent !== null ? ` ${percent}%` : ''}…{:else}正在准备光影文件…{/if}</p>
+						<div class="mt-1.5 h-1 overflow-hidden rounded-full bg-chrome-hover"><div class="h-full rounded-full bg-primary transition-[width] duration-300" style:width={`${percent ?? 0}%`}></div></div>
+					{:else if error}
+						<p role="alert" class="break-words text-destructive">{error}</p>
+					{:else if plan}
+						<p class="truncate" title={`${plan.projectName} · ${plan.versionName} · ${formatBytes(plan.fileSize)}`}><span class="text-muted-foreground">安装到</span> {name} <span class="text-muted-foreground">· {plan.projectName} · {plan.versionName} · {formatBytes(plan.fileSize)}</span></p>
+						{#if resources.active || resources.starting}<p class="mt-0.5 text-[10px] text-muted-foreground">等待其他资源任务完成后再提交。</p>{/if}
 					{:else}
-						<p class="truncate" title={`${pending.displayName} · ${formatBytes(pending.fileLength)}`}><span class="text-muted-foreground">安装到</span> {name} <span class="text-muted-foreground">· {pending.displayName} · {formatBytes(pending.fileLength)}</span></p>
+						<p class="truncate text-muted-foreground">已选择 {pending.displayName}，正在准备确认信息…</p>
 					{/if}
 				</div>
-				{#if installing}
-					<span class="text-[10px] text-muted-foreground">下载完成后自动导入</span>
-				{:else}
-					<button type="button" class={button} onclick={() => { pending = null; }}>取消</button>
-					<button type="button" disabled={revision === null} onclick={() => void install()} class="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40"><Download size={13} aria-hidden="true" />确认下载并导入</button>
+				{#if planning}
+					<span class="text-[10px] text-muted-foreground">请稍候</span>
+				{:else if operation?.state === 'running'}
+					<button type="button" class={button} onclick={downloads}>查看任务</button>
+					<button type="button" class={button} disabled={resources.cancelling || operation.cancelRequested} onclick={() => void cancelOperation()}>{resources.cancelling || operation.cancelRequested ? '取消中…' : '取消'}</button>
+				{:else if error}
+					<button type="button" class={button} onclick={resetPending}>取消</button>
+					<button type="button" class={button} disabled={!pending || revision === null} onclick={() => pending && void choose(pending)}><RefreshCw size={13} aria-hidden="true" />重新生成计划</button>
+				{:else if plan}
+					<button type="button" class={button} onclick={resetPending}>取消</button>
+					<button type="button" disabled={!resources.canSubmit(plan.planId)} onclick={() => void install()} class="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40">{#if resources.starting}<LoaderCircle size={13} class="animate-spin motion-reduce:animate-none" aria-hidden="true" />提交中…{:else}<Download size={13} aria-hidden="true" />确认下载并导入{/if}</button>
 				{/if}
 			</div>
 		</section>
 	{/if}
+
 </div>

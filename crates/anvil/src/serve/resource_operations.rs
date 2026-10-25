@@ -4,7 +4,7 @@ use anvil_core::{
   CancellationToken, Context,
   resources::{
     ModrinthInstallPlan, ResourceInstallPlan, ResourceInstallProgress, ResourceInstallStage,
-    ResourceManager,
+    ResourceManager, ShaderInstallPlan,
   },
 };
 use axum::{
@@ -29,12 +29,20 @@ const TTL: Duration = Duration::from_secs(600);
 pub(super) enum InstallPlan {
   CurseForge(ResourceInstallPlan),
   Modrinth(ModrinthInstallPlan),
+  Shader(ShaderInstallPlan),
 }
 impl InstallPlan {
   fn name(&self) -> &str {
     match self {
       Self::CurseForge(p) => p.name(),
       Self::Modrinth(p) => p.name(),
+      Self::Shader(p) => &p.name,
+    }
+  }
+  fn kind(&self) -> Kind {
+    match self {
+      Self::Shader(_) => Kind::Shader,
+      _ => Kind::Mod,
     }
   }
   fn progress(&self) -> ResourceInstallProgress {
@@ -46,6 +54,14 @@ impl InstallPlan {
         total_files: p.files().len(),
         downloaded_bytes: 0,
         total_bytes: p.total_bytes(),
+        received_bytes: 0,
+      },
+      Self::Shader(p) => ResourceInstallProgress {
+        stage: ResourceInstallStage::Preparing,
+        completed_files: 0,
+        total_files: 1,
+        downloaded_bytes: 0,
+        total_bytes: p.file_size,
         received_bytes: 0,
       },
     }
@@ -62,6 +78,12 @@ struct Operation {
 }
 #[derive(Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
+pub(super) enum Kind {
+  Mod,
+  Shader,
+}
+#[derive(Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub(super) enum Status {
   Running,
   Completed,
@@ -73,6 +95,7 @@ pub(super) enum Status {
 pub(super) struct Snapshot {
   pub id: u64,
   pub name: String,
+  pub kind: Kind,
   pub state: Status,
   pub cancel_requested: bool,
   pub progress: ResourceInstallProgress,
@@ -153,7 +176,7 @@ impl ResourceOperations {
     {
       return Err(ApiError::new(
         StatusCode::CONFLICT,
-        "已有模组安装任务，请先等待完成或取消。",
+        "已有资源安装任务，请先等待完成或取消。",
       ));
     }
     let saved = inner
@@ -166,6 +189,7 @@ impl ResourceOperations {
     let initial = Snapshot {
       id,
       name: plan.name().into(),
+      kind: plan.kind(),
       state: Status::Running,
       cancel_requested: false,
       progress: progress.clone(),
@@ -200,6 +224,7 @@ impl ResourceOperations {
         match plan {
           InstallPlan::CurseForge(p) => manager.install_curseforge(p, cancel, progress_tx).await,
           InstallPlan::Modrinth(p) => manager.install_modrinth(p, cancel, progress_tx).await,
+          InstallPlan::Shader(p) => manager.install_shader(p, cancel, progress_tx).await,
         }
       })
       .await
