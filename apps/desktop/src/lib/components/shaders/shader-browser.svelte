@@ -1,11 +1,13 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import { Check, ChevronLeft, Download, LoaderCircle, RefreshCw, Search } from '@lucide/svelte';
+	import { onMount, untrack } from 'svelte';
+	import { Check, Download, LoaderCircle, RefreshCw, Search } from '@lucide/svelte';
 	import ModProjectIcon from '../mods/mod-project-icon.svelte';
 	import { formatBytes } from '../../download-progress';
 	import { formatModDownloads, formatModUpdated } from '../../mod-project-stats';
 	import { createShaderInstallPlan, getShaderProject, listClientShaderPacks, listShaderVersions, searchShaderProjects, type ModProjectSummary, type ModrinthFile, type ShaderInstallPlan } from '../../runtime';
 	import { getResourceInstallState } from '../../resource-install-state.svelte.js';
+	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 
 	let {
 		name,
@@ -36,6 +38,7 @@
 	const operation = $derived(plan && resources.operation?.id === plan.planId ? resources.operation : null);
 	const busy = $derived(planning || resources.starting || resources.active);
 	const percent = $derived(operation && operation.progress.totalBytes > 0 ? Math.min(100, Math.round(operation.progress.receivedBytes / operation.progress.totalBytes * 100)) : null);
+	const projectId = $derived(page.url.searchParams.get('project'));
 	const button = 'inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs text-muted-foreground hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40';
 
 	function abort() {
@@ -82,9 +85,15 @@
 			if (request === controller) { request = null; searching = false; }
 		}
 	}
-	async function select(project: ModProjectSummary) {
+	async function openProject(project: ModProjectSummary) {
+		if (busy) return;
+		const next = new URL(page.url.href);
+		next.searchParams.set('project', String(project.id));
+		await goto(`${next.pathname}${next.search}`, { reset: false });
+	}
+	async function loadProject(id: string) {
 		const controller = begin();
-		selected = project;
+		selected = projects.find((project) => String(project.id) === id) ?? selected;
 		versions = [];
 		pending = null;
 		plan = null;
@@ -92,28 +101,35 @@
 		error = null;
 		message = null;
 		try {
-			const [details, page] = await Promise.all([
-				getShaderProject(String(project.id), AbortSignal.any([controller.signal, AbortSignal.timeout(20_000)])),
-				listShaderVersions(String(project.id), gameVersion, AbortSignal.any([controller.signal, AbortSignal.timeout(20_000)])),
+			const [details, value] = await Promise.all([
+				getShaderProject(id, AbortSignal.any([controller.signal, AbortSignal.timeout(20_000)])),
+				listShaderVersions(id, gameVersion, AbortSignal.any([controller.signal, AbortSignal.timeout(20_000)])),
 			]);
 			if (request !== controller || controller.signal.aborted) return;
 			selected = details.project;
-			versions = page.items;
+			versions = value.items;
 		} catch (reason) {
 			if (request === controller && !controller.signal.aborted) error = reason instanceof Error ? reason.message : '无法读取光影版本。';
 		} finally {
 			if (request === controller) { request = null; loadingVersions = false; }
 		}
 	}
-	function back() {
-		abort();
-		selected = null;
-		versions = [];
-		pending = null;
-		plan = null;
-		error = null;
-		message = null;
-	}
+	$effect(() => {
+		const id = projectId;
+		untrack(() => {
+			if (!id) {
+				abort();
+				selected = null;
+				versions = [];
+				pending = null;
+				plan = null;
+				error = null;
+				message = null;
+				return;
+			}
+			void loadProject(id);
+		});
+	});
 	function releaseLabel(type: number) {
 		return type === 1 ? 'Release' : type === 2 ? 'Beta' : 'Alpha';
 	}
@@ -192,13 +208,12 @@
 			{:else}
 				<ul class="divide-y divide-border/70 rounded-lg bg-card px-3" aria-label="光影项目">
 					{#each projects as project (project.id)}
-						<li><button type="button" onclick={() => void select(project)} class="flex w-full items-center gap-3 py-2.5 text-left focus-visible:outline-2 focus-visible:outline-ring"><ModProjectIcon {project} source="modrinth" /><span class="min-w-0 flex-1"><span class="block truncate text-[13px] font-medium" title={project.name}>{project.name}</span><span class="mt-0.5 line-clamp-1 text-[11px] text-muted-foreground" title={project.summary}>{project.summary}</span></span><span class="shrink-0 text-right text-[10px] leading-4 text-muted-foreground">{formatModDownloads(project.downloadCount) ?? ''}<br />{formatModUpdated(project.updatedAt ?? project.dateModified) ?? ''}</span></button></li>
+						<li><button type="button" onclick={() => void openProject(project)} class="flex w-full items-center gap-3 py-2.5 text-left focus-visible:outline-2 focus-visible:outline-ring"><ModProjectIcon {project} source="modrinth" /><span class="min-w-0 flex-1"><span class="block truncate text-[13px] font-medium" title={project.name}>{project.name}</span><span class="mt-0.5 line-clamp-1 text-[11px] text-muted-foreground" title={project.summary}>{project.summary}</span></span><span class="shrink-0 text-right text-[10px] leading-4 text-muted-foreground">{formatModDownloads(project.downloadCount) ?? ''}<br />{formatModUpdated(project.updatedAt ?? project.dateModified) ?? ''}</span></button></li>
 					{/each}
 				</ul>
 				{#if nextIndex !== null}<button type="button" disabled={searching} class="mt-2 flex w-full items-center justify-center gap-1 rounded-lg py-2 text-xs text-muted-foreground hover:bg-chrome-hover disabled:opacity-40" onclick={() => void search(nextIndex!)}>{#if searching}<LoaderCircle size={13} class="animate-spin motion-reduce:animate-none" aria-hidden="true" />加载中…{:else}加载更多{/if}</button>{/if}
 			{/if}
 		{:else}
-			<button type="button" class={button} onclick={back}><ChevronLeft size={13} aria-hidden="true" />返回结果</button>
 			<div class="mt-2 flex items-start gap-3 rounded-lg bg-card px-3 py-2.5">
 				<ModProjectIcon project={selected} source="modrinth" large />
 				<div class="min-w-0 flex-1"><h2 class="break-words text-[13px] font-medium">{selected.name}</h2><p class="mt-1 line-clamp-2 text-[11px] leading-4 text-muted-foreground">{selected.summary}</p></div>
@@ -216,7 +231,7 @@
 						</button>
 					{/each}
 				</div>
-				<button type="button" class="mt-2 flex w-full items-center justify-center gap-1 rounded-lg py-2 text-xs text-muted-foreground hover:bg-chrome-hover disabled:opacity-40" disabled={loadingVersions} onclick={() => { if (selected) void select(selected); }}><RefreshCw size={12} aria-hidden="true" />刷新版本</button>
+				<button type="button" class="mt-2 flex w-full items-center justify-center gap-1 rounded-lg py-2 text-xs text-muted-foreground hover:bg-chrome-hover disabled:opacity-40" disabled={loadingVersions} onclick={() => { if (projectId) void loadProject(projectId); }}><RefreshCw size={12} aria-hidden="true" />刷新版本</button>
 			{/if}
 		{/if}
 	</div>
