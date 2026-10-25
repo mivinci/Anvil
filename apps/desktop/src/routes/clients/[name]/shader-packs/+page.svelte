@@ -2,7 +2,7 @@
 	import { untrack } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
-	import { Sparkles, FileArchive, LoaderCircle, Plus, RefreshCw, Search, Trash2, X } from '@lucide/svelte';
+	import { Sparkles, FileArchive, LoaderCircle, Plus, RefreshCw, Search, Trash2, X, CircleCheck, TriangleAlert } from '@lucide/svelte';
 	import { ClientShaderPackState } from '#lib/client-shader-pack-state.svelte.js';
 	import { localPackSize } from '#lib/local-pack.js';
 	import { shaderEnvironmentLabels } from '#lib/shader-packs.js';
@@ -63,7 +63,7 @@
 	<p class="mt-2 text-[11px] leading-5 text-muted-foreground">支持本地光影 ZIP，最大 64 MiB。添加后在游戏内选择和调整效果；需要对应的光影加载支持。</p>
 	<aside aria-labelledby="shader-environment-title" class="mt-3 rounded-lg bg-card px-3 py-2.5">
 		<div class="flex flex-wrap items-center justify-between gap-2">
-			<h2 id="shader-environment-title" class="text-xs font-medium">{packs.environment ? shaderEnvironmentLabels[packs.environment.status] : packs.busy ? '正在读取光影环境…' : '光影环境尚未确认'}</h2>
+			<h2 id="shader-environment-title" class="flex items-center gap-1.5 text-xs font-medium">{packs.environment ? shaderEnvironmentLabels[packs.environment.status] : packs.busy ? '正在读取光影环境…' : '光影环境尚未确认'}{#if packs.environment?.status === 'ready'}<CircleCheck size={14} class="shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />{:else if packs.environment}<TriangleAlert size={14} class="shrink-0 text-amber-600 dark:text-amber-400" aria-hidden="true" />{/if}</h2>
 			{#if packs.environment?.status === 'requires_fabric'}<a href={resolve('/clients')} class="rounded text-[11px] text-primary underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-ring">前往客户端</a>
 			{:else if packs.environment?.status === 'missing_iris'}<button type="button" disabled={packs.busy || packs.blocked || running || installing || resources.starting} onclick={() => installerOpen = !installerOpen} class="rounded text-[11px] text-primary underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40">{installerOpen ? '收起安装' : '安装光影支持'}</button>
 			{:else if packs.environment}<a href={modsHref} class="rounded text-[11px] text-primary underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-ring">管理模组</a>{/if}
