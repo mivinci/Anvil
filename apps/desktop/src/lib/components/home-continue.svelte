@@ -36,7 +36,7 @@
 				{/if}
 				<div class="mt-4"><ClientLaunchControls client={featured} large /></div>
 			</div>
-			<div class="hidden h-28 w-56 shrink-0 self-center text-primary min-[560px]:block" aria-hidden="true"><ClientArtwork id={featured.id} /></div>
+			<div class="hidden h-24 w-44 shrink-0 self-center text-primary min-[1200px]:block" aria-hidden="true"><ClientArtwork id={featured.id} /></div>
 		</div>
 	{:else if library.error}
 		<div class="flex flex-1 flex-col items-start justify-center gap-2" role="alert">

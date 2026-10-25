@@ -4,14 +4,14 @@
 	import { getMinecraftNews, type MinecraftNewsItem } from '../runtime';
 	import { shell } from '../shell';
 
-	let { class: className = '' }: { class?: string } = $props();
+	let { class: className = '', maxItems = 8 }: { class?: string; maxItems?: number } = $props();
 	let news = $state<MinecraftNewsItem[]>([]);
 	let loading = $state(true);
 	let refreshing = $state(false);
 	let stale = $state(false);
 	let error = $state<string | null>(null);
 	const javaNews = $derived(news.filter((item) => item.categories.some((category) => /java/i.test(category))));
-	const visibleNews = $derived((javaNews.length ? javaNews : news).slice(0, 8));
+	const visibleNews = $derived((javaNews.length ? javaNews : news).slice(0, Math.max(1, Math.min(8, Math.trunc(maxItems) || 8))));
 	const usingGeneralNews = $derived(javaNews.length === 0 && news.length > 0);
 
 	onMount(() => { void loadNews(); });
@@ -64,8 +64,8 @@
 			<div class="flex min-h-24 items-center justify-center text-muted-foreground" role="status"><LoaderCircle size={16} class="animate-spin" aria-hidden="true" /></div>
 		{:else if visibleNews.length > 0}
 			<ul class="divide-y divide-border/70">
-				{#each visibleNews as item, index (item.url)}
-					<li class={index > 2 ? 'hidden min-[1200px]:block' : ''}>
+				{#each visibleNews as item (item.url)}
+					<li>
 						<button type="button" class="group block w-full py-2.5 text-left" onclick={() => void openArticle(item)}>
 							<span class="line-clamp-2 text-xs font-medium leading-5 text-foreground transition-colors group-hover:text-primary">{item.title}</span>
 							<span class="mt-1 flex items-center justify-between gap-2 text-[10px] text-muted-foreground"><span>{dateLabel(item.publishedAt)}</span><ArrowUpRight size={12} class="shrink-0 transition-colors group-hover:text-primary" aria-hidden="true" /></span>
