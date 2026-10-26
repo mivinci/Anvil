@@ -27,11 +27,24 @@ def gh(*args):
 def release(tag):
     path = f'repos/{os.environ["GITHUB_REPOSITORY"]}/releases/tags/{quote(tag, safe="")}'
     result = subprocess.run(['gh', 'api', path], capture_output=True, text=True, timeout=60)
-    if result.returncode:
-        if '(HTTP 404)' in result.stderr:
-            return None
+    if result.returncode == 0:
+        return json.loads(result.stdout)
+    if '(HTTP 404)' not in result.stderr:
         raise RuntimeError(f'Cannot inspect release: {result.stderr.strip()}')
-    return json.loads(result.stdout)
+    # The tag endpoint can return 404 for a draft. The authenticated list
+    # includes drafts; paginate so an older pending release is not missed.
+    repository = os.environ['GITHUB_REPOSITORY']
+    page = 1
+    while True:
+        entries = json.loads(gh('api', f'repos/{repository}/releases?per_page=100&page={page}'))
+        matches = [entry for entry in entries if entry['tag_name'] == tag]
+        if len(matches) > 1:
+            raise ValueError(f'Ambiguous release identity: {tag}')
+        if matches:
+            return matches[0]
+        if len(entries) < 100:
+            return None
+        page += 1
 
 
 def digest(path):
@@ -258,7 +271,9 @@ def main():
                    '--title', f'Anvil {args.product} v{version}')
             # Drafts may be repaired; unexpected old draft assets are removed explicitly.
             info = release(tag)
-            if not info or not info['draft']:
+            if not info:
+                raise ValueError('Cannot locate created draft; refusing to upload assets')
+            if not info['draft']:
                 raise ValueError('Release became public; refusing to replace assets')
             for asset in info['assets']:
                 if asset['name'] not in names:
