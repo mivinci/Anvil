@@ -1,0 +1,129 @@
+name: Recover Desktop release
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Original approved Desktop release run ID
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-release
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      deployments: read
+    outputs:
+      sha: ${{ steps.identity.outputs.sha }}
+      tag: ${{ steps.identity.outputs.tag }}
+      run_id: ${{ steps.identity.outputs.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate original approved build identity
+        id: identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ORIGINAL_RUN_ID: ${{ inputs.run_id }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+          sys.path.insert(0, '.github/scripts')
+          from release import github_context, approval_policy, command, version_key, write_outputs, summary
+          from sign_runtime_index import TARGETS
+          repo, _ = github_context()
+          approval_policy(repo, 'anvil-release')
+          run_id = os.environ['ORIGINAL_RUN_ID']
+          if not run_id.isascii() or not run_id.isdecimal():
+              raise SystemExit('Invalid original run ID')
+          run = json.loads(command('gh', 'api', f'repos/{repo}/actions/runs/{run_id}'))
+          if (run['path'] != '.github/workflows/desktop-release.yml'
+                  or run['event'] != 'workflow_dispatch' or run['head_branch'] != 'main'
+                  or run['status'] != 'completed'):
+              raise SystemExit('Recovery requires a completed manual Desktop release on main')
+          sha = run['head_sha']
+          command('git', 'merge-base', '--is-ancestor', sha, 'origin/main')
+          config = json.loads(command('git', 'show', f'{sha}:apps/shell/src-tauri/tauri.conf.json'))
+          version = config['version']
+          version_key(version, requested=True)
+          tag = f'desktop/v{version}'
+          if command('git', 'rev-parse', f'{tag}^{{commit}}') != sha:
+              raise SystemExit('Original tag does not match build SHA')
+          pages = json.loads(command('gh', 'api', '--paginate', '--slurp',
+                                     f'repos/{repo}/actions/runs/{run_id}/jobs?per_page=100'))
+          jobs = [job for page in pages for job in page['jobs']]
+          required = [f'Approve and tag {tag}'] + [f'Build and publish approved Desktop release / Build {target}' for target in TARGETS]
+          if any(not any(job['name'] == name and job['conclusion'] == 'success' for job in jobs) for name in required):
+              raise SystemExit('Original approval and every target build must have succeeded')
+          ci = json.loads(command('gh', 'api', f'repos/{repo}/actions/workflows/rust.yml/runs?head_sha={sha}&per_page=100'))
+          trusted = [entry for entry in ci['workflow_runs'] if entry['head_sha'] == sha and entry['head_branch'] == 'main' and entry['event'] in ('push', 'workflow_dispatch')]
+          latest = max(trusted, key=lambda entry: entry['id']) if trusted else None
+          if not latest or latest['status'] != 'completed' or latest['conclusion'] != 'success':
+              raise SystemExit('Original SHA requires successful latest main CI')
+          write_outputs(sha=sha, tag=tag, run_id=run_id)
+          summary(f'## Recover {tag}\nOriginal SHA: `{sha}`\nBuild: {run["html_url"]}\nRecovery script: current workflow commit.\nFeeds: desktop-updates-stable, shell-updates-stable.\nNo rebuild or tag movement.\n')
+          PY
+
+  recover:
+    name: Approve recovery and reconcile release
+    needs: validate
+    environment: anvil-release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+      RELEASE_SHA: ${{ needs.validate.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: recovery-tools
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
+          path: release-source
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Use reviewed recovery script with original source contract
+        run: cp recovery-tools/.github/scripts/publish_release.py release-source/.github/scripts/publish_release.py
+      - name: Inspect public or draft release
+        id: inspect
+        working-directory: release-source
+        run: python3 .github/scripts/publish_release.py inspect --product desktop
+      - uses: actions/download-artifact@v4
+        if: steps.inspect.outputs.published != 'true'
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ needs.validate.outputs.run_id }}
+          pattern: desktop-*
+          merge-multiple: true
+          path: release-source/dist
+      - name: Install signing dependency
+        run: python3 -m pip install --disable-pip-version-check pynacl
+      - name: Recover original version assets and feeds
+        working-directory: release-source
+        env:
+          SIGNING_KEY: ${{ secrets.ANVIL_DESKTOP_TEST_UPDATE_SIGNING_KEY }}
+          UPDATE_PUBLIC_KEY: ${{ vars.ANVIL_DESKTOP_TEST_UPDATE_PUBLIC_KEY }}
+        run: python3 .github/scripts/publish_release.py publish --product desktop
