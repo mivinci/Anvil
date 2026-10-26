@@ -1,0 +1,201 @@
+name: Desktop release build
+
+on:
+  workflow_call:
+    inputs:
+      sha:
+        required: true
+        type: string
+      tag:
+        required: true
+        type: string
+    secrets:
+      desktop_update_signing_key:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    name: Inspect existing version release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      published: ${{ steps.inspect.outputs.published }}
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+      RELEASE_SHA: ${{ inputs.sha }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Inspect immutable version identity
+        id: inspect
+        run: python3 .github/scripts/publish_release.py inspect --product desktop
+
+  build:
+    needs: inspect
+    if: needs.inspect.outputs.published != 'true'
+    name: Build ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+          - os: macos-15
+            target: aarch64-apple-darwin
+          - os: windows-2022
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+      RELEASE_SHA: ${{ inputs.sha }}
+      ANVIL_UPDATE_MANIFEST_URL: https://github.com/${{ github.repository }}/releases/download/desktop-updates-stable/${{ matrix.target }}.json
+      ANVIL_RUNTIME_UPDATE_MANIFEST_URL: https://github.com/${{ github.repository }}/releases/download/runtime-updates/runtime-index.json
+      ANVIL_SHELL_UPDATE_MANIFEST_URL: https://github.com/${{ github.repository }}/releases/download/shell-updates-stable/${{ matrix.target }}.json
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha }}
+      - name: Verify fixed release checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_EVENT_NAME" = workflow_dispatch
+          test "$GITHUB_REF" = refs/heads/main
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Configure update public keys
+        env:
+          APP_PUBLIC_KEY: ${{ vars.ANVIL_DESKTOP_TEST_UPDATE_PUBLIC_KEY }}
+          RUNTIME_PUBLIC_KEY: ${{ vars.ANVIL_RUNTIME_UPDATE_PUBLIC_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$APP_PUBLIC_KEY" || { echo "ANVIL_DESKTOP_TEST_UPDATE_PUBLIC_KEY is required." >&2; exit 1; }
+          test -n "$RUNTIME_PUBLIC_KEY" || { echo "ANVIL_RUNTIME_UPDATE_PUBLIC_KEY is required." >&2; exit 1; }
+          printf 'ANVIL_UPDATE_PUBLIC_KEY=%s\nANVIL_RUNTIME_UPDATE_PUBLIC_KEY=%s\nANVIL_SHELL_UPDATE_PUBLIC_KEY=%s\n' \
+            "$APP_PUBLIC_KEY" "$RUNTIME_PUBLIC_KEY" "$APP_PUBLIC_KEY" >> "$GITHUB_ENV"
+      - name: Validate tag and update configuration
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          python .github/scripts/validate_desktop_release.py "$RELEASE_TAG"
+          python -c 'import os, sys; missing = [name for name in ("ANVIL_UPDATE_PUBLIC_KEY", "ANVIL_RUNTIME_UPDATE_PUBLIC_KEY", "ANVIL_SHELL_UPDATE_PUBLIC_KEY") if not os.environ.get(name)]; print("missing required public key variable(s): " + ", ".join(missing), file=sys.stderr) if missing else None; sys.exit(bool(missing))'
+        shell: bash
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes build-essential curl wget file libxdo-dev libssl-dev librsvg2-dev patchelf libwebkit2gtk-4.1-dev
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: desktop-release-${{ matrix.target }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.17.0
+          cache: npm
+      - name: Install frontend dependencies
+        run: npm ci
+      - name: Check Desktop frontend
+        run: npm run desktop:check
+      - name: Build Desktop installers
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#desktop/v}"
+          if [[ "$version" == *-* && "$RUNNER_OS" == "Windows" ]]; then
+            cd apps/shell
+            npx tauri build --bundles nsis
+          elif [[ "$version" == *-* && "$RUNNER_OS" == "Linux" ]]; then
+            cd apps/shell
+            npx tauri build --bundles deb
+          elif [[ "$RUNNER_OS" == "Windows" ]]; then
+            cd apps/shell
+            npx tauri build --bundles nsis,msi
+          elif [[ "$RUNNER_OS" == "Linux" ]]; then
+            cd apps/shell
+            npx tauri build --bundles deb,appimage
+          else
+            npm run desktop:build
+          fi
+      - name: Verify macOS App signature
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="target/release/bundle/macos/Anvil.app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign --display --verbose=4 "$app"
+      - name: Package update payload and collect installers
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        shell: pwsh
+        run: |
+          $version = $env:RELEASE_TAG -replace '^desktop/v', ''
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          python .github/scripts/package_desktop_app.py apps/desktop/baseline "dist/anvil-desktop-$version-${{ matrix.target }}.tar.gz"
+          python .github/scripts/collect_desktop_installers.py . dist $version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Verify public assets and reconcile feeds
+    needs: [inspect, build]
+    if: >-
+      ${{ always() && !cancelled() && needs.inspect.result == 'success' &&
+          (needs.build.result == 'success' ||
+           (needs.inspect.outputs.published == 'true' && needs.build.result == 'skipped')) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+      RELEASE_SHA: ${{ inputs.sha }}
+      GH_TOKEN: ${{ github.token }}
+      SIGNING_KEY: ${{ secrets.desktop_update_signing_key }}
+      UPDATE_PUBLIC_KEY: ${{ vars.ANVIL_DESKTOP_TEST_UPDATE_PUBLIC_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha }}
+      - name: Verify fixed release checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_EVENT_NAME" = workflow_dispatch
+          test "$GITHUB_REF" = refs/heads/main
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        if: needs.inspect.outputs.published != 'true'
+        with:
+          pattern: desktop-*
+          path: dist
+          merge-multiple: true
+      - name: Install signing dependency
+        run: python3 -m pip install --disable-pip-version-check pynacl
+      - name: Publish verified version and reconcile signed feeds
+        run: python3 .github/scripts/publish_release.py publish --product desktop

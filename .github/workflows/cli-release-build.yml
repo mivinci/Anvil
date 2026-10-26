@@ -1,0 +1,196 @@
+name: CLI release build
+
+on:
+  workflow_call:
+    inputs:
+      sha:
+        required: true
+        type: string
+      tag:
+        required: true
+        type: string
+    secrets:
+      runtime_signing_key:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    name: Inspect existing version release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      published: ${{ steps.inspect.outputs.published }}
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+      RELEASE_SHA: ${{ inputs.sha }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Inspect immutable version identity
+        id: inspect
+        run: python3 .github/scripts/publish_release.py inspect --product cli
+
+  build:
+    needs: inspect
+    if: needs.inspect.outputs.published != 'true'
+    name: Build ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+          - os: macos-15
+            target: aarch64-apple-darwin
+          - os: windows-2022
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+      RELEASE_SHA: ${{ inputs.sha }}
+      ANVIL_RUNTIME_UPDATE_MANIFEST_URL: https://github.com/${{ github.repository }}/releases/download/runtime-updates/runtime-index.json
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha }}
+      - name: Verify fixed release checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_EVENT_NAME" = workflow_dispatch
+          test "$GITHUB_REF" = refs/heads/main
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Configure Runtime update public key
+        env:
+          PUBLIC_KEY: ${{ vars.ANVIL_RUNTIME_UPDATE_PUBLIC_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$PUBLIC_KEY" || { echo "ANVIL_RUNTIME_UPDATE_PUBLIC_KEY is required." >&2; exit 1; }
+          printf 'ANVIL_RUNTIME_UPDATE_PUBLIC_KEY=%s\n' "$PUBLIC_KEY" >> "$GITHUB_ENV"
+      - name: Verify workspace and lock versions
+        shell: bash
+        run: |
+          python .github/scripts/release.py check --product cli
+          python - <<'PYCODE'
+          import os
+          import tomllib
+          from pathlib import Path
+          version = tomllib.loads(Path('Cargo.toml').read_text())['workspace']['package']['version']
+          if os.environ['RELEASE_TAG'] != f'cli/v{version}':
+              raise SystemExit('CLI tag does not match workspace version')
+          PYCODE
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.target }}
+      - name: Build CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$ANVIL_RUNTIME_UPDATE_PUBLIC_KEY"
+          cargo build --locked --release -p anvil --target ${{ matrix.target }}
+      - name: Verify binary version and Runtime API
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#cli/v}"
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            binary="target/${{ matrix.target }}/release/anvil.exe"
+          else
+            binary="target/${{ matrix.target }}/release/anvil"
+          fi
+          actual="$("$binary" --version)"
+          if [ "$actual" != "anvil $version" ]; then
+            echo "Binary reports '$actual', expected 'anvil $version'" >&2
+            exit 1
+          fi
+          python .github/scripts/validate_runtime_api.py "$binary"
+      - name: Package Unix archive
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#*/v}"
+          name="anvil-${version}-${{ matrix.target }}"
+          mkdir -p dist/staging
+          cp "target/${{ matrix.target }}/release/anvil" dist/staging/
+          cp LICENSE README.md dist/staging/
+          tar -czf "dist/${name}.tar.gz" -C dist/staging .
+          cp "target/${{ matrix.target }}/release/anvil" "dist/${name}"
+      - name: Package Windows archive
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = $env:RELEASE_TAG -replace '^cli/v', ''
+          $name = "anvil-$version-${{ matrix.target }}"
+          New-Item -ItemType Directory -Path dist/staging -Force | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/anvil.exe" dist/staging/
+          Copy-Item LICENSE dist/staging/
+          Copy-Item README.md dist/staging/
+          Compress-Archive -Path dist/staging/* -DestinationPath "dist/$name.zip"
+          Copy-Item "target/${{ matrix.target }}/release/anvil.exe" "dist/$name.exe"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: anvil-${{ matrix.target }}
+          path: dist/anvil-*
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Verify public assets and reconcile feeds
+    needs: [inspect, build]
+    if: >-
+      ${{ always() && !cancelled() && needs.inspect.result == 'success' &&
+          (needs.build.result == 'success' ||
+           (needs.inspect.outputs.published == 'true' && needs.build.result == 'skipped')) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+      RELEASE_SHA: ${{ inputs.sha }}
+      GH_TOKEN: ${{ github.token }}
+      SIGNING_KEY: ${{ secrets.runtime_signing_key }}
+      UPDATE_PUBLIC_KEY: ${{ vars.ANVIL_RUNTIME_UPDATE_PUBLIC_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha }}
+      - name: Verify fixed release checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_EVENT_NAME" = workflow_dispatch
+          test "$GITHUB_REF" = refs/heads/main
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        if: needs.inspect.outputs.published != 'true'
+        with:
+          pattern: anvil-*
+          path: dist
+          merge-multiple: true
+      - name: Install signing dependency
+        run: python3 -m pip install --disable-pip-version-check pynacl
+      - name: Publish verified version and reconcile signed feeds
+        run: python3 .github/scripts/publish_release.py publish --product cli
