@@ -4,7 +4,7 @@ default-members = ["crates/anvil", "crates/anvil-core"]
 resolver = "3"
 
 [workspace.package]
-version = "0.1.4"
+version = "26.0.0-alpha.1"
 edition = "2024"
 rust-version = "1.90"
 license = "MIT"
