@@ -4,6 +4,7 @@
 	import { DropdownMenu } from 'bits-ui';
 	import { Check, ChevronDown, Gamepad2, LogIn, LogOut, RefreshCw, UserRound } from '@lucide/svelte';
 	import AccountAvatar from './account-avatar.svelte';
+	import HomeQuickPlay from './home-quick-play.svelte';
 	import { getAccountState } from '../account-state.svelte.js';
 	import { getClientLibraryState } from '../client-library-state.svelte.js';
 	import { getClientLaunchState, launchActive } from '../client-launch-state.svelte.js';
@@ -16,8 +17,7 @@
 	const stats = new PlayStatsState();
 	const current = $derived(accounts.currentAccount);
 	const accountStats = $derived(playStatsAccount(stats.snapshot, current?.id));
-	const running = $derived(launches.operations.find((value) => launchActive(value)) ?? null);
-	let now = $state(Date.now());
+	const quickPlayHistory = $derived(stats.snapshot?.accounts[accounts.offlineMode ? 'offline' : current?.id ?? 'offline'] ?? null);
 	let hadActive = false;
 
 	const itemClass = 'flex min-h-8 cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-[12px] outline-none data-[highlighted]:bg-chrome-hover data-[disabled]:opacity-40';
@@ -39,20 +39,12 @@
 		: accountStats && accountStats.launches > 0 ? '不到 1 分钟' : '—');
 	const weekLabel = $derived(accountStats && accountStats.last7dMs > 0 ? formatPlayDuration(accountStats.last7dMs) : '—');
 	const launchesLabel = $derived(formatPlayCount(accountStats?.launches ?? 0));
-	const runningElapsed = $derived(running?.startedAt ? formatPlayDuration(now - running.startedAt) : null);
 	const loadingAccount = $derived(accounts.loading && !accounts.loaded);
 
 	onMount(() => {
 		void stats.refresh();
 		void library.refresh();
 		return () => stats.dispose();
-	});
-
-	$effect(() => {
-		if (!running) return;
-		now = Date.now();
-		const timer = setInterval(() => { now = Date.now(); }, 30_000);
-		return () => clearInterval(timer);
 	});
 
 	$effect(() => {
@@ -142,13 +134,7 @@
 		</div>
 	{/if}
 
-	{#if running}
-		<div class="mt-3 flex items-center gap-2 rounded-lg bg-primary/8 px-2.5 py-2 text-[11px]" role="status" aria-live="polite">
-			<span class="size-1.5 shrink-0 animate-pulse rounded-full bg-emerald-500 motion-reduce:animate-none" aria-hidden="true"></span>
-			<span class="min-w-0 flex-1 truncate">{running.name} · {running.offlineTest ? '离线测试' : '运行中'}{#if runningElapsed} · {runningElapsed}{/if}</span>
-			<a href={resolve('/clients/[name]/logs', { name: running.name.toLowerCase() })} class="shrink-0 text-primary hover:underline">日志</a>
-		</div>
-	{/if}
+	<HomeQuickPlay history={quickPlayHistory} historyLoading={stats.loading} useDeviceHistory={!current || accounts.offlineMode} />
 
 	<div class="mt-auto flex flex-wrap items-center gap-1.5 pt-3">
 		<a href={resolve('/clients')} class={actionClass}><Gamepad2 size={13} aria-hidden="true" />实例库</a>

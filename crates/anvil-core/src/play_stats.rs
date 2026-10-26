@@ -59,10 +59,30 @@ struct StoredSession {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct StoredAccount {
+  // Optional for schema-1 files written before lifetime totals were persisted.
+  #[serde(default)]
+  total_ms: Option<u64>,
+  #[serde(default)]
+  launches: Option<u64>,
   #[serde(default)]
   instances: BTreeMap<String, StoredInstance>,
   #[serde(default)]
   sessions: Vec<StoredSession>,
+}
+
+impl StoredAccount {
+  fn totals(&self) -> (u64, u64) {
+    let (time, launches) = self.instances.values().fold((0u64, 0u64), |totals, value| {
+      (
+        totals.0.saturating_add(value.total_ms),
+        totals.1.saturating_add(value.launches),
+      )
+    });
+    (
+      self.total_ms.unwrap_or(time).max(time),
+      self.launches.unwrap_or(launches).max(launches),
+    )
+  }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -171,6 +191,9 @@ impl PlayStatsStore {
     let mut inner = self.lock();
     let mut next = inner.clone();
     let account = next.accounts.entry(session.account_id).or_default();
+    let (time, launches) = account.totals();
+    account.total_ms = Some(time.saturating_add(counted_ms));
+    account.launches = Some(launches.saturating_add(1));
     let instance = account
       .instances
       .entry(session.instance_id.clone())
@@ -211,26 +234,14 @@ impl PlayStatsStore {
     Ok(())
   }
 
-  /// Drop an instance from every account after the instance itself was removed.
-  pub fn remove_instance(&self, instance_id: &str) -> Result<()> {
-    if !valid_instance(instance_id) {
-      return Err(Error::Invalid("invalid play statistics instance".into()));
+  /// Explicitly clear one account, including an account no longer signed in.
+  pub fn clear_account(&self, account_id: &str) -> Result<()> {
+    if !valid_account(account_id) {
+      return Err(Error::Invalid("invalid play statistics account".into()));
     }
     let mut inner = self.lock();
     let mut next = inner.clone();
-    let mut changed = false;
-    for account in next.accounts.values_mut() {
-      changed |= account.instances.remove(instance_id).is_some();
-      let before = account.sessions.len();
-      account
-        .sessions
-        .retain(|session| session.instance_id != instance_id);
-      changed |= before != account.sessions.len();
-    }
-    next
-      .accounts
-      .retain(|_, account| !account.instances.is_empty() || !account.sessions.is_empty());
-    if !changed {
+    if next.accounts.remove(account_id).is_none() {
       return Ok(());
     }
     Pruner.apply(&mut next);
@@ -252,13 +263,10 @@ impl PlayStatsStore {
 }
 
 fn account_stats(account: &StoredAccount, now: u64) -> AccountPlayStats {
-  let mut total_ms = 0u64;
-  let mut launches = 0u64;
+  let (total_ms, launches) = account.totals();
   let mut last_played_at = 0u64;
   let mut last_instance_id: Option<String> = None;
   for (id, instance) in &account.instances {
-    total_ms = total_ms.saturating_add(instance.total_ms);
-    launches = launches.saturating_add(instance.launches);
     let newer = instance.last_played_at > last_played_at
       || (instance.last_played_at == last_played_at
         && instance.last_played_at > 0
@@ -333,6 +341,9 @@ impl Pruner {
       account
         .instances
         .retain(|id, instance| valid_instance(id) && instance.launches > 0);
+      let (time, launches) = account.totals();
+      account.total_ms = Some(time);
+      account.launches = Some(launches);
       account.sessions.retain(|session| {
         valid_instance(&session.instance_id)
           && account.instances.contains_key(&session.instance_id)
@@ -609,8 +620,8 @@ mod tests {
   }
 
   #[test]
-  fn removes_an_instance_from_every_account() {
-    let (_root, store) = store();
+  fn clears_only_the_requested_account_and_preserves_other_history() {
+    let (root, store) = store();
     store
       .record(session("one", "survival", 1_000, 60_000))
       .unwrap();
@@ -620,15 +631,69 @@ mod tests {
     store
       .record(session("two", "creative", 3_000, 60_000))
       .unwrap();
-    store.remove_instance("survival").unwrap();
+    store
+      .record(session(OFFLINE_ACCOUNT, "survival", 4_000, 60_000))
+      .unwrap();
+    store.clear_account("one").unwrap();
     let snapshot = store.snapshot();
     assert!(!snapshot.accounts.contains_key("one"));
-    assert_eq!(snapshot.accounts["two"].total_ms, 60_000);
-    assert!(!snapshot.accounts["two"].instances.contains_key("survival"));
+    assert_eq!(snapshot.accounts["two"].total_ms, 120_000);
+    assert!(snapshot.accounts["two"].instances.contains_key("survival"));
+    assert_eq!(snapshot.accounts[OFFLINE_ACCOUNT].launches, 1);
     assert_eq!(
       snapshot.accounts["two"].last_instance_id.as_deref(),
       Some("creative")
     );
+    assert_eq!(PlayStatsStore::open(root.path()).snapshot(), snapshot);
+    assert!(store.clear_account("").is_err());
+    assert_eq!(store.snapshot(), snapshot);
+  }
+
+  #[test]
+  fn lifetime_totals_survive_instance_history_limits_and_reload() {
+    let (root, store) = store();
+    for index in 0..=MAX_INSTANCES_PER_ACCOUNT {
+      store
+        .record(session(
+          "account",
+          &format!("world-{index}"),
+          1_000 + index as u64,
+          60_000,
+        ))
+        .unwrap();
+    }
+    let snapshot = PlayStatsStore::open(root.path()).snapshot();
+    let account = &snapshot.accounts["account"];
+    assert_eq!(account.instances.len(), MAX_INSTANCES_PER_ACCOUNT);
+    assert_eq!(account.launches, MAX_INSTANCES_PER_ACCOUNT as u64 + 1);
+    assert_eq!(
+      account.total_ms,
+      (MAX_INSTANCES_PER_ACCOUNT as u64 + 1) * 60_000
+    );
+  }
+
+  #[test]
+  fn reads_legacy_totals_and_persists_them_on_the_next_record() {
+    let root = tempfile::tempdir().unwrap();
+    std::fs::write(
+      root.path().join(FILE_NAME),
+      serde_json::to_vec(&serde_json::json!({
+        "schemaVersion": 1,
+        "accounts": { "account": { "instances": {
+          "survival": { "totalMs": 60_000, "launches": 1, "lastPlayedAt": 61_000 }
+        }, "sessions": [] } }
+      }))
+      .unwrap(),
+    )
+    .unwrap();
+    let store = PlayStatsStore::open(root.path());
+    assert_eq!(store.snapshot().accounts["account"].total_ms, 60_000);
+    store
+      .record(session("account", "creative", 70_000, 60_000))
+      .unwrap();
+    let reloaded = PlayStatsStore::open(root.path()).snapshot();
+    assert_eq!(reloaded.accounts["account"].total_ms, 120_000);
+    assert_eq!(reloaded.accounts["account"].launches, 2);
   }
 
   #[test]

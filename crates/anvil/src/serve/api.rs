@@ -162,6 +162,10 @@ pub(super) async fn serve(
       "/play-stats",
       get(super::play_stats::snapshot).delete(super::play_stats::clear),
     )
+    .route(
+      "/play-stats/accounts/{account_id}",
+      axum::routing::delete(super::play_stats::clear_account),
+    )
     .route("/health", get(health))
     .route("/news", get(news_feed))
     .route("/client-launches", get(super::launches::list))
@@ -745,18 +749,6 @@ async fn delete_client(
     cleanup_pending = result.cleanup_pending,
     "Client instance removed"
   );
-  let stats = state.play_stats.clone();
-  let removed_id = result.id.clone();
-  match tokio::task::spawn_blocking(move || stats.remove_instance(&removed_id)).await {
-    Ok(Ok(())) => {}
-    Ok(Err(error)) => {
-      tracing::warn!(
-        error_code = error.code(),
-        "Play statistics could not be pruned"
-      );
-    }
-    Err(error) => tracing::warn!(%error, "Play statistics cleanup task failed"),
-  }
   Ok(Json(result))
 }
 

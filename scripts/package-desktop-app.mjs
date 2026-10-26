@@ -1,3 +1,4 @@
+import { signRuntime } from './lib/runtime-signing.mjs';
 import { spawnSync } from 'node:child_process';
 import { chmod, copyFile, lstat, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -44,6 +45,7 @@ await chmod(
 	path.join(baselineDirectory, manifest.sidecar_entry),
 	(await stat(sidecarPath)).mode
 );
+signRuntime(path.join(baselineDirectory, manifest.sidecar_entry), target);
 await writeFile(path.join(baselineDirectory, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
 
 console.log(`Packaged ${manifest.app_id} ${manifest.version} for ${target} at ${baselineDirectory}`);

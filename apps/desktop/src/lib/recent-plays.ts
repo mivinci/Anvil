@@ -1,5 +1,10 @@
 export interface RecentPlay { name: string; playedAt: number }
 const key = 'anvil.recent-plays';
+export function clearRecentPlays(): boolean {
+	try { localStorage.removeItem(key); return true; }
+	catch { return false; }
+}
+
 export function forgetRecentPlay(previous: RecentPlay[], name: string): RecentPlay[] {
 	const next = previous.filter(value => value.name !== name.toLowerCase());
 	try { localStorage.setItem(key, JSON.stringify(next)); } catch { /* Window history still updates. */ }

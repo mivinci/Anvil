@@ -10,6 +10,10 @@ on:
         required: true
         type: string
     secrets:
+      macos_certificate_p12:
+        required: false
+      macos_certificate_password:
+        required: false
       runtime_signing_key:
         required: true
 
@@ -100,12 +104,26 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: release-${{ matrix.target }}
+      - name: Import macOS Runtime signing certificate
+        if: runner.os == 'macOS'
+        env:
+          ANVIL_MACOS_CERTIFICATE_P12: ${{ secrets.macos_certificate_p12 }}
+          ANVIL_MACOS_CERTIFICATE_PASSWORD: ${{ secrets.macos_certificate_password }}
+          GITHUB_STATE_FILE: ${{ runner.temp }}/anvil-signing-state
+        run: python3 .github/scripts/macos_signing.py setup
+      - uses: actions/setup-node@v4
+        if: runner.os == 'macOS'
+        with:
+          node-version: 22.17.0
       - name: Build CLI
         shell: bash
         run: |
           set -euo pipefail
           test -n "$ANVIL_RUNTIME_UPDATE_PUBLIC_KEY"
           cargo build --locked --release -p anvil --target ${{ matrix.target }}
+      - name: Sign macOS Runtime
+        if: runner.os == 'macOS'
+        run: node scripts/sign-runtime.mjs target/${{ matrix.target }}/release/anvil ${{ matrix.target }}
       - name: Verify binary version and Runtime API
         shell: bash
         run: |
@@ -146,6 +164,11 @@ jobs:
           Copy-Item README.md dist/staging/
           Compress-Archive -Path dist/staging/* -DestinationPath "dist/$name.zip"
           Copy-Item "target/${{ matrix.target }}/release/anvil.exe" "dist/$name.exe"
+      - name: Remove macOS signing keychain
+        if: always() && runner.os == 'macOS'
+        env:
+          GITHUB_STATE_FILE: ${{ runner.temp }}/anvil-signing-state
+        run: python3 .github/scripts/macos_signing.py cleanup
       - uses: actions/upload-artifact@v4
         with:
           name: anvil-${{ matrix.target }}

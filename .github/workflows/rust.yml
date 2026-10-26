@@ -14,6 +14,24 @@ permissions:
   contents: read
 
 jobs:
+  signing-scripts:
+    name: Signing scripts (${{ matrix.os }})
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.17.0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: node --test scripts/runtime-signing.test.mjs
+      - run: python3 -m unittest discover -s .github/scripts/tests -p test_macos_signing.py
+
   java:
     name: Java and CLI (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

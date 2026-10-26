@@ -19,6 +19,8 @@ npm install
 npm run desktop:dev
 ```
 
+macOS 开发若需要重编译后保持 Runtime 钥匙串身份，见[证书签名配置](docs/macos-signing.md)。
+
 ## 许可证
 
 [MIT](LICENSE)

@@ -112,3 +112,5 @@ jobs:
       tag: ${{ needs.validate.outputs.tag }}
     secrets:
       runtime_signing_key: ${{ secrets.ANVIL_RUNTIME_SIGNING_KEY }}
+      macos_certificate_p12: ${{ secrets.ANVIL_MACOS_CERTIFICATE_P12 }}
+      macos_certificate_password: ${{ secrets.ANVIL_MACOS_CERTIFICATE_PASSWORD }}

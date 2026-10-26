@@ -205,3 +205,7 @@ Desktop `0.1.4-alpha.7` 已完成真实版本准备 PR #9、确切 main CI、GIT
 [恢复运行 40260810262](https://github.com/mivinci/Anvil/actions/runs/40260810262) 经再次人工审批成功，使用原运行 artifacts 公开四份安装包、四份 App 包和 SHA256SUMS。公开附件校验通过，Desktop/Shell 两个 feed 各四个目标均读回验证为 alpha.7；标签仍固定在原提交 `5bb890d`，没有重建或移动标签。
 
 已验证 Desktop 正常准备/审批/构建及草稿失败后的原产物恢复。CLI/Runtime 真实发布、公开版本后的部分 feed 失败恢复、防倒退与其他门禁拒绝路径尚未完整验收，第 6 项保持未全部完成。产品年度版本规则从后续 `26.0.0` 开始采用，本次记录不修改当前产品版本。
+
+## macOS 固定开发签名
+
+Desktop/CLI 的已批准发布构建已接可选 P12 Secret，临时钥匙串导入、同证书签名、证书/标识校验及 always 清理；未配置保留 ad-hoc，配置错误不降级。已创建固定内测自签名身份并配置两个仓库 Secrets，本机默认从私有 identity.json 读取，开发 baseline 已签名。15 项隔离回归通过，本机两份不同程序身份一致性及 CI 临时钥匙串完整流程验证通过。远端工作流尚未运行、Tauri 安装包签名与真实账户跨构建授权尚待验收；不是 Developer ID、公证或正式发布。见 [macOS 签名配置](../docs/macos-signing.md)。

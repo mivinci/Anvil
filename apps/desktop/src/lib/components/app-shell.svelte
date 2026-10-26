@@ -10,7 +10,7 @@
 	import ClientInstallProvider from './clients/client-install-provider.svelte';
 	import AccountProvider from './account-provider.svelte';
 	import AppNavigation from './app-navigation.svelte';
-	import { setAppearance as provideAppearance, defaultTheme, readTheme, themeStyle, isColor, type ColorMode, type Palette, type ThemePreferences } from '../appearance';
+	import { setAppearance as provideAppearance, defaultTheme, customThemeFrom, readTheme, themeStyle, isColor, type ColorMode, type Palette, type ThemePreferences } from '../appearance';
 	import type { AppearanceMode } from './appearance-menu.svelte';
 
 	let { children }: { children: Snippet } = $props();
@@ -23,7 +23,8 @@
 		get mode() { return appearance; }, get colors() { return colors; },
 		get resolvedMode() { return resolvedMode; }, get saveError() { return saveError; },
 		setMode: setAppearance, setTheme, setColor,
-		resetColors: () => { colors = defaultTheme(); saveColors(); },
+		customizeTheme: () => { colors = customThemeFrom(colors.theme === 'custom' ? colors.base : colors.theme); saveColors(); },
+		resetColors: () => { colors = { ...customThemeFrom(colors.base), theme: colors.theme }; saveColors(); },
 	});
 	function saveColors() {
 		try { window.localStorage.setItem('anvil.theme', JSON.stringify(colors)); saveError = null; }
@@ -31,7 +32,7 @@
 	}
 	function setTheme(theme: ThemePreferences['theme']) { colors.theme = theme; saveColors(); }
 	function setColor(mode: ColorMode, key: keyof Palette, value: string) {
-		if (!isColor(value)) return;
+		if (colors.theme !== 'custom' || !isColor(value)) return;
 		colors[mode][key] = value;
 		saveColors();
 	}

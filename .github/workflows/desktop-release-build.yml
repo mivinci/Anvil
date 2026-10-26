@@ -10,6 +10,10 @@ on:
         required: true
         type: string
     secrets:
+      macos_certificate_p12:
+        required: false
+      macos_certificate_password:
+        required: false
       desktop_update_signing_key:
         required: true
 
@@ -114,6 +118,13 @@ jobs:
         run: npm ci
       - name: Check Desktop frontend
         run: npm run desktop:check
+      - name: Import macOS Runtime signing certificate
+        if: runner.os == 'macOS'
+        env:
+          ANVIL_MACOS_CERTIFICATE_P12: ${{ secrets.macos_certificate_p12 }}
+          ANVIL_MACOS_CERTIFICATE_PASSWORD: ${{ secrets.macos_certificate_password }}
+          GITHUB_STATE_FILE: ${{ runner.temp }}/anvil-signing-state
+        run: python3 .github/scripts/macos_signing.py setup
       - name: Build Desktop installers
         shell: bash
         run: |
@@ -131,6 +142,9 @@ jobs:
           elif [[ "$RUNNER_OS" == "Linux" ]]; then
             cd apps/shell
             npx tauri build --bundles deb,appimage
+          elif [[ -n "${ANVIL_MACOS_TAURI_CONFIG:-}" ]]; then
+            cd apps/shell
+            npx tauri build --config "$ANVIL_MACOS_TAURI_CONFIG"
           else
             npm run desktop:build
           fi
@@ -142,6 +156,11 @@ jobs:
           app="target/release/bundle/macos/Anvil.app"
           codesign --verify --deep --strict --verbose=2 "$app"
           codesign --display --verbose=4 "$app"
+          if [[ -n "${ANVIL_MACOS_SIGNING_IDENTITY:-}" ]]; then
+            requirement="=identifier \"app.q2q.anvil.runtime\" and certificate leaf = H\"$ANVIL_MACOS_SIGNING_IDENTITY\""
+            codesign --verify --strict -R "$requirement" "$app/Contents/Resources/baseline/runtime/anvil"
+            codesign --verify --strict -R "$requirement" apps/desktop/baseline/runtime/anvil
+          fi
       - name: Package update payload and collect installers
         env:
           RELEASE_TAG: ${{ inputs.tag }}
@@ -151,6 +170,11 @@ jobs:
           New-Item -ItemType Directory -Path dist -Force | Out-Null
           python .github/scripts/package_desktop_app.py apps/desktop/baseline "dist/anvil-desktop-$version-${{ matrix.target }}.tar.gz"
           python .github/scripts/collect_desktop_installers.py . dist $version
+      - name: Remove macOS signing keychain
+        if: always() && runner.os == 'macOS'
+        env:
+          GITHUB_STATE_FILE: ${{ runner.temp }}/anvil-signing-state
+        run: python3 .github/scripts/macos_signing.py cleanup
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-${{ matrix.target }}

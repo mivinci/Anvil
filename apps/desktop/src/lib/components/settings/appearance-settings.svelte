@@ -1,11 +1,12 @@
 <script lang="ts">
 	import { Monitor, Moon, Sun } from '@lucide/svelte';
-	import { getAppearance, type ColorMode } from '../../appearance';
+	import { getAppearance, getThemePreset, themePresets, type ColorMode, type Palette, type ThemePreferences } from '../../appearance';
 	import ColorControl from './color-control.svelte';
 	const appearance = getAppearance();
 	let editingMode = $state<ColorMode>('light');
 	let editing = $state(false);
 	const colorMode = $derived(editing ? editingMode : appearance.resolvedMode);
+	const presetPalette = $derived(getThemePreset(appearance.colors.theme)[appearance.resolvedMode]);
 	const swatches = ['#827099', '#b5a0ce', '#688c83', '#7393b3', '#b88472'];
 	const modes = [
 		{ value: 'system', label: '跟随系统', icon: Monitor },
@@ -42,29 +43,39 @@
 		<div class="divide-y divide-border rounded-lg bg-card px-3.5">
 			<div class="flex min-h-10 items-center justify-between gap-4 py-2">
 				<label for="theme-preset" class="text-[13px]">主题</label>
-				<select id="theme-preset" value={appearance.colors.theme} onchange={(event) => appearance.setTheme(event.currentTarget.value as 'default' | 'custom')} class="h-7 rounded-md border border-border bg-main-pane px-2 text-xs text-foreground focus-visible:outline-2 focus-visible:outline-ring"><option value="default">水墨淡紫</option><option value="custom">自定义</option></select>
-			</div>
-			<div class="flex min-h-10 flex-wrap items-center justify-between gap-2 py-2">
-				<span class="text-[13px]">编辑配色</span>
-				<div class="inline-flex rounded-[10px] bg-chrome-hover p-0.75" role="group" aria-label="编辑浅色或深色配色">
-					{#each ['light', 'dark'] as mode}<button type="button" aria-pressed={colorMode === mode} onclick={() => { editingMode = mode as ColorMode; editing = true; }} class={`rounded-[7px] px-2 py-0.5 text-xs leading-4 focus-visible:outline-2 focus-visible:outline-ring ${colorMode === mode ? 'bg-chrome-selected text-accent-foreground' : 'text-muted-foreground'}`}>{mode === 'light' ? '浅色' : '深色'}</button>{/each}
-				</div>
+				<select id="theme-preset" value={appearance.colors.theme} onchange={(event) => appearance.setTheme(event.currentTarget.value as ThemePreferences['theme'])} class="h-7 rounded-md border border-border bg-main-pane px-2 text-xs text-foreground focus-visible:outline-2 focus-visible:outline-ring">{#each themePresets as preset}<option value={preset.id}>{preset.name}</option>{/each}<option value="custom">自定义</option></select>
 			</div>
 			{#if appearance.colors.theme === 'custom'}
-				{#each [{ key: 'background', label: '内容背景' }, { key: 'foreground', label: '文字颜色' }] as field}
-					<div class="flex min-h-10 items-center justify-between gap-4 py-2"><span class="text-[13px]">{field.label}</span><ColorControl label={field.label} value={appearance.colors[colorMode][field.key as 'background' | 'foreground']} onChange={(value) => appearance.setColor(colorMode, field.key as 'background' | 'foreground', value)} /></div>
-				{/each}
-			{/if}
-			<div class="flex min-h-10 flex-wrap items-center justify-between gap-3 py-2">
-				<span class="text-[13px]">强调色</span>
-				<div class="flex flex-wrap items-center justify-end gap-2">
-					<div class="flex gap-1.5" role="group" aria-label="强调色色板">{#each swatches as color}<button type="button" aria-label={`强调色 ${color}`} aria-pressed={appearance.colors[colorMode].accent === color} onclick={() => appearance.setColor(colorMode, 'accent', color)} class={`size-3.5 rounded-full border border-border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${appearance.colors[colorMode].accent === color ? 'ring-1 ring-ring ring-offset-2 ring-offset-card' : ''}`} style:background-color={color}></button>{/each}</div>
-					<ColorControl label="强调色" value={appearance.colors[colorMode].accent} onChange={(value) => appearance.setColor(colorMode, 'accent', value)} />
+				<div class="flex min-h-10 flex-wrap items-center justify-between gap-2 py-2">
+					<span class="text-[13px]">编辑配色</span>
+					<div class="inline-flex rounded-[10px] bg-chrome-hover p-0.75" role="group" aria-label="编辑浅色或深色配色">
+						{#each ['light', 'dark'] as mode}<button type="button" aria-pressed={colorMode === mode} onclick={() => { editingMode = mode as ColorMode; editing = true; }} class={`rounded-[7px] px-2 py-0.5 text-xs leading-4 focus-visible:outline-2 focus-visible:outline-ring ${colorMode === mode ? 'bg-chrome-selected text-accent-foreground' : 'text-muted-foreground'}`}>{mode === 'light' ? '浅色' : '深色'}</button>{/each}
+					</div>
 				</div>
-			</div>
+				{#each [{ key: 'background', label: '页面背景' }, { key: 'card', label: '卡片背景' }, { key: 'foreground', label: '文字颜色' }] as field}
+					<div class="flex min-h-10 items-center justify-between gap-4 py-2"><span class="text-[13px]">{field.label}</span><ColorControl label={field.label} value={appearance.colors[colorMode][field.key as keyof Palette]} onChange={(value) => appearance.setColor(colorMode, field.key as keyof Palette, value)} /></div>
+				{/each}
+				<div class="flex min-h-10 flex-wrap items-center justify-between gap-3 py-2">
+					<span class="text-[13px]">强调色</span>
+					<div class="flex flex-wrap items-center justify-end gap-2">
+						<div class="flex gap-1.5" role="group" aria-label="强调色色板">{#each swatches as color}<button type="button" aria-label={`强调色 ${color}`} aria-pressed={appearance.colors[colorMode].accent === color} onclick={() => appearance.setColor(colorMode, 'accent', color)} class={`size-3.5 rounded-full border border-border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${appearance.colors[colorMode].accent === color ? 'ring-1 ring-ring ring-offset-2 ring-offset-card' : ''}`} style:background-color={color}></button>{/each}</div>
+						<ColorControl label="强调色" value={appearance.colors[colorMode].accent} onChange={(value) => appearance.setColor(colorMode, 'accent', value)} />
+					</div>
+				</div>
+			{:else}
+				<div class="flex min-h-10 items-center justify-between gap-4 py-2">
+					<span class="text-[13px]">主题色板</span>
+					<div class="flex items-center gap-1.5" aria-label={`${appearance.resolvedMode === 'dark' ? '深色' : '浅色'}模式主题色板`}>
+						{#each [{ color: presetPalette.background, label: '页面背景' }, { color: presetPalette.card, label: '卡片背景' }, { color: presetPalette.foreground, label: '文字颜色' }, { color: presetPalette.accent, label: '强调色' }] as swatch}<span class="size-3.5 rounded-full border border-border" style:background-color={swatch.color} title={`${swatch.label} ${swatch.color}`}></span>{/each}
+					</div>
+				</div>
+			{/if}
 			<div class="flex min-h-10 items-center justify-between gap-4 py-2"><div><span class="text-[13px]">窗口材质</span></div><span class="shrink-0 text-xs text-muted-foreground">原生毛玻璃</span></div>
 		</div>
-		<div class="flex flex-wrap items-center justify-between gap-3 pt-2"><p class="text-[11px] text-muted-foreground">浅色与深色配色分别保存，切换对应模式可预览。</p><button type="button" onclick={() => appearance.resetColors()} class="shrink-0 rounded px-1.5 py-1 text-xs text-muted-foreground hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring">恢复默认配色</button></div>
+		<div class="flex flex-wrap items-center justify-between gap-3 pt-2">
+			<p class="text-[11px] text-muted-foreground">{appearance.colors.theme === 'custom' ? '浅色与深色配色分别保存，切换对应模式可预览。' : '预设包含固定的浅色与深色配色。'}</p>
+			<button type="button" onclick={() => appearance.colors.theme === 'custom' ? appearance.resetColors() : appearance.customizeTheme()} class="shrink-0 rounded px-1.5 py-1 text-xs text-muted-foreground hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring">{appearance.colors.theme === 'custom' ? '重置自定义配色' : '基于此主题自定义'}</button>
+		</div>
 		{#if appearance.saveError}<p role="alert" class="text-[11px] text-destructive">{appearance.saveError}</p>{/if}
 	</section>
 </div>
