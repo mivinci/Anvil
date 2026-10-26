@@ -1,0 +1,48 @@
+name: Prepare release
+
+on:
+  workflow_dispatch:
+    inputs:
+      product:
+        description: Product to prepare
+        required: true
+        type: choice
+        options:
+          - desktop
+          - cli
+      version:
+        description: 'Version without prefix (e.g. 0.1.4-alpha.7 or 0.1.5)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: release-prepare
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Require main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo 'Prepare release must run on main.' >&2
+          exit 1
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Prepare version PR and dispatch CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_PRODUCT: ${{ inputs.product }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: python3 .github/scripts/release.py prepare --product "$RELEASE_PRODUCT" --version "$RELEASE_VERSION"

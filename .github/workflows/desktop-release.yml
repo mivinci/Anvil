@@ -1,215 +1,118 @@
 name: Desktop release
 
 on:
-  push:
-    tags:
-      - 'desktop/v*'
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: desktop-release-${{ github.ref }}
+  group: desktop-release
   cancel-in-progress: false
 
 jobs:
-  build:
-    name: Build ${{ matrix.target }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
-          - os: macos-15-intel
-            target: x86_64-apple-darwin
-          - os: macos-15
-            target: aarch64-apple-darwin
-          - os: windows-2022
-            target: x86_64-pc-windows-msvc
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
-    env:
-      ANVIL_UPDATE_MANIFEST_URL: https://github.com/${{ github.repository }}/releases/download/desktop-updates-stable/${{ matrix.target }}.json
-      ANVIL_RUNTIME_UPDATE_MANIFEST_URL: https://github.com/${{ github.repository }}/releases/download/runtime-updates/runtime-index.json
-      ANVIL_SHELL_UPDATE_MANIFEST_URL: https://github.com/${{ github.repository }}/releases/download/shell-updates-stable/${{ matrix.target }}.json
+  validate:
+    name: Resolve release and approval policy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      deployments: read
+    outputs:
+      sha: ${{ steps.resolve.outputs.sha }}
+      tag: ${{ steps.resolve.outputs.tag }}
+      version: ${{ steps.resolve.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Configure update public keys
+      - name: Resolve exact main commit and approval environment
+        id: resolve
         env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/release.py resolve --product desktop --environment anvil-release
+      - name: Validate Desktop manifests and public configuration
+        env:
+          RELEASE_TAG: ${{ steps.resolve.outputs.tag }}
           APP_PUBLIC_KEY: ${{ vars.ANVIL_DESKTOP_TEST_UPDATE_PUBLIC_KEY }}
           RUNTIME_PUBLIC_KEY: ${{ vars.ANVIL_RUNTIME_UPDATE_PUBLIC_KEY }}
-        shell: bash
         run: |
-          set -euo pipefail
-          test -n "$APP_PUBLIC_KEY" || { echo "ANVIL_DESKTOP_TEST_UPDATE_PUBLIC_KEY is required." >&2; exit 1; }
-          test -n "$RUNTIME_PUBLIC_KEY" || { echo "ANVIL_RUNTIME_UPDATE_PUBLIC_KEY is required." >&2; exit 1; }
-          printf 'ANVIL_UPDATE_PUBLIC_KEY=%s\nANVIL_RUNTIME_UPDATE_PUBLIC_KEY=%s\nANVIL_SHELL_UPDATE_PUBLIC_KEY=%s\n' \
-            "$APP_PUBLIC_KEY" "$RUNTIME_PUBLIC_KEY" "$APP_PUBLIC_KEY" >> "$GITHUB_ENV"
-      - name: Validate tag and update configuration
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: |
-          set -euo pipefail
-          python .github/scripts/validate_desktop_release.py "$RELEASE_TAG"
-          python -c 'import os, sys; missing = [name for name in ("ANVIL_UPDATE_PUBLIC_KEY", "ANVIL_RUNTIME_UPDATE_PUBLIC_KEY", "ANVIL_SHELL_UPDATE_PUBLIC_KEY") if not os.environ.get(name)]; print("missing required public key variable(s): " + ", ".join(missing), file=sys.stderr) if missing else None; sys.exit(bool(missing))'
-        shell: bash
-      - name: Install Linux build dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes build-essential curl wget file libxdo-dev libssl-dev librsvg2-dev patchelf libwebkit2gtk-4.1-dev
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: desktop-release-${{ matrix.target }}
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22.17.0
-          cache: npm
-      - name: Install frontend dependencies
-        run: npm ci
-      - name: Check Desktop frontend
-        run: npm run desktop:check
-      - name: Build Desktop installers
-        shell: bash
-        run: |
-          set -euo pipefail
-          version="${GITHUB_REF_NAME#desktop/v}"
-          if [[ "$version" == *-* && "$RUNNER_OS" == "Windows" ]]; then
-            cd apps/shell
-            npx tauri build --bundles nsis
-          elif [[ "$version" == *-* && "$RUNNER_OS" == "Linux" ]]; then
-            cd apps/shell
-            npx tauri build --bundles deb
-          else
-            npm run desktop:build
-          fi
-      - name: Verify macOS App signature
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          set -euo pipefail
-          app="target/release/bundle/macos/Anvil.app"
-          codesign --verify --deep --strict --verbose=2 "$app"
-          codesign --display --verbose=4 "$app"
-      - name: Package update payload and collect installers
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
-        shell: pwsh
-        run: |
-          $version = $env:RELEASE_TAG -replace '^desktop/v', ''
-          New-Item -ItemType Directory -Path dist -Force | Out-Null
-          python .github/scripts/package_desktop_app.py apps/desktop/baseline "dist/anvil-desktop-$version-${{ matrix.target }}.tar.gz"
-          python .github/scripts/collect_desktop_installers.py . dist $version
-      - uses: actions/upload-artifact@v4
-        with:
-          name: desktop-${{ matrix.target }}
-          path: dist/*
-          if-no-files-found: error
-          retention-days: 7
+          python3 .github/scripts/validate_desktop_release.py "$RELEASE_TAG"
+          python3 - <<'PYCODE'
+          import os
+          for name in ('APP_PUBLIC_KEY', 'RUNTIME_PUBLIC_KEY'):
+              value = os.environ[name]
+              if len(value) != 64 or any(c not in '0123456789abcdefABCDEF' for c in value):
+                  raise SystemExit(f'{name} must be a 32-byte hex public key')
+          PYCODE
 
-  release:
-    name: Publish Desktop release and update feed
-    needs: build
+  approve:
+    name: Approve and tag ${{ needs.validate.outputs.tag }}
+    needs: validate
+    environment: anvil-release
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 10
     permissions:
       contents: write
-    env:
-      RELEASE_TAG: ${{ github.ref_name }}
-      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - uses: actions/download-artifact@v4
-        with:
-          path: dist
-          merge-multiple: true
       - name: Install signing dependency
-        run: python -m pip install --disable-pip-version-check pynacl
-      - name: Select update signing keys
+        run: python3 -m pip install --disable-pip-version-check pynacl
+      - name: Validate signing identity before tagging
         env:
           SIGNING_KEY: ${{ secrets.ANVIL_DESKTOP_TEST_UPDATE_SIGNING_KEY }}
           PUBLIC_KEY: ${{ vars.ANVIL_DESKTOP_TEST_UPDATE_PUBLIC_KEY }}
-        shell: bash
+        run: |
+          python3 - <<'PYCODE'
+          import os
+          from nacl.signing import SigningKey
+          try:
+              key = SigningKey(bytes.fromhex(os.environ['SIGNING_KEY']))
+              valid = key.verify_key.encode().hex() == os.environ['PUBLIC_KEY'].lower()
+          except (ValueError, TypeError):
+              valid = False
+          if not valid:
+              raise SystemExit('Desktop signing key is missing, invalid or does not match the configured public key')
+          PYCODE
+      - name: Create immutable release tag
+        env:
+          RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+          RELEASE_SHA: ${{ needs.validate.outputs.sha }}
         run: |
           set -euo pipefail
-          test -n "$SIGNING_KEY" || { echo "ANVIL_DESKTOP_TEST_UPDATE_SIGNING_KEY is required." >&2; exit 1; }
-          test -n "$PUBLIC_KEY" || { echo "ANVIL_DESKTOP_TEST_UPDATE_PUBLIC_KEY is required." >&2; exit 1; }
-          printf 'SIGNING_KEY=%s\nUPDATE_PUBLIC_KEY=%s\n' "$SIGNING_KEY" "$PUBLIC_KEY" >> "$GITHUB_ENV"
-      - name: Validate release signing key
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -n "$SIGNING_KEY" || { echo "ANVIL_DESKTOP_TEST_UPDATE_SIGNING_KEY is required." >&2; exit 1; }
-          test -n "$UPDATE_PUBLIC_KEY" || { echo "ANVIL_DESKTOP_TEST_UPDATE_PUBLIC_KEY is required." >&2; exit 1; }
-      - name: Create checksums
-        shell: bash
-        run: |
-          set -euo pipefail
-          (cd dist && find . -maxdepth 1 -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum) > dist/SHA256SUMS
-      - name: Create or resume versioned release
-        shell: bash
-        run: |
-          set -euo pipefail
-          version="${RELEASE_TAG#desktop/v}"
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            is_draft="$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)"
-            if [ "$is_draft" != true ]; then
-              echo "Versioned release is already published; reusing its immutable payloads."
-              exit 0
-            fi
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          git fetch origin --tags
+          if git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"; then
+            test "$(git rev-parse "$RELEASE_TAG^{commit}")" = "$RELEASE_SHA" || {
+              echo 'Existing release tag points to another commit; refusing to move it.' >&2
+              exit 1
+            }
           else
-            gh release create "$RELEASE_TAG" --draft --verify-tag --generate-notes --title "Anvil Desktop v$version"
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git tag -a "$RELEASE_TAG" "$RELEASE_SHA" -m "Anvil Desktop ${RELEASE_TAG#desktop/v}"
+            git push origin "refs/tags/$RELEASE_TAG"
           fi
-          gh release upload "$RELEASE_TAG" dist/* --clobber
-          if [[ "$version" == *-* ]]; then
-            gh release edit "$RELEASE_TAG" --draft=false --prerelease
-          else
-            gh release edit "$RELEASE_TAG" --draft=false
-            release_id="$(gh release view "$RELEASE_TAG" --json databaseId --jq .databaseId)"
-            gh api "repos/$GITHUB_REPOSITORY/releases/$release_id" -X PATCH -F make_latest=false >/dev/null
-          fi
-      - name: Download published App update payloads
-        shell: bash
-        run: |
-          set -euo pipefail
-          version="${RELEASE_TAG#desktop/v}"
-          mkdir -p dist/published-packages
-          gh release download "$RELEASE_TAG" --dir dist/published-packages --pattern "anvil-desktop-${version}-*.tar.gz"
-          cp dist/published-packages/*.tar.gz dist/
-      - name: Sign update manifests
-        shell: bash
-        run: |
-          set -euo pipefail
-          version="${RELEASE_TAG#desktop/v}"
-          RELEASE_VERSION="$version" python3 .github/scripts/sign_desktop_updates.py dist
-          RELEASE_VERSION="$version" python3 .github/scripts/sign_shell_updates.py dist
-      - name: Update signed manifest feeds
-        shell: bash
-        run: |
-          set -euo pipefail
-          feed_tag="desktop-updates-stable"
-          shell_feed_tag="shell-updates-stable"
-          title="Anvil Desktop update feed"
-          shell_title="Anvil Shell update feed"
-          if ! gh release view "$feed_tag" >/dev/null 2>&1; then
-            gh release create "$feed_tag" --draft --prerelease --target "$GITHUB_SHA" \
-              --title "$title" --notes "Mutable signed Desktop update manifests."
-          fi
-          gh release upload "$feed_tag" dist/update-manifests/*.json --clobber
-          gh release edit "$feed_tag" --draft=false --prerelease
-          if ! gh release view "$shell_feed_tag" >/dev/null 2>&1; then
-            gh release create "$shell_feed_tag" --draft --prerelease --target "$GITHUB_SHA" \
-              --title "$shell_title" --notes "Mutable signed Shell installer release manifests."
-          fi
-          gh release upload "$shell_feed_tag" dist/shell-update-manifests/*.json --clobber
-          gh release edit "$shell_feed_tag" --draft=false --prerelease
+          printf '## Approved release\nTag: `%s`\nCommit: `%s`\n' "$RELEASE_TAG" "$RELEASE_SHA" >> "$GITHUB_STEP_SUMMARY"
+
+  publish:
+    name: Build and publish approved Desktop release
+    needs: [validate, approve]
+    permissions:
+      contents: write
+    uses: ./.github/workflows/desktop-release-build.yml
+    with:
+      sha: ${{ needs.validate.outputs.sha }}
+      tag: ${{ needs.validate.outputs.tag }}
+    secrets:
+      desktop_update_signing_key: ${{ secrets.ANVIL_DESKTOP_TEST_UPDATE_SIGNING_KEY }}
