@@ -26,7 +26,7 @@ Settings → Environments 中创建 `anvil-release`：
 | Desktop 与 Shell | `ANVIL_DESKTOP_TEST_UPDATE_SIGNING_KEY` | `ANVIL_DESKTOP_TEST_UPDATE_PUBLIC_KEY` |
 | CLI/Runtime | `ANVIL_RUNTIME_SIGNING_KEY` | `ANVIL_RUNTIME_UPDATE_PUBLIC_KEY` |
 
-公钥为 32 字节十六进制值，私钥为对应 Ed25519 seed。现有客户端已经信任这些公钥，不要为迁移流程轮换密钥。私钥只存在于批准后的任务，不输出到日志。macOS 仍使用 ad-hoc 签名，没有 Apple 公证。
+公钥为 32 字节十六进制值，私钥为对应 Ed25519 seed。现有客户端已经信任这些公钥，不要为迁移流程轮换密钥。私钥只存在于批准后的任务，不输出到日志。macOS 未配置证书时使用 ad-hoc 签名；已接入可选的固定证书 Runtime 签名，配置见[macOS 签名](macos-signing.md)。已配置内测自签名证书 Secrets，远端证书构建尚待验收，没有 Apple 公证。
 
 ## 准备版本
 

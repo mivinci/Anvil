@@ -1,7 +1,10 @@
 import { createContext } from 'svelte';
-import { readRecentPlays, recordRecentPlay, forgetRecentPlay } from './recent-plays';
+import { readRecentPlays, recordRecentPlay, forgetRecentPlay, clearRecentPlays } from './recent-plays';
 import { listClientLaunches, startClientLaunch, stopClientLaunch, type ClientLaunch } from './runtime';
 export const launchActive = (value: ClientLaunch | undefined) => !!value && !['exited', 'failed', 'cancelled'].includes(value.phase);
+export const launchNeedsLogin = (value: ClientLaunch | undefined) =>
+	value?.phase === 'failed' && !value.offlineTest &&
+	(value.errorCode === 'account_required' || value.errorCode === 'authentication_failed');
 export function launchLabel(value: ClientLaunch): string {
 	if (value.cancelRequested) return '正在取消启动…';
 	const java = `Java${value.javaMajor ? ` ${value.javaMajor}` : ''}`;
@@ -28,6 +31,7 @@ export function launchLabel(value: ClientLaunch): string {
 }
 export class ClientLaunchState {
 	recentPlays = $state(readRecentPlays());
+	clearRecentHistory(): boolean { this.recentPlays = []; return clearRecentPlays(); }
 	private awaitingRecent = new Set<string>();
 	forgetClient(name: string) {
 		this.recentPlays = forgetRecentPlay(this.recentPlays, name);

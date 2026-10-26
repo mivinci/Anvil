@@ -37,6 +37,16 @@ impl Server {
   }
 
   async fn request(&self, method: &str, path: &str, authorized: bool) -> (u16, String) {
+    self.request_with_body(method, path, authorized, "").await
+  }
+
+  async fn request_with_body(
+    &self,
+    method: &str,
+    path: &str,
+    authorized: bool,
+    body: &str,
+  ) -> (u16, String) {
     let mut stream = TcpStream::connect(("127.0.0.1", self.port)).await.unwrap();
     let auth = if authorized {
       format!("Authorization: Bearer {TOKEN}\r\n")
@@ -44,8 +54,9 @@ impl Server {
       String::new()
     };
     let header = format!(
-      "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nOrigin: {ORIGIN}\r\n{auth}Content-Length: 0\r\nConnection: close\r\n\r\n",
-      self.port
+      "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nOrigin: {ORIGIN}\r\n{auth}Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+      self.port,
+      body.len()
     );
     stream.write_all(header.as_bytes()).await.unwrap();
     let mut response = Vec::new();
@@ -122,5 +133,79 @@ async fn play_stats_api_reads_persisted_sessions_and_clears() {
   let persisted: Value =
     serde_json::from_slice(&std::fs::read(root.path().join("play-stats.json")).unwrap()).unwrap();
   assert_eq!(persisted["accounts"], json!({}));
+  server.shutdown().await;
+}
+
+#[tokio::test]
+async fn deleting_an_instance_preserves_history_and_scoped_clear_is_isolated() {
+  use anvil_core::play_stats::{OFFLINE_ACCOUNT, PlaySession, PlayStatsStore};
+  const OTHER: &str = "22222222-2222-2222-2222-222222222222";
+  let root = tempfile::tempdir().unwrap();
+  let ended_at = now_ms();
+  let store = PlayStatsStore::open(root.path());
+  for account in [ACCOUNT, OTHER, OFFLINE_ACCOUNT] {
+    store
+      .record(PlaySession {
+        account_id: account.into(),
+        instance_id: "client-survival".into(),
+        started_at: ended_at - 60_000,
+        ended_at,
+      })
+      .unwrap();
+  }
+  let before = store.snapshot();
+  let instance = root.path().join("instances/client-survival");
+  std::fs::create_dir_all(instance.join("game/saves")).unwrap();
+  std::fs::write(
+    instance.join("instance.json"),
+    serde_json::to_vec(&json!({
+      "schema_version": 1, "instance_type": "client", "id": "client-survival", "name": "survival"
+    }))
+    .unwrap(),
+  )
+  .unwrap();
+  let server = Server::start(root.path()).await;
+  let (status, body) = server
+    .request_with_body(
+      "DELETE",
+      "/clients/survival",
+      true,
+      r#"{"confirmation":"survival"}"#,
+    )
+    .await;
+  assert_eq!(status, 200, "{body}");
+  assert!(!instance.exists());
+  assert_eq!(PlayStatsStore::open(root.path()).snapshot(), before);
+
+  let path = format!("/play-stats/accounts/{ACCOUNT}");
+  assert_eq!(server.request("DELETE", &path, false).await.0, 401);
+  assert_eq!(
+    server
+      .request("DELETE", "/play-stats/accounts/bad!", true)
+      .await
+      .0,
+    400
+  );
+  assert_eq!(PlayStatsStore::open(root.path()).snapshot(), before);
+  let (status, body) = server.request("DELETE", &path, true).await;
+  assert_eq!(status, 200, "{body}");
+  let value: Value = serde_json::from_str(&body).unwrap();
+  assert!(value["accounts"].get(ACCOUNT).is_none());
+  assert_eq!(value["accounts"][OTHER]["totalMs"], 60_000);
+  assert_eq!(value["accounts"][OFFLINE_ACCOUNT]["launches"], 1);
+  assert_eq!(server.request("DELETE", &path, true).await.0, 200);
+  assert_eq!(server.request("DELETE", "/play-stats", false).await.0, 401);
+  assert_eq!(
+    PlayStatsStore::open(root.path()).snapshot().accounts.len(),
+    2
+  );
+  let (status, body) = server.request("DELETE", "/play-stats", true).await;
+  assert_eq!(status, 200, "{body}");
+  assert!(
+    PlayStatsStore::open(root.path())
+      .snapshot()
+      .accounts
+      .is_empty()
+  );
   server.shutdown().await;
 }

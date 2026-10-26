@@ -438,8 +438,13 @@ export interface PlayStatsAccount {
 export interface PlayStatsSnapshot { schemaVersion: number; accounts: Record<string, PlayStatsAccount> }
 export const getPlayStats = (signal: AbortSignal) =>
 	runtimeRequest<PlayStatsSnapshot>('/play-stats', { signal, cache: 'no-store' });
-export const clearPlayStats = (signal: AbortSignal) =>
-	runtimeRequest<PlayStatsSnapshot>('/play-stats', { method: 'DELETE', signal });
+export type PlayStatsClearTarget = { kind: 'account'; accountId: string } | { kind: 'all' };
+export const clearPlayStats = (target: PlayStatsClearTarget, signal: AbortSignal) => {
+	if (target.kind === 'account' && !target.accountId) throw new Error('请选择要清除记录的账户。');
+	// A separate route prevents an older Runtime from ignoring a scope query and clearing everyone.
+	const path = target.kind === 'account' ? `/play-stats/accounts/${encodeURIComponent(target.accountId)}` : '/play-stats';
+	return runtimeRequest<PlayStatsSnapshot>(path, { method: 'DELETE', signal });
+};
 
 export interface ClientGameLog { exists: boolean; text: string; totalBytes: number; truncated: boolean }
 export const getClientGameLog = (name: string, signal: AbortSignal) =>

@@ -2,12 +2,13 @@
 	import { Download, Gamepad2, Info, Palette, Search, UserRound } from '@lucide/svelte';
 	import AppearanceSettings from '#lib/components/settings/appearance-settings.svelte';
 	import AboutSettings from '#lib/components/settings/about-settings.svelte';
+	import AccountSettings from '#lib/components/settings/account-settings.svelte';
 	import SelectableRow from '#lib/components/ui/selectable-row.svelte';
 	const categories = [
 		{ id: 'appearance', label: '外观', icon: Palette, keywords: '主题 配色 浅色 深色 系统 模式 毛玻璃', description: '调整 Anvil 的显示模式与视觉风格。' },
 		{ id: 'game', label: '游戏', icon: Gamepad2, keywords: 'Java 内存 路径 目录 实例', description: '管理新建游戏实例的默认配置。' },
 		{ id: 'downloads', label: '下载', icon: Download, keywords: '网络 并发 限速 缓存', description: '管理资源下载与本地缓存。' },
-		{ id: 'accounts', label: '账户', icon: UserRound, keywords: '登录 Microsoft 微软 切换 移除', description: '管理这台设备上的 Minecraft 账户。' },
+		{ id: 'accounts', label: '账户', icon: UserRound, keywords: '登录 Microsoft 微软 切换 移除 游玩 记录 统计 清除', description: '管理这台设备上的 Minecraft 账户与游玩记录。' },
 		{ id: 'about', label: '关于', icon: Info, keywords: 'Anvil 版本 Runtime 项目', description: '查看应用信息与项目地址。' },
 	] as const;
 	let selected = $state<string>('appearance');
@@ -17,7 +18,6 @@
 	const pending = {
 		game: '游戏目录、Java 与内存默认值将在实例配置接口接入后提供。',
 		downloads: '下载并发、限速和缓存管理将在下载设置接口接入后提供。',
-		accounts: '账户管理页面正在接入。目前可从窗口左下角账户菜单操作；真实登录等待 Minecraft API 应用审核。',
 	};
 	function search(value: string) {
 		query = value;
@@ -49,6 +49,7 @@
 			{:else}<header class="mb-5"><h2 id="settings-title" class="text-xl font-semibold tracking-tight">{current.label}</h2></header>{/if}
 			{#if selected === 'appearance'}<AppearanceSettings />
 			{:else if selected === 'about'}<AboutSettings />
+			{:else if selected === 'accounts'}<AccountSettings />
 			{:else}
 				<div class="rounded-xl bg-card p-4"><p class="text-[13px] font-medium">尚未开放</p><p class="mt-2 text-[11px] leading-5 text-muted-foreground">{pending[selected as keyof typeof pending]}</p></div>
 			{/if}

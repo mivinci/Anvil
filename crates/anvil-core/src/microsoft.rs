@@ -20,8 +20,8 @@ const AUTH_TIMEOUT: Duration = Duration::from_secs(20);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_DEVICE_CODE_LIFETIME: u64 = 60 * 60;
 const MAX_MINECRAFT_TOKEN_LIFETIME: u64 = 7 * 24 * 60 * 60;
-// Stable system-vault namespace in reverse-domain style; changing it strands saved tokens.
-const KEYRING_SERVICE: &str = "app.mivinci.anvil.minecraft";
+// Stable system-vault namespace for current credentials.
+const KEYRING_SERVICE: &str = "app.q2q.anvil.minecraft";
 
 /// Microsoft device-code OAuth, Xbox Live/XSTS, and Minecraft Services provider.
 #[derive(Clone)]
@@ -492,8 +492,7 @@ pub struct SystemCredentialStore;
 
 impl CredentialStore for SystemCredentialStore {
   fn load_refresh_token(&self, account_id: &str) -> Result<Option<RefreshToken>> {
-    let entry = credential_entry(account_id)?;
-    match entry.get_password() {
+    match credential_entry(account_id)?.get_password() {
       Ok(value) => RefreshToken::new(value).map(Some),
       Err(KeyringError::NoEntry) => Ok(None),
       Err(_) => Err(vault_unavailable()),
@@ -501,9 +500,23 @@ impl CredentialStore for SystemCredentialStore {
   }
 
   fn store_refresh_token(&self, account_id: &str, token: RefreshToken) -> Result<()> {
-    credential_entry(account_id)?
+    // Validate before either platform implementation touches the vault.
+    let entry = credential_entry(account_id)?;
+    #[cfg(target_os = "macos")]
+    {
+      use security_framework::passwords::{PasswordOptions, set_generic_password_options};
+      let mut options =
+        PasswordOptions::new_generic_password(KEYRING_SERVICE, &account_id.to_ascii_lowercase());
+      options.set_label("Anvil Minecraft");
+      set_generic_password_options(token.expose_secret().as_bytes(), options)
+        .map_err(|_| vault_unavailable())?;
+      drop(entry);
+    }
+    #[cfg(not(target_os = "macos"))]
+    entry
       .set_password(token.expose_secret())
-      .map_err(|_| vault_unavailable())
+      .map_err(|_| vault_unavailable())?;
+    Ok(())
   }
 
   fn delete_refresh_token(&self, account_id: &str) -> Result<()> {

@@ -63,8 +63,13 @@
 				const travel = track - size;
 				const value = Math.max(0, Math.min(max, axis === 'vertical' ? element.scrollTop : element.scrollLeft));
 				const offset = 2 + value / max * travel;
-				const x = rect.left + element.clientLeft + (axis === 'vertical' ? element.clientWidth - 6 : offset);
-				const y = rect.top + element.clientTop + (axis === 'vertical' ? offset : element.clientHeight - 6);
+				// Anchor the painted thumb to the visible edge, including any native scrollbar gutter.
+				const x = axis === 'vertical'
+					? rect.right - (parseFloat(style.borderRightWidth) || 0) - 6
+					: rect.left + element.clientLeft + offset;
+				const y = axis === 'horizontal'
+					? rect.bottom - (parseFloat(style.borderBottomWidth) || 0) - 6
+					: rect.top + element.clientTop + offset;
 				const right = Math.min(clip.right, x + (axis === 'vertical' ? 4 : size));
 				const bottom = Math.min(clip.bottom, y + (axis === 'vertical' ? size : 4));
 				const left = Math.max(clip.left, x), top = Math.max(clip.top, y);

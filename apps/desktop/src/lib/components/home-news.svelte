@@ -45,9 +45,9 @@
 	}
 </script>
 
-<aside class={`min-w-0 ${className}`} aria-labelledby="news-title">
-	<section class="rounded-lg bg-card p-3">
-		<div class="mb-1 flex items-center justify-between gap-2">
+<aside class={`relative h-80 min-h-0 min-w-0 min-[900px]:h-auto ${className}`} aria-labelledby="news-title">
+	<section class="absolute inset-0 flex min-h-0 flex-col overflow-hidden rounded-lg bg-card">
+		<div class="flex shrink-0 items-center justify-between gap-2 px-3 pt-3 pb-1">
 			<div class="flex min-w-0 items-center gap-2">
 				<Newspaper size={15} class="shrink-0 text-primary" aria-hidden="true" />
 				<h2 id="news-title" class="truncate text-[13px] font-semibold">{usingGeneralNews ? 'Minecraft 动态' : 'Java 版动态'}</h2>
@@ -60,10 +60,11 @@
 			</div>
 		</div>
 
+		<div class="min-h-0 flex-1 overflow-y-auto overscroll-contain" role="region" aria-label="Minecraft 新闻列表">
 		{#if loading && news.length === 0}
 			<div class="flex min-h-24 items-center justify-center text-muted-foreground" role="status"><LoaderCircle size={16} class="animate-spin" aria-hidden="true" /></div>
 		{:else if visibleNews.length > 0}
-			<ul class="divide-y divide-border/70">
+			<ul class="divide-y divide-border/70 px-3 pb-3">
 				{#each visibleNews as item (item.url)}
 					<li>
 						<button type="button" class="group block w-full py-2.5 text-left" onclick={() => void openArticle(item)}>
@@ -78,7 +79,8 @@
 				{error ? '动态暂不可用' : '暂无动态'}
 			</div>
 		{/if}
+		</div>
 
-		{#if error && visibleNews.length > 0}<p class="mt-2 truncate text-[10px] text-muted-foreground" role="status" title={error}>刷新失败</p>{/if}
+		{#if error && visibleNews.length > 0}<p class="shrink-0 truncate px-3 pt-2 pb-3 text-[10px] text-muted-foreground" role="status" title={error}>刷新失败</p>{/if}
 	</section>
 </aside>

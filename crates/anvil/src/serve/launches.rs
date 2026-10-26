@@ -1,5 +1,8 @@
 //! Window-independent, bounded Minecraft process ownership. Never expose launch argv or tokens.
 mod console;
+#[cfg(test)]
+#[path = "../../tests/support/play_stats_launches.rs"]
+mod play_stats_launch_tests;
 use super::{
   accounts::AccountState,
   api::{ApiError, AppState},
@@ -12,7 +15,7 @@ use anvil_core::{
   client_plan::ClientTarget,
   java::{InstallStage as JavaStage, JavaProgress},
   launch::{LaunchOptions, build_launch_spec_with_settings},
-  play_stats::{OFFLINE_ACCOUNT, PlaySession, PlayStatsStore},
+  play_stats::{OFFLINE_ACCOUNT, PlaySession, PlayStatsSnapshot, PlayStatsStore},
 };
 use axum::{
   Json,
@@ -103,6 +106,36 @@ pub(super) struct Launches {
   stats: Arc<PlayStatsStore>,
 }
 impl Launches {
+  pub(super) fn clear_play_stats(
+    &self,
+    account_id: Option<&str>,
+  ) -> std::result::Result<PlayStatsSnapshot, ApiError> {
+    // Keep admission locked through persistence, so a new session cannot race the clear.
+    let inner = self
+      .inner
+      .lock()
+      .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if inner.stopping
+      || inner
+        .operations
+        .values()
+        .any(|operation| operation.updates.borrow().phase.active())
+    {
+      return Err(ApiError::new(
+        StatusCode::CONFLICT,
+        "请先结束正在启动或运行的游戏，再清除游玩记录。",
+      ));
+    }
+    match account_id {
+      Some(id) => self.stats.clear_account(id),
+      None => self.stats.clear(),
+    }
+    .map_err(super::api::resource_error)?;
+    let result = self.stats.snapshot();
+    drop(inner);
+    Ok(result)
+  }
+
   pub(super) fn busy_for_client(&self, name: &str) -> bool {
     self
       .inner

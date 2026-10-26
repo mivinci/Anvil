@@ -3,7 +3,7 @@
 	import ClientArtwork from './client-artwork.svelte';
 	import ClientLaunchControls from './client-launch-controls.svelte';
 	import type { InstalledClient } from '../../runtime';
-	import { getClientLaunchState, launchActive, launchLabel } from '../../client-launch-state.svelte.js';
+	import { getClientLaunchState, launchActive, launchLabel, launchNeedsLogin } from '../../client-launch-state.svelte.js';
 	let { client }: { client: InstalledClient } = $props();
 	const launches = getClientLaunchState();
 	const operation = $derived(launches.forClient(client.name));
@@ -13,6 +13,7 @@
 	const progress = $derived(downloading && operation?.javaTotalBytes ? Math.min(100, operation.javaDownloadedBytes / operation.javaTotalBytes * 100) : null);
 	const statusBadge = $derived(
 		operation?.phase === 'running' ? (operation.offlineTest ? '离线测试' : '运行中')
+			: launchNeedsLogin(operation) ? '需要重新登录'
 			: operation?.phase === 'failed' ? '启动失败'
 				: operation?.phase === 'cancelled' ? '已取消'
 					: operation?.phase === 'stopping' ? '停止中'

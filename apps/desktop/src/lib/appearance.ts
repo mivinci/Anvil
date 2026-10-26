@@ -2,22 +2,45 @@ import { createContext } from 'svelte';
 import type { AppearanceMode } from './components/appearance-menu.svelte';
 
 export type ColorMode = 'light' | 'dark';
-export type Palette = { background: string; foreground: string; accent: string };
-export type ThemePreferences = { theme: 'default' | 'custom'; light: Palette; dark: Palette };
-export const defaultTheme = (): ThemePreferences => ({
-	theme: 'default',
-	light: { background: '#f8f8f7', foreground: '#2d2e30', accent: '#827099' },
-	dark: { background: '#222223', foreground: '#e9e9e7', accent: '#b5a0ce' },
-});
+export type Palette = { background: string; card: string; foreground: string; accent: string };
+export type PresetThemeId = 'default' | 'enderman' | 'creeper' | 'allay';
+export type ThemePreferences = { theme: PresetThemeId | 'custom'; base: PresetThemeId; light: Palette; dark: Palette };
+export const themePresets = [
+	{ id: 'default', name: '潜影紫',
+		light: { background: '#ffffff', card: '#f7f7f7', foreground: '#2d2e30', accent: '#827099' },
+		dark: { background: '#222223', card: '#2b2b2d', foreground: '#e9e9e7', accent: '#b5a0ce' } },
+	{ id: 'enderman', name: '末影黑',
+		light: { background: '#f7f7f7', card: '#eeeeef', foreground: '#252628', accent: '#44464b' },
+		dark: { background: '#1e1f21', card: '#292a2d', foreground: '#ececee', accent: '#bfc2c8' } },
+	{ id: 'creeper', name: '苦力怕绿',
+		light: { background: '#f6f8f3', card: '#f0f4ec', foreground: '#2c332b', accent: '#5c7c50' },
+		dark: { background: '#222720', card: '#2b3228', foreground: '#e5ece0', accent: '#a3be8c' } },
+	{ id: 'allay', name: '悦灵蓝',
+		light: { background: '#f4f8fa', card: '#e8f0f4', foreground: '#2b333b', accent: '#4e7b9b' },
+		dark: { background: '#20262c', card: '#29323a', foreground: '#e1eaf0', accent: '#91bdd6' } },
+
+] as const;
+export const isPresetTheme = (value: unknown): value is PresetThemeId => themePresets.some(preset => preset.id === value);
+export const getThemePreset = (id: ThemePreferences['theme']) => themePresets.find(preset => preset.id === id) ?? themePresets[0];
+export function customThemeFrom(id: PresetThemeId): ThemePreferences {
+	const preset = getThemePreset(id);
+	return { theme: 'custom', base: id, light: { ...preset.light }, dark: { ...preset.dark } };
+}
+export const defaultTheme = (): ThemePreferences => ({ ...customThemeFrom('default'), theme: 'default' });
 export const isColor = (value: unknown): value is string => typeof value === 'string' && /^#[\da-f]{6}$/i.test(value);
 export function readTheme(value: string | null): ThemePreferences {
 	const fallback = defaultTheme();
 	try {
 		const saved = JSON.parse(value ?? 'null');
-		if (saved?.theme === 'custom') fallback.theme = 'custom';
+		if (saved?.theme === 'custom' || isPresetTheme(saved?.theme)) fallback.theme = saved.theme;
+		if (isPresetTheme(saved?.base)) fallback.base = saved.base;
 		for (const mode of ['light', 'dark'] as const) {
-			for (const key of ['background', 'foreground', 'accent'] as const) {
+			for (const key of ['background', 'card', 'foreground', 'accent'] as const) {
 				if (isColor(saved?.[mode]?.[key])) fallback[mode][key] = saved[mode][key];
+			}
+			// Older custom themes used the content background for cards as well.
+			if (saved?.theme === 'custom' && !isColor(saved?.[mode]?.card) && isColor(saved?.[mode]?.background)) {
+				fallback[mode].card = saved[mode].background;
 			}
 		}
 	} catch { /* Invalid saved settings use the built-in palette. */ }
@@ -53,31 +76,26 @@ function buttonColors(color: string): { background: string; foreground: string }
 	return { background: shade, foreground };
 }
 export function themeStyle(preferences: ThemePreferences, mode: ColorMode): string {
-	const palette = preferences[mode];
-	const accent = palette.accent;
+	const palette = preferences.theme === 'custom' ? preferences[mode] : getThemePreset(preferences.theme)[mode];
+	const { background, card, foreground, accent } = palette;
 	const button = buttonColors(accent);
 	const variables: Record<string, string> = {
 		primary: button.background, 'primary-foreground': button.foreground, ring: accent,
 		'chrome-selected': `color-mix(in srgb, ${accent} 18%, transparent)`,
 		'accent-foreground': blend(mode === 'dark' ? '#ffffff' : '#000000', accent, 0.7),
-		accent: `color-mix(in srgb, ${accent} 15%, ${preferences.theme === 'custom' ? palette.background : 'var(--background)'})`,
+		accent: `color-mix(in srgb, ${accent} 15%, ${palette.background})`,
+		background, foreground, 'main-pane': background, card, 'card-hover': blend(card, foreground, 0.04),
+		'card-foreground': foreground, popover: blend(background, foreground, 0.04),
+		'popover-foreground': foreground, secondary: blend(background, foreground, 0.06),
+		'secondary-foreground': foreground, muted: blend(background, foreground, 0.06),
+		'muted-foreground': blend(background, foreground, 0.62),
+		'chrome-muted': blend(background, foreground, 0.62),
+		'chrome-subtle': blend(background, foreground, 0.48),
+		border: `color-mix(in srgb, ${foreground} 12%, transparent)`,
+		input: `color-mix(in srgb, ${foreground} 16%, transparent)`,
+		'chrome-control-border': `color-mix(in srgb, ${foreground} 12%, transparent)`,
+		'chrome-hover': `color-mix(in srgb, ${foreground} 7%, transparent)`,
 	};
-	if (preferences.theme === 'custom') {
-		const { background, foreground } = palette;
-		Object.assign(variables, {
-			background, foreground, 'main-pane': background, card: background,
-			'card-foreground': foreground, popover: blend(background, foreground, 0.04),
-			'popover-foreground': foreground, secondary: blend(background, foreground, 0.06),
-			'secondary-foreground': foreground, muted: blend(background, foreground, 0.06),
-			'muted-foreground': blend(background, foreground, 0.62),
-			'chrome-muted': blend(background, foreground, 0.62),
-			'chrome-subtle': blend(background, foreground, 0.48),
-			border: `color-mix(in srgb, ${foreground} 12%, transparent)`,
-			input: `color-mix(in srgb, ${foreground} 16%, transparent)`,
-			'chrome-control-border': `color-mix(in srgb, ${foreground} 12%, transparent)`,
-			'chrome-hover': `color-mix(in srgb, ${foreground} 7%, transparent)`,
-		});
-	}
 	return Object.entries(variables).map(([key, value]) => `--${key}:${value}`).join(';');
 }
 export interface AppearanceSettings {
@@ -86,6 +104,7 @@ export interface AppearanceSettings {
 	readonly resolvedMode: ColorMode;
 	setMode: (mode: AppearanceMode) => void;
 	setTheme: (theme: ThemePreferences['theme']) => void;
+	customizeTheme: () => void;
 	setColor: (mode: ColorMode, key: keyof Palette, value: string) => void;
 	resetColors: () => void;
 	readonly saveError: string | null;
