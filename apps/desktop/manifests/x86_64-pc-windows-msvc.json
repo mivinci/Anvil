@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "app_id": "anvil.desktop",
-  "version": "0.1.4-alpha.6",
+  "version": "0.1.4-alpha.7",
   "target": "x86_64-pc-windows-msvc",
   "page_entry": "web/index.html",
   "sidecar_entry": "runtime/anvil.exe",
