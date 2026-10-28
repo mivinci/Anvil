@@ -1,7 +1,7 @@
 import { createContext } from 'svelte';
 import {
 	cancelAccountLogin, getAccountLoginConfiguration, getAccountLoginOperation, getActiveAccountLogin,
-	listAccounts, logoutAccount, selectAccount, startAccountLogin, RuntimeRequestError,
+	listAccounts, logoutAccount, selectAccount, startAccountLogin, verifyAccount, RuntimeRequestError,
 	type AccountLoginConfiguration, type AccountLoginOperation, type AccountSummary,
 } from './runtime';
 
@@ -46,6 +46,9 @@ export class AccountState {
 	loginErrorDetail = $state<string | null>(null);
 	loginDialogOpen = $state(false);
 	offlineMode = $state(false);
+	expired = $state<Record<string, boolean>>({});
+	verifying = $state<string | null>(null);
+	private verifiedInitial = false;
 	private offlineLaunch: (() => void) | null = null;
 
 	private disposed = false;
@@ -68,7 +71,41 @@ export class AccountState {
 	}
 
 	get busy(): boolean {
-		return this.loading || this.pendingAction !== null || this.loginStarting || this.loginRunning;
+		return this.loading || this.pendingAction !== null || this.loginStarting || this.loginRunning || this.verifying !== null;
+	}
+
+	isExpired(id: string): boolean {
+		return this.expired[id] === true;
+	}
+
+	markExpired(id: string) {
+		if (!this.expired[id]) this.expired = { ...this.expired, [id]: true };
+	}
+
+	private clearExpired(id: string) {
+		if (!this.expired[id]) return;
+		const next = { ...this.expired };
+		delete next[id];
+		this.expired = next;
+	}
+
+	async verifySelectedAccount(): Promise<boolean> {
+		if (this.disposed || this.verifying || this.loginRunning || this.loginStarting) return false;
+		const account = this.currentAccount;
+		if (!account) return false;
+		this.verifying = account.id;
+		try {
+			await this.request((signal) => verifyAccount(account.id, { signal }));
+			if (!this.disposed) this.clearExpired(account.id);
+			return true;
+		} catch (error) {
+			if (!this.disposed && error instanceof RuntimeRequestError && error.status === 401) {
+				this.markExpired(account.id);
+			}
+			return false;
+		} finally {
+			if (!this.disposed) this.verifying = null;
+		}
 	}
 
 	get canCancelLogin(): boolean {
@@ -97,6 +134,7 @@ export class AccountState {
 			if (this.disposed) return false;
 			this.accounts = accounts;
 			this.loaded = true;
+			if (!this.verifiedInitial) { this.verifiedInitial = true; void this.verifySelectedAccount(); }
 			return true;
 		} catch (error) {
 			if (!this.disposed) {
@@ -125,7 +163,8 @@ export class AccountState {
 				? selectAccount(id, { signal }) : logoutAccount(id, { signal }));
 			if (this.disposed) return false;
 			this.accounts = accounts;
-			if (kind === 'switch') this.offlineMode = false;
+			if (kind === 'switch') { this.offlineMode = false; void this.verifySelectedAccount(); }
+			if (kind === 'logout') this.clearExpired(id);
 			this.loaded = true;
 			return true;
 		} catch (error) {
@@ -319,6 +358,7 @@ export class AccountState {
 		if (operation.state === 'completed' && operation.account) {
 			this.offlineMode = false;
 			const account = operation.account;
+			this.clearExpired(account.id);
 			this.accounts = [
 				...this.accounts.filter((item) => item.id !== account.id).map((item) => ({ ...item, selected: false })),
 				{ ...account, selected: true },

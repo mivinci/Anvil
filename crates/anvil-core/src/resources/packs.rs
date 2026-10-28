@@ -341,7 +341,7 @@ pub(super) fn validate_zip_entry<R: Read>(file: &zip::read::ZipFile<'_, R>) -> R
   }
   Ok(())
 }
-fn inspect_zip(bytes: &[u8]) -> Result<PackMetadata> {
+pub(super) fn inspect_zip(bytes: &[u8]) -> Result<PackMetadata> {
   let mut archive = open_zip(bytes)?;
   let mut found = None;
   let mut names = HashSet::new();

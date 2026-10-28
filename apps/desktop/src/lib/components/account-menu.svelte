@@ -4,7 +4,7 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import {
-		Check, ChevronRight, CircleHelp, ExternalLink, LogIn, LogOut,
+		Check, ChevronRight, CircleHelp, ExternalLink, LogIn, LogOut, TriangleAlert,
 		Monitor, Moon, Palette, Settings2, Sun, UserRound, UsersRound,
 	} from '@lucide/svelte';
 	import type { AppearanceMode } from './appearance-menu.svelte';
@@ -34,6 +34,7 @@
 	const loaded = $derived(accountState.loaded);
 	const error = $derived(menuError ?? accountState.error?.message ?? null);
 	const currentAccount = $derived(accountState.currentAccount);
+	const currentExpired = $derived(!!currentAccount && accountState.isExpired(currentAccount.id));
 
 	function refreshAccounts() {
 		menuError = null;
@@ -75,7 +76,7 @@
 	<DropdownMenu.Trigger
 		data-account-trigger
 		class="relative grid size-9 cursor-default place-items-center [clip-path:url(#nav-button-shape)] text-chrome-muted/80 transition-colors hover:bg-chrome-selected hover:text-chrome-muted focus-visible:outline-2 focus-visible:outline-ring data-[state=open]:bg-chrome-selected"
-		aria-label={currentAccount ? `账户：${currentAccount.username}` : '账户'}
+		aria-label={currentAccount ? `账户：${currentAccount.username}${currentExpired ? '（登录已过期）' : ''}` : '账户'}
 		title="账户"
 	>
 		{#if currentAccount}
@@ -102,7 +103,7 @@
 			</div>
 			<div class="min-w-0">
 				<p class="truncate text-[13px] leading-4 font-medium">{currentAccount?.username ?? '本地玩家'}</p>
-				<p class="mt-0.5 text-[11px] leading-4 text-chrome-muted">{accountState.loginRunning || accountState.loginStarting ? '正在登录…' : loading ? '正在读取账户…' : currentAccount ? 'Minecraft Java 版' : loaded ? '尚未登录' : 'Microsoft 账户'}</p>
+				<p class="mt-0.5 text-[11px] leading-4 text-chrome-muted">{accountState.loginRunning || accountState.loginStarting ? '正在登录…' : loading ? '正在读取账户…' : accountState.verifying ? '正在确认登录状态…' : currentAccount ? (currentExpired ? '登录已过期，请重新登录' : 'Minecraft Java 版') : loaded ? '尚未登录' : 'Microsoft 账户'}</p>
 			</div>
 		</div>
 		<DropdownMenu.Separator class="mx-1.5 my-1 h-px bg-border/60" />
@@ -118,7 +119,7 @@
 			</div>
 		{/if}
 		<DropdownMenu.Item class={itemClass} disabled={loading || accountState.pendingAction !== null} onSelect={() => void openLogin()}>
-			<LogIn size={14} strokeWidth={1.75} aria-hidden="true" />{accountState.loginRunning || accountState.loginStarting ? '查看登录进度' : currentAccount ? '添加账户' : '登录 Microsoft 账户'}
+			<LogIn size={14} strokeWidth={1.75} aria-hidden="true" />{accountState.loginRunning || accountState.loginStarting ? '查看登录进度' : currentAccount ? (currentExpired ? '重新登录 Microsoft 账户' : '添加账户') : '登录 Microsoft 账户'}
 		</DropdownMenu.Item>
 		<DropdownMenu.Sub>
 			<DropdownMenu.SubTrigger class={itemClass} disabled={accounts.length === 0 || busy || loading}>
@@ -128,7 +129,7 @@
 				{#each accounts as account (account.id)}
 					<DropdownMenu.Item class={itemClass} onSelect={(event) => { event.preventDefault(); void changeAccount(account); }}>
 						<AccountAvatar {account} size={20} /><span class="max-w-40 flex-1 truncate">{account.username}</span>
-						{#if account.selected}<Check size={14} aria-label="当前账户" />{/if}
+						{#if accountState.isExpired(account.id)}<TriangleAlert size={13} class="shrink-0 text-amber-600 dark:text-amber-400" aria-label="登录已过期" />{:else if account.selected}<Check size={14} aria-label="当前账户" />{/if}
 					</DropdownMenu.Item>
 				{/each}
 			</DropdownMenu.SubContent>

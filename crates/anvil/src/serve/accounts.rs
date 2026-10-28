@@ -13,6 +13,7 @@ use std::{
     Arc, Mutex,
     atomic::{AtomicU64, Ordering},
   },
+  time::Duration,
 };
 use tokio::sync::{mpsc, watch};
 
@@ -105,6 +106,13 @@ pub(super) struct AccountState {
 }
 
 #[derive(Debug)]
+pub(super) enum VerifyError {
+  NotFound,
+  Expired,
+  Unavailable(String),
+}
+
+#[derive(Debug)]
 pub(super) enum StartLoginError {
   Invalid(String),
   Conflict(String),
@@ -136,6 +144,48 @@ impl AccountState {
       .client_id
       .clone()
       .map_err(anvil_core::Error::Authentication)
+  }
+
+  pub(super) async fn verify(&self, id: &str) -> Result<(), VerifyError> {
+    let data = self.context.paths.data.clone();
+    let account_id = id.to_owned();
+    let profile = tokio::task::spawn_blocking(move || {
+      account_store::load(&data).map(|file| file.find(&account_id).cloned())
+    })
+    .await
+    .map_err(|error| VerifyError::Unavailable(error.to_string()))?
+    .map_err(|error| VerifyError::Unavailable(error.to_string()))?
+    .ok_or(VerifyError::NotFound)?;
+    let client_id = self
+      .client_id
+      .clone()
+      .map_err(|error| VerifyError::Unavailable(error.to_string()))?;
+    let provider = MicrosoftAccountProvider::new()
+      .map_err(|error| VerifyError::Unavailable(error.to_string()))?;
+    let service = AccountService::new(
+      client_id,
+      Arc::new(provider),
+      Arc::new(SystemCredentialStore),
+    );
+    let (events, mut receiver) = mpsc::unbounded_channel();
+    let drain = tokio::spawn(async move { while receiver.recv().await.is_some() {} });
+    let cancel = anvil_core::CancellationToken::new();
+    let result = tokio::time::timeout(
+      Duration::from_secs(25),
+      service.resume(&profile, cancel, events),
+    )
+    .await;
+    let _ = drain.await;
+    match result {
+      Ok(Ok(_)) => Ok(()),
+      Ok(Err(anvil_core::Error::AccountRequired | anvil_core::Error::Authentication(_))) => {
+        Err(VerifyError::Expired)
+      }
+      Ok(Err(error)) => Err(VerifyError::Unavailable(error.to_string())),
+      Err(_) => Err(VerifyError::Unavailable(
+        "账户校验超时，请稍后重试。".into(),
+      )),
+    }
   }
 
   pub(super) fn login_configuration(&self) -> LoginConfiguration {

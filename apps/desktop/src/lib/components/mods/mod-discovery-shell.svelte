@@ -24,7 +24,7 @@
 	const targetName = $derived(context.instanceName);
 	let checkedName = $state<string | null>(null);
 	const client = $derived(detail.client);
-	const confirmed = $derived(client && targetName && checkedName === targetName && client.id === `client-${targetName}` && client.name.toLowerCase() === targetName ? client : null);
+	const confirmed = $derived(client && targetName && checkedName === targetName && client.name.toLowerCase() === targetName.toLowerCase() ? client : null);
 	const targetIssue = $derived(context.instanceIssue ? '链接中的实例名称无效或重复，请重新选择安装目标。'
 		: targetName && checkedName === targetName && !detail.loading && detail.error ? detail.error
 		: targetName && checkedName === targetName && client && !confirmed ? '实例信息与所选目标不一致，请重新读取。'

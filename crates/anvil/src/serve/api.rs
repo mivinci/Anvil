@@ -44,6 +44,7 @@ pub(super) struct AppState {
   pub(super) modrinth: Arc<super::modrinth::Catalog>,
   news: Arc<super::news::NewsCatalog>,
   pub(super) resources: Arc<super::resource_operations::ResourceOperations>,
+  pub(super) exports: Arc<super::modpack_export::ModpackExports>,
   pub(super) accounts: Arc<AccountState>,
   pub(super) play_stats: Arc<anvil_core::play_stats::PlayStatsStore>,
   api_version: Arc<str>,
@@ -68,6 +69,9 @@ impl AppState {
       modrinth: Arc::new(super::modrinth::Catalog::new()),
       news: Arc::new(super::news::NewsCatalog::default()),
       resources: Arc::new(super::resource_operations::ResourceOperations::new()),
+      exports: Arc::new(super::modpack_export::ModpackExports::new(
+        runtime.context.clone(),
+      )),
       versions: Arc::new(super::versions::VersionCatalog::default()),
       fabric_versions: Arc::new(super::fabric_catalog::FabricCatalog::default()),
       runtime,
@@ -123,9 +127,24 @@ pub(super) async fn serve(
 
   let launches = state.launches.clone();
   let resources = state.resources.clone();
+  let exports = state.exports.clone();
   let runtime = state.runtime.clone();
   let account_state = state.accounts.clone();
   let app = Router::new()
+    .route("/clients/import", post(super::modpack_import::reserve))
+    .route(
+      "/clients/{name}/modpack-exports",
+      post(super::modpack_export::create),
+    )
+    .route("/modpack-exports", get(super::modpack_export::list))
+    .route(
+      "/modpack-exports/{id}",
+      get(super::modpack_export::get).delete(super::modpack_export::cancel),
+    )
+    .route(
+      "/operations/{id}/import-file",
+      post(super::modpack_import::upload),
+    )
     .route(
       "/resources/{source}/projects",
       get(super::resource_discovery::search),
@@ -292,6 +311,7 @@ pub(super) async fn serve(
       get(login_configuration).post(login_account),
     )
     .route("/accounts/{id}", axum::routing::delete(logout_account))
+    .route("/accounts/{id}/verify", post(verify_account))
     .route("/accounts/{id}/select", post(select_account))
     .route("/accounts/{id}/skin", get(account_skin))
     .route("/account-operations/active", get(active_account_operation))
@@ -313,6 +333,7 @@ pub(super) async fn serve(
       tokio::join!(
         launches.shutdown(),
         resources.shutdown(),
+        exports.shutdown(),
         runtime.shutdown_operations(),
         account_state.shutdown_operations()
       );
@@ -524,6 +545,7 @@ struct ClientDetails {
   os: String,
   architecture: String,
   file_count: usize,
+  modpack_version_id: Option<String>,
 }
 
 static LOG_READS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(2);
@@ -609,6 +631,8 @@ async fn client_details(
     os: record.os,
     architecture: record.architecture,
     file_count: record.files.len(),
+    modpack_version_id: anvil_core::client::modpack_version(&state.runtime.context, &name)
+      .map_err(|error| ApiError::new(StatusCode::CONFLICT, error.to_string()))?,
   }))
 }
 
@@ -750,6 +774,29 @@ async fn delete_client(
     "Client instance removed"
   );
   Ok(Json(result))
+}
+
+async fn verify_account(
+  State(state): State<AppState>,
+  RoutePath(id): RoutePath<String>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+  match state.accounts.verify(&id).await {
+    Ok(()) => Ok(Json(serde_json::json!({ "valid": true }))),
+    Err(super::accounts::VerifyError::NotFound) => {
+      Err(ApiError::new(StatusCode::NOT_FOUND, "账户不存在。"))
+    }
+    Err(super::accounts::VerifyError::Expired) => Err(ApiError::new(
+      StatusCode::UNAUTHORIZED,
+      "登录已过期，请重新登录 Microsoft 账户。",
+    )),
+    Err(super::accounts::VerifyError::Unavailable(detail)) => {
+      tracing::warn!(reason = %detail, "Account verification unavailable");
+      Err(ApiError::new(
+        StatusCode::BAD_GATEWAY,
+        "暂时无法确认登录状态，请稍后重试。",
+      ))
+    }
+  }
 }
 
 async fn account_skin(

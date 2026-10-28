@@ -18,6 +18,8 @@ mod curseforge;
 mod discovery_catalog;
 mod fabric_catalog;
 mod launches;
+mod modpack_export;
+mod modpack_import;
 mod modrinth;
 mod modrinth_catalog;
 mod news;

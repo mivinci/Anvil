@@ -1,3 +1,4 @@
+import { validClientName as validName } from './client-name.ts';
 import type { ModSource } from './runtime';
 
 export interface ModDiscoveryContext {
@@ -8,10 +9,6 @@ export interface ModDiscoveryContext {
 	sourceIssue: 'invalid' | 'duplicate' | null;
 }
 type ReadableUrl = { href: string; searchParams: Pick<URLSearchParams, 'getAll'> };
-
-function validName(name: string) {
-	return /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,47}$/.test(name) && !name.endsWith('.');
-}
 
 /** The URL names a requested target; the Runtime still has to confirm it exists. */
 export function readModDiscoveryContext(url: ReadableUrl): ModDiscoveryContext {

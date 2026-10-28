@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { type Snippet } from 'svelte';
+	import { validClientName } from '../../client-name.ts';
 	import PageSidebar from '../ui/page-sidebar.svelte';
 	import { pageSidebarItemClass } from '../ui/page-sidebar-item';
 	import { page } from '$app/state';
@@ -11,7 +12,7 @@
 	const detail = setClientDetailState(new ClientDetailState());
 	const sidebar = getPageSidebarState();
 	const name = $derived(page.params.name ?? '');
-	const valid = $derived(/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,47}$/.test(name) && !name.endsWith('.'));
+	const valid = $derived(validClientName(name));
 	const client = $derived(detail.client);
 	const items = $derived([
 		{ href: resolve('/clients/[name]', { name }), label: '概览', icon: Box },

@@ -571,6 +571,12 @@ pub(super) async fn start(
   Path(name): Path<String>,
   Json(request): Json<LaunchRequest>,
 ) -> std::result::Result<(StatusCode, Json<Snapshot>), ApiError> {
+  if state.exports.busy_for_client(&name) {
+    return Err(ApiError::new(
+      StatusCode::CONFLICT,
+      "实例正在导出整合包，请等待完成或取消后再启动。",
+    ));
+  }
   state
     .launches
     .start(

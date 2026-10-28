@@ -102,7 +102,7 @@
 				<div class="min-w-0 flex-1"><p class="text-[13px] font-medium">还没有光影</p><p class="mt-1 text-[11px] leading-4 text-muted-foreground">导入本地光影 ZIP，再到游戏中选择效果。</p></div>
 			</div>
 		{:else}
-			<label class="mt-4 flex h-8 items-center gap-2 rounded-lg bg-chrome-hover px-2.5 text-muted-foreground focus-within:ring-1 focus-within:ring-ring"><Search size={14} aria-hidden="true" /><input type="search" bind:value={search} placeholder="搜索光影名称" aria-label="搜索光影" class="min-w-0 flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground" />{#if search}<button type="button" onclick={() => search = ''} aria-label="清空搜索" class="rounded p-0.5 focus-visible:outline-2 focus-visible:outline-ring"><X size={12} aria-hidden="true" /></button>{/if}</label>
+			<label class="mt-4 flex h-8 shrink-0 items-center gap-2 rounded-lg bg-chrome-hover px-2.5 text-muted-foreground focus-within:ring-1 focus-within:ring-ring"><Search size={14} aria-hidden="true" /><input type="search" bind:value={search} placeholder="搜索光影名称" aria-label="搜索光影" class="min-w-0 flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground" />{#if search}<button type="button" onclick={() => search = ''} aria-label="清空搜索" class="rounded p-0.5 focus-visible:outline-2 focus-visible:outline-ring"><X size={12} aria-hidden="true" /></button>{/if}</label>
 			<ul aria-label="本实例光影" aria-busy={packs.busy} class="mt-3 shrink-0 divide-y divide-border rounded-lg bg-card px-3">
 				{#each visible as pack (pack.sha256)}
 					<li class="py-3">

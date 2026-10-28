@@ -129,7 +129,7 @@
 	{:else if manifest}
 		{#if manifest.mods.length === 0}<div class="flex min-h-48 flex-1 flex-col items-center justify-center gap-3 text-muted-foreground"><Boxes size={25} strokeWidth={1.5} aria-hidden="true" /><p class="text-xs">尚未导入模组</p></div>
 		{:else}
-			<input type="search" bind:value={search} placeholder="搜索模组文件名" aria-label="搜索模组" class="mt-4 h-8 w-full rounded-lg bg-chrome-hover px-2.5 text-xs outline-none focus:ring-1 focus:ring-ring" />
+			<input type="search" bind:value={search} placeholder="搜索模组文件名" aria-label="搜索模组" class="mt-4 h-8 w-full shrink-0 rounded-lg bg-chrome-hover px-2.5 text-xs outline-none focus:ring-1 focus:ring-ring" />
 			<ul class="mt-3 divide-y divide-border rounded-lg bg-card px-3" aria-label="本实例模组引用">
 				{#each visible as mod (mod.sha256)}
 					{@const relation = relations.get(mod.sha256) ?? { requires: [], requiredBy: [] }}

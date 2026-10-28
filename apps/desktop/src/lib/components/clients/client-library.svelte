@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { Gamepad2, LoaderCircle, Plus, RefreshCw, Search, SearchX, TriangleAlert } from '@lucide/svelte';
+	import { Gamepad2, LoaderCircle, ArrowDownToLine, Plus, RefreshCw, Search, SearchX, TriangleAlert } from '@lucide/svelte';
 	import { getClientLibraryState } from '../../client-library-state.svelte.js';
 	const library = getClientLibraryState();
 	import ClientCard from './client-card.svelte';
@@ -8,6 +8,7 @@
 	const installs = getClientInstallState();
 	import ClientInstallDialog from './client-install-dialog.svelte';
 	let installOpen = $state(false);
+	let importInput: HTMLInputElement;
 	const filtered = $derived(library.clients.filter((client) => `${client.name} ${client.versionId}`.toLowerCase().includes(library.query.trim().toLowerCase())));
 	onMount(() => { if (!library.loaded) void library.refresh(); });
 </script>
@@ -16,7 +17,11 @@
 	<header class="shrink-0 px-5 pt-6 pb-4 lg:px-7">
 		<div class="flex items-center justify-between gap-4">
 			<div class="flex items-baseline gap-2"><h1 id="clients-title" class="text-xl font-semibold tracking-tight">客户端</h1>{#if library.loaded}<span class="text-[11px] text-muted-foreground">{library.clients.length} 个实例</span>{/if}</div>
+			<div class="flex shrink-0 items-center gap-2">
+				<input bind:this={importInput} type="file" accept=".mrpack" aria-label="选择整合包" class="hidden" onchange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; if (file) void installs.importPack(file); }} />
+				<button type="button" disabled={!installs.canStart} onclick={() => importInput.click()} class="inline-flex h-8 items-center gap-1.5 rounded-lg bg-chrome-hover px-3 text-xs font-medium text-foreground hover:bg-chrome-hover/80 focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40"><ArrowDownToLine size={14} aria-hidden="true" />导入</button>
 			<button type="button" data-client-install-trigger onclick={() => { if (installs.active || installs.starting || installs.uncertain) installs.detailsOpen = true; else installOpen = true; }} class="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground disabled:opacity-40"><Plus size={14} aria-hidden="true" /> {installs.active || installs.starting ? '安装进度' : '安装版本'}</button>
+			</div>
 		</div>
 		<p class="mt-2 text-[11px] text-muted-foreground">管理你的 Minecraft Java 游戏实例</p>
 		{#if library.removalNotice}<p role="status" class="mt-2 text-[11px] text-muted-foreground">{library.removalNotice}</p>{/if}

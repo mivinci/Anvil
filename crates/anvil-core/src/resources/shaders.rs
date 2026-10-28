@@ -160,7 +160,7 @@ pub(super) fn validate_entries(entries: &[ShaderPackEntry]) -> Result<()> {
 fn invalid() -> Error {
   Error::Invalid("invalid shader pack ZIP; expected shader source files under root shaders/".into())
 }
-fn inspect_zip(bytes: &[u8]) -> Result<()> {
+pub(super) fn inspect_zip(bytes: &[u8]) -> Result<()> {
   let mut archive = open_zip(bytes)?;
   let mut names = HashSet::new();
   let mut files = HashSet::new();

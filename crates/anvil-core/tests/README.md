@@ -23,3 +23,5 @@
 `fixtures/1.21.1.json` 和 `fixtures/1.21.1-assets-17.json` 是通过 Mojang 官方版本清单 SHA-1 校验的离线样本，供客户端计划测试使用。这些测试会被各自源码模块通过 `#[path = "../tests/<name>.rs"]` 引入，以便覆盖私有实现。Core crate 关闭 Cargo 对根目录 `.rs` 文件的自动集成测试发现，避免同一文件被作为独立集成测试再次编译；它们仍由 `cargo test -p anvil-core --locked` 编译和运行。
 
 CLI 的进程级测试位于 `crates/anvil/tests/cli.rs`；Java 供应商验收脚本位于根目录 `scripts/java-smoke.py`。Core 测试仅使用本地 fixture，不下载真实 Java 或 Minecraft 文件；模拟 Java 子进程的用例仅在 Unix 运行。
+
+整合包相关 fixture：`modpack.rs` 覆盖 index/ZIP 路径、覆盖层与容量边界；`modpack_install.rs` 覆盖暂存实例、中文名称、共享资源副本、取消和原子发布；`modpack_store.rs` 覆盖双哈希/大小、缓存与链接拒绝；`modpack_export.rs` 覆盖导出选项与 index 往返；`modpack_export_archive.rs` 覆盖所选文件/存档、输出保护、实例锁、变化检测、坏包/容量及打包中取消清理。使用临时目录，不读取或改写维护者真实实例，不下载或启动游戏。

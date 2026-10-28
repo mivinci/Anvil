@@ -14,7 +14,7 @@ use std::{
 };
 
 pub const MAX_IMPORT_BYTES: usize = 64 * 1024 * 1024;
-const MAX_ENTRIES: usize = 1024;
+pub(crate) const MAX_ENTRIES: usize = 1024;
 const MAX_RECORD_BYTES: usize = 1024 * 1024;
 
 mod shader_environment;
@@ -23,6 +23,10 @@ pub use shader_environment::{
 };
 mod shaders;
 pub use shaders::{ShaderInstallPlan, ShaderPackEntry};
+mod modpack;
+pub(crate) use modpack::{
+  export_resources, modpack_resource, prepare_modpack, validate_export_payload,
+};
 mod packs;
 pub use packs::{PackFormat, PackMetadata, ResourcePackEntry};
 mod modrinth;
@@ -389,7 +393,7 @@ fn commit_cancel(
 pub(crate) fn validate_filename(filename: &str) -> Result<()> {
   validate_resource_filename(filename, "jar")
 }
-fn validate_resource_filename(filename: &str, extension: &str) -> Result<()> {
+pub(crate) fn validate_resource_filename(filename: &str, extension: &str) -> Result<()> {
   let stem = filename
     .split('.')
     .next()

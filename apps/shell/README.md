@@ -16,9 +16,9 @@ Windows 主窗口启用透明窗口与 Acrylic 毛玻璃（开发和发行配置
 
 ## 平台图标
 
-`docs/logo.png` 是方形原始 logo；Windows 使用独立的连续圆角图标。仓库根目录运行 `scripts/create-windows-icon.ps1` 可重新生成 `icons/windows-rounded.png` 和 Windows `icons/icon.ico`。圆角比例默认 40%，也可通过 `-CornerRadiusRatio` 调整。脚本将 Tauri CLI 的临时输出放在 `target/`，只复制 Windows ICO，不覆盖 macOS/Linux 图标。
+`docs/logo.png` 是方形原始 logo；Windows 使用独立的连续圆角图标，macOS 使用独立的圆角带留白图标。仓库根目录运行 `scripts/create-windows-icon.ps1` 可重新生成 `icons/windows-rounded.png` 和 Windows `icons/icon.ico`。圆角比例默认 40%，也可通过 `-CornerRadiusRatio` 调整。脚本将 Tauri CLI 的临时输出放在 `target/`，只复制 Windows ICO，不覆盖 macOS/Linux 图标。
 
-`tauri.conf.json` 将 `icons/icon.ico` 用作 Windows 应用、NSIS 安装器和卸载器图标；`icon.icns` 与 PNG 仍使用方形图稿。更换 `docs/logo.png` 后，需要先同步 `src-tauri/app-icon.png` 并重新生成方形平台图标，再运行 Windows 图标脚本。
+`tauri.conf.json` 将 `icons/icon.ico` 用作 Windows 应用、NSIS 安装器和卸载器图标；macOS 使用 `icons/icon.icns`（由 `macos-rounded.png` 生成，带透明圆角和留白，DMG 卷图标也会使用它）；Linux PNG 仍使用方形图稿。更换 `docs/logo.png` 后，需要先同步 `src-tauri/app-icon.png` 并重新生成方形平台图标，再分别生成 Windows 圆角 ICO 和 macOS 圆角 ICNS。
 
 ## 构建参数与 App manifest
 

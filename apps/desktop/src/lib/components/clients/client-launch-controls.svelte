@@ -1,23 +1,29 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { Play, LoaderCircle, X } from '@lucide/svelte';
 	import type { InstalledClient } from '../../runtime';
 	import { getClientLaunchState, launchActive, launchLabel, launchNeedsLogin } from '../../client-launch-state.svelte.js';
 	import { getAccountState } from '../../account-state.svelte.js';
 	import { getClientInstallState } from '../../client-install-state.svelte.js';
-	let { client, compact = false, large = false, feedback = !compact, reserveCancel = true }: {
-		client: InstalledClient; compact?: boolean; large?: boolean; feedback?: boolean; reserveCancel?: boolean;
+	import { getModpackExportState } from '../../modpack-export-state.svelte.js';
+	let { client, compact = false, large = false, feedback = !compact, reserveCancel = true, trailing }: {
+		client: InstalledClient; compact?: boolean; large?: boolean; feedback?: boolean; reserveCancel?: boolean; trailing?: Snippet;
 	} = $props();
 	const launches = getClientLaunchState();
 	const accounts = getAccountState();
 	const installs = getClientInstallState();
+	const exports = getModpackExportState();
 	let hint = $state<string | null>(null);
 	let checking = $state(false);
 	let authenticationAttemptAfter = $state<number | null>(null);
 	const operation = $derived(launches.forClient(client.name));
+	const exporting = $derived((exports.active && exports.operation?.name === client.name.toLowerCase()) || (exports.starting && exports.intent?.name === client.name.toLowerCase()));
 	const active = $derived(launchActive(operation));
 	const pending = $derived(checking || launches.pending.includes(client.name));
-	const idleLabel = $derived(large ? '开始游戏' : '启动');
+	const sessionExpired = $derived(!!accounts.currentAccount && !accounts.offlineMode && accounts.isExpired(accounts.currentAccount.id));
+	const sessionVerifying = $derived(!!accounts.currentAccount && accounts.verifying === accounts.currentAccount.id);
+	const idleLabel = $derived(sessionExpired ? '重新登录' : sessionVerifying ? '确认登录中' : large ? '开始游戏' : '启动');
 	const label = $derived(pending ? '准备中' : active && operation ? launchLabel(operation) : idleLabel);
 	const preparing = $derived(pending || (active && operation?.phase !== 'running'));
 	const buttonLabel = $derived.by(() => {
@@ -31,6 +37,12 @@
 	const progress = $derived(downloading && operation?.javaTotalBytes ? Math.min(100, operation.javaDownloadedBytes / operation.javaTotalBytes * 100) : null);
 	// React only to a launch initiated here, not historical failures restored on mount.
 	$effect(() => {
+		if (operation?.errorCode === 'authentication_failed' || operation?.errorCode === 'account_required') {
+			const id = accounts.currentAccount?.id;
+			if (id) accounts.markExpired(id);
+		}
+	});
+	$effect(() => {
 		if (authenticationAttemptAfter === null || !operation || operation.id <= authenticationAttemptAfter) return;
 		if (launchNeedsLogin(operation)) {
 			authenticationAttemptAfter = null;
@@ -38,6 +50,8 @@
 		} else if (!active || operation.phase === 'running') authenticationAttemptAfter = null;
 	});
 	async function launch(installJava = false, offlineTest = false) {
+		if (exporting || sessionVerifying) return;
+		if (sessionExpired) { accounts.openLoginDialog(); return; }
 		checking = true; hint = null;
 		try {
 			if (offlineTest || accounts.offlineMode) { await launches.start(client.name, null, installJava, true); return; }
@@ -51,10 +65,11 @@
 </script>
 <div class={compact ? 'contents' : 'relative z-20 min-w-0'}>
 <div class="relative z-20 flex shrink-0 flex-wrap items-center gap-1">
-				<button type="button" title={label} aria-label={`${client.name}：${label}${preparing && progress !== null ? ` ${Math.floor(progress)}%` : ''}`} aria-busy={preparing} disabled={active || pending || launches.uncertain || installs.active} onclick={() => void launch()} class={`relative isolate inline-flex shrink-0 items-center justify-center gap-2 overflow-hidden rounded-lg bg-primary text-primary-foreground transition-opacity enabled:hover:opacity-90 focus-visible:outline-2 focus-visible:outline-ring ${preparing ? '' : 'disabled:opacity-50'} ${compact ? 'size-7' : large ? `h-9 max-w-full px-3.5 text-xs font-medium ${preparing ? 'w-44' : 'w-30'}` : `h-8 max-w-full px-3 text-xs font-medium ${preparing ? 'w-40' : 'w-28'}`}`}>
+				<button type="button" title={exporting ? '正在导出整合包' : sessionExpired ? '登录已过期，请重新登录' : sessionVerifying ? '正在确认登录状态' : label} aria-label={`${client.name}：${exporting ? '正在导出整合包' : sessionExpired ? '登录已过期，请重新登录' : sessionVerifying ? '正在确认登录状态' : label}${preparing && progress !== null ? ` ${Math.floor(progress)}%` : ''}`} aria-busy={preparing} disabled={active || pending || launches.uncertain || installs.active || exporting || sessionVerifying} onclick={() => void launch()} class={`relative isolate inline-flex shrink-0 items-center justify-center gap-2 overflow-hidden rounded-lg bg-primary text-primary-foreground transition-opacity enabled:hover:opacity-90 focus-visible:outline-2 focus-visible:outline-ring ${preparing ? '' : 'disabled:opacity-50'} ${compact ? 'size-7' : large ? `h-9 max-w-full px-3.5 text-xs font-medium ${preparing ? 'w-44' : 'w-30'}` : `h-8 max-w-full px-3 text-xs font-medium ${preparing ? 'w-40' : 'w-28'}`}`}>
 					{#if preparing}<span aria-hidden="true" class={`pointer-events-none absolute inset-y-0 left-0 -z-10 bg-primary-foreground/15 ${progress === null ? 'launch-progress-indeterminate w-1/3' : 'transition-[width] duration-300 motion-reduce:transition-none'}`} style:width={progress !== null ? `${progress}%` : undefined}></span>{/if}
 					{#if preparing}<LoaderCircle size={large ? 14 : 13} class="shrink-0 animate-spin motion-reduce:animate-none" aria-hidden="true" />{:else}<Play size={large ? 14 : 13} fill="currentColor" class="shrink-0" aria-hidden="true" />{/if}{#if !compact}<span class="min-w-0 truncate">{buttonLabel}</span>{#if preparing && progress !== null}<span class="shrink-0 text-[10px] tabular-nums">{Math.floor(progress)}%</span>{/if}{/if}
 				</button>
+				{#if trailing}{@render trailing()}{/if}
 				{#if canCancel || reserveCancel}<button type="button" aria-label="取消启动" title="取消启动" aria-hidden={!canCancel} tabindex={canCancel ? 0 : -1} disabled={!canCancel || operation?.cancelRequested} onclick={() => operation && void launches.cancel(operation)} class={`grid shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-chrome-hover disabled:opacity-50 ${large ? 'size-7' : 'size-6'} ${canCancel ? '' : 'invisible pointer-events-none'}`}><X size={large ? 13 : 12} aria-hidden="true" /></button>{/if}
 			</div>
 	{#if feedback}
