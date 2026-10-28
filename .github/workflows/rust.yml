@@ -75,6 +75,8 @@ jobs:
           cargo clippy --locked -p anvil-shell --all-targets -- -D warnings
       - run: npm ci
       - run: npm run desktop:check
+      - run: node --test apps/desktop/tests/modpack-import.test.mjs apps/desktop/tests/modpack-export.test.mjs
+      - run: node --experimental-strip-types --test apps/desktop/tests/client-name.test.ts apps/desktop/tests/mod-discovery-context.test.ts
       - name: Build Desktop bundle
         shell: bash
         run: |

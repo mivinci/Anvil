@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { validClientName } from '../../client-name.ts';
 	import { onMount, tick } from 'svelte';
 	import { getClientInstallState } from '../../client-install-state.svelte.js';
 	const installs = getClientInstallState();
@@ -38,7 +39,7 @@
 	let nameEdited = $state(false);
 	let touched = $state(false);
 	const visible = $derived(versions.filter((version) => version.type === channel && version.id.toLowerCase().includes(query.trim().toLowerCase())));
-	const nameError = $derived(!name ? '请输入实例名称。' : !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,47}$/.test(name) || name.endsWith('.') ? '名称需以英文字母或数字开头，仅可使用英文、数字、点、下划线和短横线，最多 48 位，不能以点结尾。' : clients.some((client) => client.name.toLowerCase() === name.toLowerCase()) ? '已有同名实例，请换一个名称（不区分大小写）。' : null);
+	const nameError = $derived(!name ? '请输入实例名称。' : !validClientName(name) ? '名称需以字母或数字开头，仅可包含字母、数字和 . _ -，不能以点结尾；名称过长时请缩短。' : clients.some((client) => client.name.toLowerCase() === name.toLowerCase()) ? '已有同名实例，请换一个名称（不区分大小写）。' : null);
 	function select(version: GameVersion) {
 		selected = version;
 	}

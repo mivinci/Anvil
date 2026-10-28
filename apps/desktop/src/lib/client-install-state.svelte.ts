@@ -1,10 +1,12 @@
 import { createContext } from 'svelte';
 import {
-	listClientInstallOperations, startClientInstall, getClientInstallOperation, cancelClientInstall,
+	listClientInstallOperations, startClientInstall, importClientModpack, getClientInstallOperation, cancelClientInstall,
 	RuntimeRequestError, pauseClientInstall, resumeClientInstall, type ClientInstallOperation, type ClientLoaderSpec,
 } from './runtime';
 
 export const installStages = {
+	uploading: '正在读取整合包…',
+	parsing: '正在解析整合包…', applying: '正在应用整合包配置…',
 	java: '正在准备 Java',
 	resolving: '正在读取 Minecraft 版本信息', planning: '正在准备 Minecraft 安装计划', downloading: '正在下载 Minecraft',
 	verifying: '正在校验 Minecraft 文件', publishing: '正在保存 Minecraft 实例', completed: 'Minecraft 安装完成',
@@ -24,6 +26,10 @@ export class ClientInstallState {
 	error = $state<string | null>(null);
 	errorDetail = $state<string | null>(null);
 	intent = $state<{ name: string; versionId: string } | null>(null);
+	importFile = $state<File | null>(null);
+	private importRequestId: string | null = null;
+	private uploadController: AbortController | null = null;
+	get importing() { return !!this.importFile || !!this.operation?.importRequestId; }
 	private disposed = false;
 	private timer: ReturnType<typeof setTimeout> | null = null;
 	private pollController: AbortController | null = null;
@@ -34,14 +40,14 @@ export class ClientInstallState {
 	constructor(private readonly onCompleted: (receipt: NonNullable<ClientInstallOperation['result']>) => void = () => {}) {}
 	get active() { return !!this.operation && ['running', 'pausing', 'paused', 'resuming'].includes(this.operation.state); }
 	get running() { return !!this.operation && (['running', 'pausing', 'resuming'].includes(this.operation.state) || (this.operation.state === 'paused' && this.operation.cancelRequested)); }
-	get canPause() { return this.operation?.state === 'running' && this.operation.progress.stage === 'downloading' && !this.operation.cancelRequested && !this.changingPause && !this.cancelling && !this.syncing && !this.uncertain; }
+	get canPause() { return !this.operation?.importRequestId && this.operation?.state === 'running' && this.operation.progress.stage === 'downloading' && !this.operation.cancelRequested && !this.changingPause && !this.cancelling && !this.syncing && !this.uncertain; }
 	get canResume() { return this.operation?.state === 'paused' && !this.operation.cancelRequested && !this.changingPause && !this.cancelling && !this.syncing && !this.uncertain; }
 	get canStart() { return !this.starting && !this.syncing && !this.cancelling && !this.active && !this.changingPause && !this.retrying && !this.uncertain; }
-	get canRetry() { return this.canStart && (this.operation?.state === 'failed' || this.operation?.state === 'cancelled'); }
-	get canCancel() { return this.active && !this.changingPause && !this.operation?.cancelRequested && !this.cancelling && this.operation?.progress.stage !== 'publishing'; }
+	get canRetry() { return (!this.operation?.importRequestId || !!this.importFile) && this.canStart && (this.operation?.state === 'failed' || this.operation?.state === 'cancelled'); }
+	get canCancel() { if (this.starting && this.uploadController) return true; return this.active && !this.changingPause && !this.operation?.cancelRequested && !this.cancelling && this.operation?.progress.stage !== 'publishing'; }
 	get label() {
 		if (this.retrying) return '正在确认重试条件…';
-		if (this.starting) return '正在创建安装任务…';
+		if (this.starting) return this.importing ? '正在读取整合包…' : '正在创建安装任务…';
 		if (this.syncing) return '正在读取安装任务…';
 		if (this.changingPause) return this.operation?.state === 'paused' ? '正在请求继续…' : '正在请求暂停…';
 		if (this.cancelling || this.operation?.cancelRequested) return '正在取消并清理…';
@@ -56,6 +62,7 @@ export class ClientInstallState {
 			const steps = { resolving: '查找', downloading: '下载', extracting: '解压', validating: '校验', publishing: '安装', completed: '准备完成' };
 			return progress.javaStage === 'completed' ? `${java} 已就绪` : `正在${progress.javaStage ? steps[progress.javaStage] : '准备'} ${java}…`;
 		}
+		if (this.operation?.importRequestId && this.operation.progress.stage === 'downloading') return '正在下载整合包及游戏文件';
 		if (this.operation?.progress.stage === 'downloading') {
 			return this.operation.progress.receivedBytes > 0 ? '正在下载缺失的 Minecraft 文件' : '正在校验并复用本地 Minecraft 缓存';
 		}
@@ -87,6 +94,7 @@ export class ClientInstallState {
 		if (operation?.state === 'completed' && operation.result && operation.id > this.completedId) {
 			this.completedId = operation.id;
 			this.onCompleted(operation.result);
+			this.importFile = null;
 		}
 		if (!this.running) this.stopPolling();
 	}
@@ -146,6 +154,8 @@ export class ClientInstallState {
 		this.starting = true;
 		this.stopPolling();
 		this.clearError();
+		this.importFile = null;
+		this.importRequestId = null;
 		this.intent = { name, versionId };
 		this.operation = null;
 		this.bytesPerSecond = null;
@@ -171,6 +181,38 @@ export class ClientInstallState {
 			}
 		} finally { this.starting = false; this.schedule(); }
 	}
+	async importPack(file: File) {
+		if (this.disposed || !this.canStart) return;
+		if (!file.name.toLowerCase().endsWith('.mrpack') || file.size === 0 || file.size > 512 * 1024 * 1024) {
+			this.operation = null; this.importFile = null; this.intent = { name: file.name, versionId: '待解析' };
+			this.error = '请选择非空的 .mrpack 文件，最大 512 MiB。'; return;
+		}
+		this.starting = true; this.stopPolling(); this.clearError();
+		this.importFile = file; this.importRequestId = crypto.randomUUID();
+		this.intent = { name: file.name.replace(/\.mrpack$/i, ''), versionId: '待解析' };
+		this.operation = null;
+		const requestId = this.importRequestId;
+		const controller = new AbortController(); this.uploadController = controller;
+		try {
+			const operation = await importClientModpack(file, requestId, AbortSignal.any([controller.signal, AbortSignal.timeout(60_000)]), (operation) => { if (!this.disposed) this.apply(operation); });
+			if (!this.disposed) { this.apply(operation); this.uncertain = false; }
+		} catch (error) {
+			if (this.disposed) return;
+			try {
+				const operations = await this.request((signal) => listClientInstallOperations({ signal }));
+				if (this.disposed) return;
+				const accepted = operations.find(op => op.importRequestId === requestId);
+				if (accepted) {
+					this.apply(accepted); this.uncertain = false;
+					if (controller.signal.aborted || accepted.progress.stage === 'uploading') {
+						const stopped = await this.request(signal => cancelClientInstall(accepted.id, { signal }));
+						if (!this.disposed) this.apply(stopped);
+					}
+				}
+				else { this.uncertain = false; this.error = controller.signal.aborted ? '整合包上传已取消。' : '整合包上传未完成，请重新导入。'; this.errorDetail = message(error); }
+			} catch (recoveryError) { this.uncertain = true; this.error = '导入提交结果尚未确认，请先重新查询。'; this.errorDetail = message(recoveryError); }
+		} finally { this.uploadController = null; this.starting = false; this.schedule(); }
+	}
 	async retry() {
 		if (this.disposed || this.retrying || !this.canRetry || !this.operation) return;
 		const previous = this.operation;
@@ -181,11 +223,14 @@ export class ClientInstallState {
 			if (this.disposed) return;
 			this.retrying = false;
 			if (!this.canRetry || this.operation?.id !== previous.id) return;
-			await this.start(previous.name, previous.versionId, previous.loader ?? null);
+			if (previous.importRequestId) {
+				if (this.importFile) await this.importPack(this.importFile);
+			} else await this.start(previous.name, previous.versionId, previous.loader ?? null);
 		} finally { this.retrying = false; }
 	}
 
 	async cancel() {
+		if (this.starting && this.uploadController) { this.uploadController.abort(); return; }
 		if (!this.operation || !this.canCancel || this.disposed || this.syncing) return;
 		this.cancelling = true;
 		this.stopPolling();
@@ -218,6 +263,7 @@ export class ClientInstallState {
 	dispose() {
 		this.disposed = true;
 		this.stopPolling();
+		this.uploadController?.abort();
 		for (const controller of this.controllers) controller.abort();
 		this.controllers.clear();
 		// Page reads stop here. The Runtime owns installation and cancels on app exit.

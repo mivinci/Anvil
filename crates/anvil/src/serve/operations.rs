@@ -36,6 +36,13 @@ impl OperationState {
   }
 }
 
+struct ImportSource {
+  receiver: tokio::sync::oneshot::Receiver<anvil_core::Result<tempfile::TempDir>>,
+  sender: Option<tokio::sync::oneshot::Sender<anvil_core::Result<tempfile::TempDir>>>,
+  request_id: String,
+  size: u64,
+}
+
 struct TransferControl {
   pause_requested: bool,
   attempt_cancel: anvil_core::CancellationToken,
@@ -84,6 +91,8 @@ impl From<ClientProgress> for InstallProgress {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct InstallOperationSnapshot {
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub import_request_id: Option<String>,
   pub loader: Option<anvil_core::fabric::ClientLoader>,
   pub id: u64,
   pub name: String,
@@ -96,6 +105,8 @@ pub(super) struct InstallOperationSnapshot {
 }
 
 pub(super) struct InstallOperation {
+  upload: Option<tokio::sync::oneshot::Sender<anvil_core::Result<tempfile::TempDir>>>,
+  upload_identity: Option<(String, u64)>,
   cancel: anvil_core::CancellationToken,
   snapshot: watch::Receiver<InstallOperationSnapshot>,
   updates: watch::Sender<InstallOperationSnapshot>,
@@ -150,20 +161,116 @@ impl RuntimeState {
         .validate()
         .map_err(|error| StartInstallError::Invalid(error.to_string()))?;
     }
+    self.start_operation(request, None)
+  }
+
+  pub(super) fn start_import(
+    self: &Arc<Self>,
+    request_id: String,
+    filename: String,
+    size: u64,
+  ) -> Result<InstallOperationSnapshot, StartInstallError> {
+    if request_id.len() != 36
+      || !request_id
+        .bytes()
+        .all(|b| b.is_ascii_hexdigit() || b == b'-')
+      || filename.len() > 256
+      || !filename.to_lowercase().ends_with(".mrpack")
+      || filename
+        .chars()
+        .any(|c| c.is_control() || "/\\".contains(c))
+      || size == 0
+      || size > 512 * 1024 * 1024
+    {
+      return Err(StartInstallError::Invalid(
+        "请选择非空 .mrpack 文件，最大 512 MiB".into(),
+      ));
+    }
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    self.start_operation(
+      InstallRequest {
+        loader: None,
+        name: filename,
+        version_id: "unknown".into(),
+      },
+      Some(ImportSource {
+        receiver,
+        sender: Some(sender),
+        request_id,
+        size,
+      }),
+    )
+  }
+
+  pub(super) fn import_upload(&self, id: u64) -> Option<(anvil_core::CancellationToken, u64)> {
+    let operations = self
+      .operations
+      .lock()
+      .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let op = operations.get(&id)?;
+    if op.upload.is_none()
+      || !matches!(
+        op.snapshot.borrow().progress.stage,
+        ClientInstallStage::Uploading
+      )
+      || !op.snapshot.borrow().state.is_active()
+      || op.cancel.is_cancelled()
+    {
+      return None;
+    }
+    Some((op.cancel.clone(), op.upload_identity.as_ref()?.1))
+  }
+  pub(super) fn finish_import_upload(
+    &self,
+    id: u64,
+    result: anvil_core::Result<tempfile::TempDir>,
+  ) {
+    let mut operations = self
+      .operations
+      .lock()
+      .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some(op) = operations.get_mut(&id)
+      && let Some(sender) = op.upload.take()
+    {
+      let _ = sender.send(result);
+    }
+  }
+
+  fn start_operation(
+    self: &Arc<Self>,
+    request: InstallRequest,
+    mut source: Option<ImportSource>,
+  ) -> Result<InstallOperationSnapshot, StartInstallError> {
     let id = self.next_operation_id.fetch_add(1, Ordering::Relaxed);
     let initial = InstallOperationSnapshot {
+      import_request_id: source.as_ref().map(|s| s.request_id.clone()),
       loader: request.loader.clone(),
       id,
       name: request.name.clone(),
       version_id: request.version_id.clone(),
       cancel_requested: false,
       state: OperationState::Running,
-      progress: ClientProgress::default().into(),
+      progress: ClientProgress {
+        stage: if source.is_some() {
+          ClientInstallStage::Uploading
+        } else {
+          ClientInstallStage::Resolving
+        },
+        ..ClientProgress::default()
+      }
+      .into(),
       result: None,
       error: None,
     };
     let (snapshot_tx, snapshot_rx) = watch::channel(initial.clone());
-    let (progress_tx, mut progress_rx) = watch::channel(ClientProgress::default());
+    let (progress_tx, mut progress_rx) = watch::channel(ClientProgress {
+      stage: if source.is_some() {
+        ClientInstallStage::Uploading
+      } else {
+        ClientInstallStage::Resolving
+      },
+      ..ClientProgress::default()
+    });
     let cancel = anvil_core::CancellationToken::new();
     let transfer = Arc::new(Mutex::new(TransferControl {
       pause_requested: false,
@@ -175,6 +282,18 @@ impl RuntimeState {
         .operations
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
+      if let Some(input) = source.as_ref()
+        && let Some(existing) = operations
+          .values()
+          .find(|op| op.snapshot.borrow().import_request_id.as_ref() == Some(&input.request_id))
+      {
+        if existing.upload_identity.as_ref() != Some(&(request.name.clone(), input.size)) {
+          return Err(StartInstallError::Conflict(
+            "导入请求标识已绑定其他文件".into(),
+          ));
+        }
+        return Ok(operation_snapshot(existing));
+      }
       if operations
         .values()
         .any(|operation| operation.snapshot.borrow().state.is_active())
@@ -199,6 +318,8 @@ impl RuntimeState {
       operations.insert(
         id,
         InstallOperation {
+          upload_identity: source.as_ref().map(|s| (request.name.clone(), s.size)),
+          upload: source.as_mut().and_then(|s| s.sender.take()),
           cancel: cancel.clone(),
           snapshot: snapshot_rx,
           updates: snapshot_tx.clone(),
@@ -236,8 +357,17 @@ impl RuntimeState {
         }
       });
 
-      let installer = ClientInstaller::new(context);
+      let installer = ClientInstaller::new(context.clone());
       let outcome = async {
+        if let Some(source) = source {
+          let upload=tokio::select! {
+            _=cancel.cancelled()=>return Err(anvil_core::Error::Cancelled),
+            result=tokio::time::timeout(std::time::Duration::from_secs(120),source.receiver)=>match result {
+              Ok(Ok(result))=>result?,_=>return Err(anvil_core::Error::Invalid("整合包上传未完成，请重新导入".into()))
+            }
+          };
+          return run_import(context, upload, &cancel, &progress_tx, &state_tx).await;
+        }
         let target = ClientTarget::current()?;
         let plan = installer
           .plan_with_loader(
@@ -299,6 +429,9 @@ impl RuntimeState {
 
       state_tx.send_modify(|snapshot| match outcome {
         Ok(result) => {
+          snapshot.name=result.instance.name.clone();
+          snapshot.version_id=result.installed.version_id.clone();
+          snapshot.loader=result.installed.loader.clone();
           tracing::info!(operation_id = id, elapsed_ms = started.elapsed().as_millis() as u64, already_installed = result.already_installed, downloaded_files = result.downloaded_files, reused_files = result.reused_files, received_bytes = progress_tx.borrow().received_bytes, completed_files = progress_tx.borrow().completed_files, "Client installation completed");
           snapshot.state = OperationState::Completed;
           snapshot.progress = progress_tx.borrow().clone().into();
@@ -384,6 +517,9 @@ impl RuntimeState {
       OperationState::Paused | OperationState::Pausing
     ) {
       return Ok(Some(snapshot));
+    }
+    if snapshot.import_request_id.is_some() {
+      return Err("整合包任务暂不支持暂停，请取消后重试".into());
     }
     if !matches!(snapshot.state, OperationState::Running)
       || !matches!(snapshot.progress.stage, ClientInstallStage::Downloading)
@@ -486,3 +622,42 @@ fn operation_snapshot(operation: &InstallOperation) -> InstallOperationSnapshot 
   snapshot.cancel_requested = snapshot.state.is_active() && operation.cancel.is_cancelled();
   snapshot
 }
+
+async fn run_import(
+  context: Context,
+  upload: tempfile::TempDir,
+  cancel: &anvil_core::CancellationToken,
+  progress: &watch::Sender<ClientProgress>,
+  state: &watch::Sender<InstallOperationSnapshot>,
+) -> anvil_core::Result<ClientInstallResult> {
+  use anvil_core::modpack::{ImportProgress, ImportStage, ModpackInstaller};
+  let (sender, mut receiver) = watch::channel(ImportProgress::default());
+  progress.send_modify(|p| p.stage = ClientInstallStage::Parsing);
+  let importer = ModpackInstaller::new(context);
+  let work = importer.install(
+    upload.path().join("source.mrpack"),
+    ClientTarget::current()?,
+    cancel,
+    &sender,
+  );
+  tokio::pin!(work);
+  loop {
+    tokio::select! {
+      result=&mut work=>return result,
+      changed=receiver.changed()=>{ if changed.is_ok() {
+        let update=receiver.borrow_and_update().clone();
+        state.send_modify(|s|{if let Some(name)=&update.name {s.name=name.clone();}
+          if let Some(version)=&update.version_id {s.version_id=version.clone();}});
+        progress.send_replace(ClientProgress {stage:match update.stage {
+          ImportStage::Parsing=>ClientInstallStage::Parsing, ImportStage::Preparing=>ClientInstallStage::Planning,
+          ImportStage::Java=>ClientInstallStage::Java,ImportStage::InstallingGame|ImportStage::Downloading=>ClientInstallStage::Downloading,
+          ImportStage::Applying=>ClientInstallStage::Applying,ImportStage::Publishing=>ClientInstallStage::Publishing,ImportStage::Completed=>ClientInstallStage::Completed},
+          completed_files:update.completed_files,total_files:update.total_files,downloaded_bytes:update.downloaded_bytes,total_bytes:update.total_bytes,received_bytes:update.received_bytes,..ClientProgress::default()});
+      }}
+    }
+  }
+}
+
+#[cfg(test)]
+#[path = "../../tests/support/modpack_operations.rs"]
+mod modpack_tests;

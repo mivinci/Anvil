@@ -7,6 +7,7 @@
 	import { validateShaderPackChange } from '#lib/shader-packs.js';
 	import ClientScreenPreview from '#lib/components/clients/client-screen-preview.svelte';
 	import ClientLaunchControls from '#lib/components/clients/client-launch-controls.svelte';
+	import ClientModpackExport from '#lib/components/clients/client-modpack-export.svelte';
 	import { getClientLaunchState, launchActive, launchLabel } from '#lib/client-launch-state.svelte.js';
 	import { Boxes, Image, Sparkles, ArrowUpRight, ChevronDown, Check, Copy } from '@lucide/svelte';
 	import { getClientDetailState } from '#lib/client-detail-state.svelte.js';
@@ -74,7 +75,7 @@
 				<p class="mb-1 flex items-center gap-1.5 text-[11px] text-muted-foreground"><span class={`size-1.5 rounded-full ${operation && launchActive(operation) ? 'bg-primary' : 'bg-muted-foreground/50'}`}></span>{status}</p>
 				<h1 id="client-overview-title" class="max-w-full break-all text-lg font-semibold tracking-tight">{detail.client.name}</h1>
 				<div class="mt-1.5 flex flex-wrap gap-1.5 text-[11px] text-muted-foreground"><span class="rounded-md bg-card/70 px-2 py-1">Minecraft {detail.client.versionId}</span><span class="rounded-md bg-card/70 px-2 py-1">{detail.client.loader ? `Fabric ${detail.client.loader.version}` : '原版'}</span></div>
-				<div class="mt-3"><ClientLaunchControls client={detail.client} /></div>
+				<div class="mt-3"><ClientLaunchControls client={detail.client}>{#snippet trailing()}<ClientModpackExport client={detail.client!} />{/snippet}</ClientLaunchControls></div>
 			</div>
 			<div class="ml-4 w-[38%] max-w-80 shrink-0"><ClientScreenPreview /></div>
 		</div>

@@ -63,6 +63,9 @@ export type AccountLoginOperation = {
 };
 
 export type ClientInstallStage =
+	| 'uploading'
+	| 'parsing'
+	| 'applying'
 	| 'java'
 	| 'resolving'
 	| 'planning'
@@ -72,6 +75,7 @@ export type ClientInstallStage =
 	| 'completed';
 
 export interface ClientInstallOperation {
+	importRequestId?: string;
 	loader: ClientLoaderSpec | null;
 	id: number;
 	name: string;
@@ -218,6 +222,9 @@ export type AccountRequestOptions = Pick<RequestInit, 'signal'>;
 export const listAccounts = (options: AccountRequestOptions = {}) =>
 	runtimeRequest<AccountSummary[]>('/accounts', options);
 
+export const verifyAccount = (id: string, options: AccountRequestOptions = {}) =>
+	runtimeRequest<{ valid: boolean }>(`/accounts/${encodeURIComponent(id)}/verify`, { method: 'POST', ...options });
+
 export const getAccountLoginConfiguration = (options: AccountRequestOptions = {}) =>
 	runtimeRequest<AccountLoginConfiguration>('/accounts/login', options);
 
@@ -247,6 +254,7 @@ export interface ClientDetails extends InstalledClient {
 	os: string;
 	architecture: string;
 	fileCount: number;
+	modpackVersionId?: string | null;
 }
 export const getClientDetails = (name: string, signal: AbortSignal) =>
 	runtimeRequest<ClientDetails>(`/clients/${encodeURIComponent(name)}`, { signal });
@@ -469,5 +477,47 @@ export const getClientLaunchSettings = (name: string, signal: AbortSignal) =>
 	runtimeRequest<ClientLaunchSettings>(`/clients/${encodeURIComponent(name)}/launch-settings`, { signal, cache: 'no-store' });
 export const saveClientLaunchSettings = (name: string, settings: ClientLaunchSettings, signal: AbortSignal) =>
 	runtimeRequest<ClientLaunchSettings>(`/clients/${encodeURIComponent(name)}/launch-settings`, { method: 'PUT', body: JSON.stringify(settings), signal });
+export type ModpackExportStage = 'collecting' | 'packing' | 'verifying' | 'publishing' | 'completed';
+export interface ModpackExportProgress {
+	stage: ModpackExportStage;
+	completedFiles: number;
+	totalFiles: number | null;
+	processedBytes: number;
+	totalBytes: number | null;
+}
+export interface ModpackExportResult {
+	path: string; size: number; sha256: string; files: number;
+}
+export interface ModpackExportOperation {
+	id: number; requestId: string; name: string;
+	state: 'running' | 'completed' | 'failed' | 'cancelled';
+	cancelRequested: boolean;
+	progress: ModpackExportProgress;
+	result: ModpackExportResult | null;
+	error: string | null;
+}
+export interface ModpackExportSelection {
+	mods: boolean; resourcePacks: boolean; shaderPacks: boolean; config: boolean; worlds: boolean;
+}
+export interface ModpackExportOptions {
+	name: string; versionId: string; selection: ModpackExportSelection;
+}
+export const createModpackExport = (name: string, requestId: string, options: ModpackExportOptions, signal: AbortSignal) =>
+	runtimeRequest<ModpackExportOperation>(`/clients/${encodeURIComponent(name)}/modpack-exports`, { method: 'POST', body: JSON.stringify({ requestId, options }), signal });
+export const listModpackExports = (signal: AbortSignal) =>
+	runtimeRequest<ModpackExportOperation[]>('/modpack-exports', { signal });
+export const cancelModpackExport = (id: number, signal: AbortSignal) =>
+	runtimeRequest<ModpackExportOperation>(`/modpack-exports/${id}`, { method: 'DELETE', signal });
 export const getDeviceMemory = (signal: AbortSignal) =>
 	runtimeRequest<{ totalMib: number | null }>('/system/memory', { signal });
+
+export async function importClientModpack(file: File, requestId: string, signal: AbortSignal, onReserved: (operation: ClientInstallOperation) => void) {
+	const operation = await runtimeRequest<ClientInstallOperation>('/clients/import', {
+		method: 'POST', body: JSON.stringify({ requestId, filename: file.name, size: file.size }), signal,
+	});
+	onReserved(operation);
+	if (operation.state !== 'running' || operation.progress.stage !== 'uploading') return operation;
+	return runtimeRequest<ClientInstallOperation>(`/operations/${operation.id}/import-file`, {
+		method: 'POST', body: file, headers: { 'Content-Type': 'application/x-modrinth-modpack+zip' }, signal,
+	});
+}

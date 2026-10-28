@@ -20,7 +20,7 @@
 	const detail = new ClientDetailState();
 	const targetName = $derived(page.url.searchParams.get('instance'));
 	let checkedName = $state<string | null>(null);
-	const confirmed = $derived(detail.client && targetName && checkedName === targetName && detail.client.id === `client-${targetName}` && detail.client.name.toLowerCase() === targetName ? detail.client : null);
+	const confirmed = $derived(detail.client && targetName && checkedName === targetName && detail.client.name.toLowerCase() === targetName.toLowerCase() ? detail.client : null);
 	const targetIssue = $derived(targetName && checkedName === targetName && !detail.loading && detail.error ? detail.error
 		: targetName && checkedName === targetName && detail.client && !confirmed ? '实例信息与所选目标不一致，请重新读取。' : null);
 	let pickerOpen = $state(false);

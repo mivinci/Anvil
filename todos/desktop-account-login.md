@@ -1,6 +1,6 @@
 # 桌面账户登录执行清单
 
-状态：Microsoft 账户登录流程已完成，维护者已确认可用。设备码授权、Minecraft 身份验证及账户状态已接入桌面；早期应用注册 403、等待审核和分阶段检查中的未实测记录不作为当前登录限制。独立账户管理弹窗等 UI 扩展仍按各执行项记录。
+状态：Microsoft 账户登录流程已完成，维护者已确认可用。设备码授权、Minecraft 身份验证及账户状态已接入桌面；已增加启动时会话校验与登录过期提示，避免公开资料长期被误当成有效会话。早期应用注册 403、等待审核和分阶段检查中的未实测记录不作为当前登录限制。独立账户管理弹窗等 UI 扩展仍按各执行项记录。
 
 ## 已确认的交互
 
@@ -33,6 +33,7 @@
 | `GET /account-operations/active` | 返回 `{ operation }`；没有运行中操作时为 `null`，用于恢复启动响应丢失或 409 冲突后的既有操作。 |
 | `GET /account-operations/{id}` | 查询操作；不存在或已清理的历史操作返回 404。 |
 | `DELETE /account-operations/{id}` | 请求取消并返回当前快照；清理结束前仍为 `running`，不要当成已经取消成功。 |
+| `POST /accounts/{id}/verify` | 用已保存 refresh token 实际刷新会话；成功 `{valid:true}`，refresh token 缺失/失效返回 401，网络或凭证库不可用返回 502。 |
 
 快照字段：`id`、`state`、`stage`、`cancelRequested`、`authorization`、`account`、`error`。`state` 为 `running/completed/failed/cancelled`；`stage` 为 `requesting_code/waiting_for_approval/checking_profile/saving_account`。
 

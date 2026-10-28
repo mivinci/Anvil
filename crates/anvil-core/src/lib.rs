@@ -13,6 +13,7 @@ pub mod fabric;
 pub mod java;
 pub mod launch;
 pub mod metadata;
+pub mod modpack;
 pub mod modrinth;
 pub mod news;
 mod platform;

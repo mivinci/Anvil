@@ -8,17 +8,21 @@
 	import ClientInstallProgress from './clients/client-install-progress.svelte';
 	import { getResourceInstallState } from '../resource-install-state.svelte.js';
 	import ResourceInstallProgress from './clients/resource-install-progress.svelte';
+	import ModpackExportProgress from './clients/modpack-export-progress.svelte';
+	import { getModpackExportState } from '../modpack-export-state.svelte.js';
 
 	const launches = getClientLaunchState();
 	const activeJavaTasks = $derived(launches.javaTasks.filter(value => launchActive(value) && !['running', 'stopping'].includes(value.phase)));
 	const activeJava = $derived(activeJavaTasks[0]);
 	const resources = getResourceInstallState();
+	const exports = getModpackExportState();
 	const installs = getClientInstallState();
 	let open = $state(false);
 
 	const finishedClient = $derived(!!installs.operation && !installs.active && !installs.starting);
 	const finishedResource = $derived(!!resources.operation && !resources.active && !resources.starting);
-	const javaBudget = $derived(Math.max(0, 3 - Number(finishedClient) - Number(finishedResource)));
+	const finishedExport = $derived(!!exports.operation && !exports.active && !exports.starting);
+	const javaBudget = $derived(Math.max(0, 3 - Number(finishedClient) - Number(finishedResource) - Number(finishedExport)));
 	const visibleJavaTasks = $derived.by(() => {
 		const all = launches.javaTasks;
 		const recentTerminal = all.filter(task => !launchActive(task)).sort((a, b) => b.id - a.id).slice(0, javaBudget);
@@ -34,13 +38,13 @@
 	let seenActive = false;
 	let tracked = new Set<string>();
 
-	const hasActive = $derived(installs.active || installs.starting || resources.active || resources.starting || activeJavaTasks.length > 0);
+	const hasActive = $derived(installs.active || installs.starting || resources.active || resources.starting || exports.active || exports.starting || activeJavaTasks.length > 0);
 
 	const aggregate = $derived.by(() => {
 		let downloaded = 0;
 		let total = 0;
 		let count = 0;
-		let indeterminate = installs.starting || resources.starting;
+		let indeterminate = installs.starting || resources.starting || exports.starting;
 		let allPaused = true;
 		const add = (taskDownloaded: number, taskTotal: number | null, downloading: boolean, paused: boolean) => {
 			count += 1;
@@ -58,6 +62,7 @@
 			if (operation) add(operation.progress.downloadedBytes, operation.progress.totalBytes, operation.progress.stage === 'downloading', false);
 			else indeterminate = true;
 		}
+		if (exports.active || exports.starting) indeterminate = true;
 		for (const task of activeJavaTasks) add(task.javaDownloadedBytes, task.javaTotalBytes, task.javaStage === 'downloading', false);
 		if (count === 0) { allPaused = false; indeterminate = true; }
 		return { downloaded, total, indeterminate, allPaused: count > 0 && allPaused };
@@ -70,19 +75,21 @@
 	const ringOffset = $derived(RING_CIRCUMFERENCE * (1 - arcFraction));
 
 	const currentLabel = $derived(
-		resources.active || resources.starting ? resources.label
+		exports.active || exports.starting ? exports.label
+			: resources.active || resources.starting ? resources.label
 			: installs.active || installs.starting ? installs.label
 				: activeJava ? launchLabel(activeJava)
 					: null,
 	);
 	const triggerLabel = $derived(completed
-		? '下载任务：已完成'
-		: currentLabel ? `下载任务：${currentLabel}${determinate ? ` ${Math.round(percent)}%` : ''}` : '下载任务');
+		? '任务：已完成'
+		: currentLabel ? `任务：${currentLabel}${determinate ? ` ${Math.round(percent)}%` : ''}` : '任务');
 
 	const activeIds = $derived.by(() => {
 		const ids = new Set<string>();
 		if (installs.active && installs.operation) ids.add(`install:${installs.operation.id}`);
 		if (resources.active && resources.operation) ids.add(`resource:${resources.operation.id}`);
+		if (exports.active && exports.operation) ids.add(`export:${exports.operation.id}`);
 		for (const task of activeJavaTasks) ids.add(`java:${task.id}`);
 		return ids;
 	});
@@ -92,6 +99,7 @@
 		const value = Number(raw);
 		if (kind === 'install') return !!installs.operation && installs.operation.id === value && installs.operation.state === 'completed';
 		if (kind === 'resource') return !!resources.operation && resources.operation.id === value && resources.operation.state === 'completed';
+		if (kind === 'export') return !!exports.operation && exports.operation.id === value && exports.operation.state === 'completed';
 		const task = launches.javaTasks.find(item => item.id === value);
 		return !!task && (task.javaStage === 'completed' || task.phase === 'running');
 	}
@@ -135,11 +143,12 @@
 			{/if}
 		{/if}
 	</Popover.Trigger>
-	<Popover.Content side="bottom" align="end" sideOffset={8} collisionPadding={8} class="z-30 max-h-[calc(100dvh-80px)] w-72 overflow-y-auto overscroll-contain cursor-default rounded-xl border border-chrome-control-border bg-popover p-3 text-popover-foreground shadow-lg outline-none" aria-label="下载任务">
-		<h2 class="mb-3 text-sm font-semibold">下载任务</h2>
+	<Popover.Content side="bottom" align="end" sideOffset={8} collisionPadding={8} class="z-30 max-h-[calc(100dvh-80px)] w-72 overflow-y-auto overscroll-contain cursor-default rounded-xl border border-chrome-control-border bg-popover p-3 text-popover-foreground shadow-lg outline-none" aria-label="任务">
+		<h2 class="mb-3 text-sm font-semibold">任务</h2>
 		{#if installs.operation || installs.starting || installs.error}<ClientInstallProgress onNavigate={() => open = false} /><button type="button" onclick={async () => { open = false; await tick(); installs.detailsOpen = true; }} class="mt-1.5 w-full rounded-md py-1.5 text-xs text-muted-foreground hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring">查看详情</button>
-		{:else if !resources.operation && !resources.error && !resources.starting && launches.javaTasks.length === 0}<div class="flex flex-col items-center gap-3 py-6 text-chrome-muted"><Download size={24} strokeWidth={1.5} aria-hidden="true" /><p class="text-xs">{installs.syncing ? '正在读取任务…' : '暂无下载任务'}</p></div>{/if}
+		{:else if !resources.operation && !resources.error && !resources.starting && !exports.active && !exports.starting && !exports.error && !exports.uncertain && launches.javaTasks.length === 0}<div class="flex flex-col items-center gap-3 py-6 text-chrome-muted"><Download size={24} strokeWidth={1.5} aria-hidden="true" /><p class="text-xs">{installs.syncing ? '正在读取任务…' : '暂无进行中的任务'}</p></div>{/if}
 		{#if resources.operation || resources.error || resources.starting}<div class={installs.operation || installs.error ? 'mt-2.5 border-t border-border pt-2.5' : ''}><ResourceInstallProgress /></div>{/if}
+		{#if exports.active || exports.starting || exports.error || exports.uncertain || exports.operation?.state === 'failed' || exports.operation?.state === 'cancelled'}<div class={installs.operation || installs.error || resources.operation || resources.starting || resources.error ? 'mt-2.5 border-t border-border pt-2.5' : ''}><ModpackExportProgress /></div>{/if}
 		{#each visibleJavaTasks as operation, index (operation.id)}
 			<div class={index > 0 || installs.operation || installs.starting || installs.error || resources.operation || resources.starting || resources.error ? 'mt-2.5 border-t border-border pt-2.5' : ''}><ClientJavaProgress {operation} /></div>
 		{/each}

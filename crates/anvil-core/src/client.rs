@@ -3,6 +3,9 @@ pub(crate) mod classpath;
 mod crashes;
 mod install_java;
 mod logs;
+mod modpack;
+pub(crate) use modpack::export_snapshot;
+pub use modpack::modpack_version;
 mod removal;
 mod settings;
 pub use crashes::{ClientCrashReport, ClientCrashReportEntry, ClientCrashReports};
@@ -50,6 +53,9 @@ const MAX_INSTALL_FILES: usize = 120_000;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ClientInstallStage {
+  Uploading,
+  Parsing,
+  Applying,
   Java,
   Resolving,
   Planning,
@@ -1400,20 +1406,30 @@ fn file_matches(
   Ok(actual == expected_sha1)
 }
 
-fn client_instance_id(name: &str) -> Result<String> {
+pub(crate) fn client_instance_id(name: &str) -> Result<String> {
   if name.is_empty()
-    || name.len() > 48
+    || name.len() > if name.is_ascii() { 48 } else { 128 }
     || name.ends_with('.')
-    || !name.as_bytes()[0].is_ascii_alphanumeric()
+    || !name.chars().next().is_some_and(char::is_alphanumeric)
     || !name
-      .bytes()
-      .all(|byte| byte.is_ascii_alphanumeric() || b"._-".contains(&byte))
+      .chars()
+      .all(|c| c.is_alphanumeric() || "._-".contains(c))
   {
-    return Err(Error::Invalid(
-      "client name must start with a letter or digit and contain only letters, digits, '.', '_' or '-' (max 48 bytes)".into(),
-    ));
+    return Err(Error::Invalid("client name must start with a letter/digit and contain letters, digits or . _ - (max 128 bytes)".into()));
   }
-  Ok(format!("client-{}", name.to_ascii_lowercase()))
+  // Keep every existing ASCII ID stable. Unicode display names use portable IDs.
+  if name.is_ascii() {
+    Ok(format!("client-{}", name.to_ascii_lowercase()))
+  } else {
+    let digest = Sha1::digest(name.to_lowercase().as_bytes());
+    Ok(format!(
+      "client-pack-{}",
+      digest
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>()
+    ))
+  }
 }
 
 fn validate_client_file(file: &ClientFile) -> Result<()> {
