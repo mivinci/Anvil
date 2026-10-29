@@ -3,16 +3,17 @@ name: Prepare release
 on:
   workflow_dispatch:
     inputs:
-      product:
-        description: Product to prepare
-        required: true
-        type: choice
-        options:
-          - desktop
-          - cli
-      version:
-        description: 'Version without prefix (e.g. 0.1.4-alpha.7 or 0.1.5)'
-        required: true
+      desktop_version:
+        description: 'Desktop version (e.g. 26.0.0-alpha.3); leave empty to skip'
+        required: false
+        type: string
+      runtime_version:
+        description: 'Runtime version; leave empty to skip'
+        required: false
+        type: string
+      notes:
+        description: 'User-facing release notes (can also edit the PR before merging)'
+        required: false
         type: string
 
 permissions:
@@ -43,6 +44,7 @@ jobs:
       - name: Prepare version PR and dispatch CI
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_PRODUCT: ${{ inputs.product }}
-          RELEASE_VERSION: ${{ inputs.version }}
-        run: python3 .github/scripts/release.py prepare --product "$RELEASE_PRODUCT" --version "$RELEASE_VERSION"
+          DESKTOP_VERSION: ${{ inputs.desktop_version }}
+          RUNTIME_VERSION: ${{ inputs.runtime_version }}
+          RELEASE_NOTES: ${{ inputs.notes }}
+        run: python3 .github/scripts/release.py prepare --desktop-version "$DESKTOP_VERSION" --runtime-version "$RUNTIME_VERSION" --notes "$RELEASE_NOTES"

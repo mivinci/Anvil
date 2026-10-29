@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build and Ed25519-sign the runtime update index for a CLI release.
+"""Build and Ed25519-sign the runtime update index for a Runtime release.
 
 Reads the bare per-target binaries from the dist directory, pins each with
 its SHA-256 digest and size, and writes dist/runtime-index.json as a signed
@@ -51,8 +51,8 @@ def main() -> int:
     if not repo:
         print("GITHUB_REPOSITORY is not set", file=sys.stderr)
         return 1
-    tag = os.environ.get("RELEASE_TAG", f"cli/v{version}")
-    if tag != f"cli/v{version}":
+    tag = os.environ.get("RELEASE_TAG", f"runtime/v{version}")
+    if tag != f"runtime/v{version}":
         print(f"release tag does not match Runtime version {version}: {tag}", file=sys.stderr)
         return 1
 

@@ -30,7 +30,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: node --test scripts/runtime-signing.test.mjs
-      - run: python3 -m unittest discover -s .github/scripts/tests -p test_macos_signing.py
+      - run: python3 -m unittest discover -s .github/scripts/tests
 
   java:
     name: Java and CLI (${{ matrix.os }})

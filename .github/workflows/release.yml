@@ -1,0 +1,85 @@
+name: Release
+
+on:
+  workflow_run:
+    workflows: [Rust]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: 'Exact main commit to release/retry; empty uses current main'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    name: Plan versions from successful main CI
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.head_branch == 'main' &&
+        github.event.workflow_run.head_repository.full_name == github.repository &&
+        (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch')))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      deployments: read
+    outputs:
+      selected: ${{ steps.plan.outputs.selected }}
+      products: ${{ steps.plan.outputs.products }}
+      sha: ${{ steps.plan.outputs.sha }}
+      desktop_tag: ${{ steps.plan.outputs.desktop_tag }}
+      runtime_tag: ${{ steps.plan.outputs.runtime_tag }}
+    env:
+      RELEASE_SHA: ${{ github.event.workflow_run.head_sha || inputs.sha || github.sha }}
+      GH_TOKEN: ${{ github.token }}
+      DESKTOP_PUBLIC_KEY: ${{ vars.ANVIL_DESKTOP_TEST_UPDATE_PUBLIC_KEY }}
+      RUNTIME_PUBLIC_KEY: ${{ vars.ANVIL_RUNTIME_UPDATE_PUBLIC_KEY }}
+    steps:
+      # Resolve manual refs on trusted main before checking out product code.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Require exact main SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git merge-base --is-ancestor "$RELEASE_SHA" origin/main
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate product plan, CI and approval policy
+        id: plan
+        run: python3 .github/scripts/release_plan.py plan
+
+  publish:
+    name: Approve and publish selected products
+    needs: plan
+    if: needs.plan.outputs.selected == 'true'
+    permissions:
+      contents: write
+      actions: read
+      deployments: read
+    uses: ./.github/workflows/release-approved.yml
+    with:
+      sha: ${{ needs.plan.outputs.sha }}
+      products: ${{ needs.plan.outputs.products }}
+      desktop_tag: ${{ needs.plan.outputs.desktop_tag }}
+      runtime_tag: ${{ needs.plan.outputs.runtime_tag }}
+    secrets:
+      desktop_signing_key: ${{ secrets.ANVIL_DESKTOP_TEST_UPDATE_SIGNING_KEY }}
+      runtime_signing_key: ${{ secrets.ANVIL_RUNTIME_SIGNING_KEY }}
+      macos_certificate_p12: ${{ secrets.ANVIL_MACOS_CERTIFICATE_P12 }}
+      macos_certificate_password: ${{ secrets.ANVIL_MACOS_CERTIFICATE_PASSWORD }}

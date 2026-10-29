@@ -50,7 +50,7 @@ ANVIL_UPDATE_PUBLIC_KEY=<32-byte-ed25519-public-key-in-hex> \
 
 更新清单是 JSON envelope：`payload` 是 UTF-8 发布 JSON 的十六进制编码，`signature` 是对 payload 原始字节做 Ed25519 签名后的十六进制值。发布 JSON 包含 schema 版本、`stable` 通道、App ID、SemVer 版本、目标 triple、HTTPS 包 URL、压缩包大小与 SHA-256。包是以 `manifest.json`、`web/`、`runtime/` 为根的 tar.gz。压缩包上限为 1 GiB，解包后上限为 100,000 个文件和 2 GiB。
 
-Desktop 与 CLI/Runtime 的发布采用“版本 PR 合入 main → 确切提交 CI 成功 → 手动发布并审批”的流程，不再通过手动推标签触发。操作与失败恢复见[发布指南](../../docs/releases.md)。Desktop 接受 stable、`alpha.N`、`beta.N` 和 `rc.N`，所有版本使用同一更新 feed；stable 客户端忽略预发布，预发布客户端按 SemVer 接收更新并可升级到 stable。Windows 预发布只打 NSIS，Linux 预发布只打 DEB；稳定版明确打包 NSIS/MSI、DEB/AppImage，macOS 使用 DMG。Runtime/CLI 使用独立版本与 `runtime-updates` feed。
+Desktop 与 Runtime 的发布采用“版本 PR 合入 main → 确切提交 CI 成功 → 自动生成计划并统一审批”的流程，不再通过手动推标签触发。操作与失败恢复见[发布指南](../../docs/releases.md)。Desktop 接受 stable、`alpha.N`、`beta.N` 和 `rc.N`，所有版本使用同一更新 feed；stable 客户端忽略预发布，预发布客户端按 SemVer 接收更新并可升级到 stable。Windows 预发布只打 NSIS，Linux 预发布只打 DEB；稳定版明确打包 NSIS/MSI、DEB/AppImage，macOS 使用 DMG。Runtime 使用独立版本与 `runtime-updates` feed。
 
 仓库需要配置以下 GitHub Actions 密钥和变量：
 
@@ -59,7 +59,7 @@ Desktop 与 CLI/Runtime 的发布采用“版本 PR 合入 main → 确切提交
 
 生成 Runtime 密钥对可运行 `cargo run -p anvil --example gen_update_key`。私钥只存 GitHub Actions Secret，公钥存 Variable；不要把私钥写入仓库或日志。
 
-`cli/vX.Y.Z` 发布会将签名的 Runtime 索引更新到固定的 `runtime-updates` feed。发布脚本在签名前检查私钥与公钥匹配；缺少配置时会让发行失败，不会悄悄生成无法自更新的正式包。默认本地构建仍不注入发行密钥，Runtime/App 更新状态会显示 `not_configured`。Desktop 包更新的状态、下载进度、检查与取消通过受限 Shell IPC 暴露；Shell 安装更新只查询版本并打开发布页，不在运行中替换宿主文件。
+`runtime/vX.Y.Z` 发布会将签名的 Runtime 索引更新到固定的 `runtime-updates` feed。发布脚本在签名前检查私钥与公钥匹配；缺少配置时会让发行失败，不会悄悄生成无法自更新的正式包。默认本地构建仍不注入发行密钥，Runtime/App 更新状态会显示 `not_configured`。Desktop 包更新的状态、下载进度、检查与取消通过受限 Shell IPC 暴露；Shell 安装更新只查询版本并打开发布页，不在运行中替换宿主文件。
 
 ## Shell 重装更新
 

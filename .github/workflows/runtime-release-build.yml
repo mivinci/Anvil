@@ -1,4 +1,4 @@
-name: CLI release build
+name: Runtime release build
 
 on:
   workflow_call:
@@ -19,6 +19,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   inspect:
@@ -27,6 +28,9 @@ jobs:
     timeout-minutes: 10
     outputs:
       published: ${{ steps.inspect.outputs.published }}
+      build_required: ${{ steps.artifacts.outputs.build_required }}
+      matrix: ${{ steps.artifacts.outputs.matrix }}
+      version: ${{ steps.artifacts.outputs.version }}
     env:
       RELEASE_TAG: ${{ inputs.tag }}
       RELEASE_SHA: ${{ inputs.sha }}
@@ -40,24 +44,19 @@ jobs:
           python-version: '3.12'
       - name: Inspect immutable version identity
         id: inspect
-        run: python3 .github/scripts/publish_release.py inspect --product cli
+        run: python3 .github/scripts/publish_release.py inspect --product runtime
+      - name: Find retained platform artifacts
+        id: artifacts
+        if: steps.inspect.outputs.published != 'true'
+        run: python3 .github/scripts/release_artifacts.py plan --product runtime
 
   build:
     needs: inspect
-    if: needs.inspect.outputs.published != 'true'
+    if: needs.inspect.outputs.published != 'true' && needs.inspect.outputs.build_required == 'true'
     name: Build ${{ matrix.target }}
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
-          - os: macos-15-intel
-            target: x86_64-apple-darwin
-          - os: macos-15
-            target: aarch64-apple-darwin
-          - os: windows-2022
-            target: x86_64-pc-windows-msvc
+      matrix: ${{ fromJSON(needs.inspect.outputs.matrix) }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     env:
@@ -72,7 +71,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$GITHUB_EVENT_NAME" = workflow_dispatch
+          case "$GITHUB_EVENT_NAME" in workflow_dispatch|workflow_run) ;; *) exit 1 ;; esac
           test "$GITHUB_REF" = refs/heads/main
           test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
       - uses: actions/setup-python@v5
@@ -89,14 +88,14 @@ jobs:
       - name: Verify workspace and lock versions
         shell: bash
         run: |
-          python .github/scripts/release.py check --product cli
+          python .github/scripts/release.py check --product runtime
           python - <<'PYCODE'
           import os
           import tomllib
           from pathlib import Path
           version = tomllib.loads(Path('Cargo.toml').read_text())['workspace']['package']['version']
-          if os.environ['RELEASE_TAG'] != f'cli/v{version}':
-              raise SystemExit('CLI tag does not match workspace version')
+          if os.environ['RELEASE_TAG'] != f'runtime/v{version}':
+              raise SystemExit('Runtime tag does not match workspace version')
           PYCODE
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -115,7 +114,7 @@ jobs:
         if: runner.os == 'macOS'
         with:
           node-version: 22.17.0
-      - name: Build CLI
+      - name: Build Runtime
         shell: bash
         run: |
           set -euo pipefail
@@ -128,7 +127,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          version="${RELEASE_TAG#cli/v}"
+          version="${RELEASE_TAG#runtime/v}"
           if [ "${{ runner.os }}" = "Windows" ]; then
             binary="target/${{ matrix.target }}/release/anvil.exe"
           else
@@ -156,7 +155,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $version = $env:RELEASE_TAG -replace '^cli/v', ''
+          $version = $env:RELEASE_TAG -replace '^runtime/v', ''
           $name = "anvil-$version-${{ matrix.target }}"
           New-Item -ItemType Directory -Path dist/staging -Force | Out-Null
           Copy-Item "target/${{ matrix.target }}/release/anvil.exe" dist/staging/
@@ -171,10 +170,10 @@ jobs:
         run: python3 .github/scripts/macos_signing.py cleanup
       - uses: actions/upload-artifact@v4
         with:
-          name: anvil-${{ matrix.target }}
+          name: release-runtime-${{ needs.inspect.outputs.version }}-${{ inputs.sha }}-${{ matrix.target }}
           path: dist/anvil-*
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 30
 
   release:
     name: Verify public assets and reconcile feeds
@@ -182,11 +181,13 @@ jobs:
     if: >-
       ${{ always() && !cancelled() && needs.inspect.result == 'success' &&
           (needs.build.result == 'success' ||
-           (needs.inspect.outputs.published == 'true' && needs.build.result == 'skipped')) }}
+           (needs.build.result == 'skipped' &&
+            (needs.inspect.outputs.published == 'true' || needs.inspect.outputs.build_required == 'false'))) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: write
+      actions: read
     env:
       RELEASE_TAG: ${{ inputs.tag }}
       RELEASE_SHA: ${{ inputs.sha }}
@@ -201,19 +202,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$GITHUB_EVENT_NAME" = workflow_dispatch
+          case "$GITHUB_EVENT_NAME" in workflow_dispatch|workflow_run) ;; *) exit 1 ;; esac
           test "$GITHUB_REF" = refs/heads/main
           test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - uses: actions/download-artifact@v4
+      - name: Collect verified retained and newly built artifacts
         if: needs.inspect.outputs.published != 'true'
-        with:
-          pattern: anvil-*
-          path: dist
-          merge-multiple: true
+        run: python3 .github/scripts/release_artifacts.py collect --product runtime
       - name: Install signing dependency
         run: python3 -m pip install --disable-pip-version-check pynacl
       - name: Publish verified version and reconcile signed feeds
-        run: python3 .github/scripts/publish_release.py publish --product cli
+        run: python3 .github/scripts/publish_release.py publish --product runtime

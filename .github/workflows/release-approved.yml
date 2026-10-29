@@ -1,0 +1,136 @@
+name: Approved release
+
+on:
+  workflow_call:
+    inputs:
+      sha:
+        required: true
+        type: string
+      products:
+        required: true
+        type: string
+      desktop_tag:
+        required: true
+        type: string
+      runtime_tag:
+        required: true
+        type: string
+    secrets:
+      desktop_signing_key:
+        required: false
+      runtime_signing_key:
+        required: false
+      macos_certificate_p12:
+        required: false
+      macos_certificate_password:
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: anvil-release
+  cancel-in-progress: false
+
+jobs:
+  approve:
+    name: Approve ${{ inputs.products }}
+    environment: anvil-release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+      deployments: read
+    env:
+      RELEASE_SHA: ${{ inputs.sha }}
+      RELEASE_PRODUCTS: ${{ inputs.products }}
+      GH_TOKEN: ${{ github.token }}
+      DESKTOP_PUBLIC_KEY: ${{ vars.ANVIL_DESKTOP_TEST_UPDATE_PUBLIC_KEY }}
+      RUNTIME_PUBLIC_KEY: ${{ vars.ANVIL_RUNTIME_UPDATE_PUBLIC_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python3 -m pip install --disable-pip-version-check pynacl
+      - name: Revalidate approved identities and create immutable tags
+        env:
+          DESKTOP_SIGNING_KEY: ${{ secrets.desktop_signing_key }}
+          RUNTIME_SIGNING_KEY: ${{ secrets.runtime_signing_key }}
+        run: python3 .github/scripts/release_plan.py approve
+
+  desktop:
+    name: Desktop
+    needs: approve
+    if: inputs.desktop_tag != ''
+    permissions:
+      contents: write
+      actions: read
+    uses: ./.github/workflows/desktop-release-build.yml
+    with:
+      sha: ${{ inputs.sha }}
+      tag: ${{ inputs.desktop_tag }}
+    secrets:
+      desktop_update_signing_key: ${{ secrets.desktop_signing_key }}
+      macos_certificate_p12: ${{ secrets.macos_certificate_p12 }}
+      macos_certificate_password: ${{ secrets.macos_certificate_password }}
+
+  runtime:
+    name: Runtime
+    needs: approve
+    if: inputs.runtime_tag != ''
+    permissions:
+      contents: write
+      actions: read
+    uses: ./.github/workflows/runtime-release-build.yml
+    with:
+      sha: ${{ inputs.sha }}
+      tag: ${{ inputs.runtime_tag }}
+    secrets:
+      runtime_signing_key: ${{ secrets.runtime_signing_key }}
+      macos_certificate_p12: ${{ secrets.macos_certificate_p12 }}
+      macos_certificate_password: ${{ secrets.macos_certificate_password }}
+
+  summary:
+    name: Summarize product results
+    needs: [approve, desktop, runtime]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      APPROVE_RESULT: ${{ needs.approve.result }}
+      SELECTED: 'true'
+      RELEASE_SHA: ${{ inputs.sha }}
+      DESKTOP_TAG: ${{ inputs.desktop_tag }}
+      RUNTIME_TAG: ${{ inputs.runtime_tag }}
+      DESKTOP_RESULT: ${{ needs.desktop.result }}
+      RUNTIME_RESULT: ${{ needs.runtime.result }}
+    steps:
+      - name: Report each selected product
+        run: |
+          python3 - <<'PYCODE'
+          import os
+          from pathlib import Path
+          lines = ['## Release results', f'Commit: `{os.environ["RELEASE_SHA"]}`', '',
+                   '| Product | Version | Result |', '| --- | --- | --- |']
+          failed = False
+          if os.environ['SELECTED'] == 'true':
+              failed |= os.environ['APPROVE_RESULT'] != 'success'
+              for product in ('DESKTOP', 'RUNTIME'):
+                  tag = os.environ[f'{product}_TAG']
+                  if tag:
+                      result = os.environ[f'{product}_RESULT']
+                      failed |= result != 'success'
+                      url = f'https://github.com/{os.environ["GITHUB_REPOSITORY"]}/releases/tag/{tag}'
+                      lines.append(f'| {product.title()} | [{tag}]({url}) | {result} |')
+          else:
+              lines.append('No products selected; no publication performed.')
+          lines += ['', 'Product success includes attachment verification and feed readback. See product jobs for per-target details.']
+          Path(os.environ['GITHUB_STEP_SUMMARY']).write_text('\n'.join(lines) + '\n')
+          if failed:
+              raise SystemExit('Release incomplete; inspect the failed product or gate.')
+          PYCODE
