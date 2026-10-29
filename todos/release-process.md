@@ -1,5 +1,7 @@
 # Anvil 发布流程设计
 
+> 本文记录第一版发布流程；后续简化与 Runtime 标签迁移见 [发布流程简化](release-simplification.md)。旧版 `cli/v*` 标签保持不变。
+
 状态：方案已确认，分项实施中。第 1–4 项已在本地实现，第 5 项仓库设置与操作文档已完成；工作分支正在交付 PR，端到端验收属于第 6 项。参考 [Q2Q CLI 发布流程](https://github.com/mivinci/Q2Q/blob/main/docs/zh/guide/cli-release.md)，结合 Anvil 的安装包、独立 Runtime 和签名更新源设计。
 
 ## 目标

@@ -89,7 +89,7 @@ def workspace_packages():
     return inherited
 
 
-def cli_version():
+def runtime_version():
     current = parse_toml('Cargo.toml')['workspace']['package']['version']
     version_key(current, requested=True)
     names = workspace_packages()
@@ -118,13 +118,15 @@ def desktop_files():
 
 
 def product_version(product):
-    return desktop_files()[0] if product == 'desktop' else cli_version()[0]
+    return desktop_files()[0] if product == 'desktop' else runtime_version()[0]
 
 
 def tag_versions(product):
-    prefix = f'{product}/v'
-    tags = command('git', 'tag', '--list', prefix + '*').splitlines()
-    return [(tag, version_key(tag.removeprefix(prefix))) for tag in tags]
+    # Historical CLI tags belong to the same product/version sequence.
+    prefixes = ('runtime/v', 'cli/v') if product == 'runtime' else ('desktop/v',)
+    return [(tag, version_key(tag.removeprefix(prefix)))
+            for prefix in prefixes
+            for tag in command('git', 'tag', '--list', prefix + '*').splitlines()]
 
 
 def new_version(product, requested):
@@ -160,7 +162,7 @@ def version_changes(product, requested):
             changes[path] = changed
         return current, changes
 
-    _, names = cli_version()
+    _, names = runtime_version()
     manifest = read('Cargo.toml')
     section = re.compile(r'(?ms)^\[workspace\.package\][^\n]*\n.*?(?=^\[|\Z)')
     manifest, count = section.subn(lambda m: replace_version_line(m[0], current, requested), manifest)
@@ -198,17 +200,38 @@ def version_changes(product, requested):
     return current, {Path('Cargo.toml'): manifest, Path('Cargo.lock'): lock}
 
 
-def github_context():
-    if os.environ.get('GITHUB_ACTIONS') != 'true' or os.environ.get('GITHUB_EVENT_NAME') != 'workflow_dispatch':
-        raise ValueError('this action must run through a GitHub Actions manual dispatch')
-    if os.environ.get('GITHUB_REF') != 'refs/heads/main':
-        raise ValueError('this action must run on main')
+def validate_release_checkout(sha):
+    if os.environ.get('GITHUB_ACTIONS') != 'true' or os.environ.get('GITHUB_REF') != 'refs/heads/main':
+        raise ValueError('release must run on main through GitHub Actions')
+    event = os.environ.get('GITHUB_EVENT_NAME')
+    if event == 'workflow_run':
+        data = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text())['workflow_run']
+        repository = os.environ['GITHUB_REPOSITORY']
+        if (data.get('head_sha') != sha or data.get('head_branch') != 'main'
+                or data.get('event') not in ('push', 'workflow_dispatch')
+                or data.get('status') != 'completed' or data.get('conclusion') != 'success'
+                or data.get('path') != '.github/workflows/rust.yml'
+                or data.get('repository', {}).get('full_name') != repository
+                or data.get('head_repository', {}).get('full_name') != repository):
+            raise ValueError('automatic release requires successful trusted main Rust CI')
+    elif event == 'workflow_dispatch':
+        expected = os.environ.get('RELEASE_SHA') or os.environ.get('GITHUB_SHA')
+        if sha != expected:
+            raise ValueError('checkout does not match the requested release SHA')
+    else:
+        raise ValueError('unsupported release event')
+
+
+def github_context(*, releasing=False):
+    if not releasing and os.environ.get('GITHUB_EVENT_NAME') != 'workflow_dispatch':
+        raise ValueError('preparation requires manual dispatch')
     repository = os.environ.get('GITHUB_REPOSITORY', '')
     if not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', repository):
         raise ValueError('invalid GITHUB_REPOSITORY')
     sha = command('git', 'rev-parse', 'HEAD')
-    if sha != os.environ.get('GITHUB_SHA'):
-        raise ValueError('checkout does not match the workflow commit SHA')
+    validate_release_checkout(sha)
+    if not releasing and sha != os.environ.get('GITHUB_SHA'):
+        raise ValueError('preparation must use the workflow SHA')
     if command('git', 'status', '--porcelain'):
         raise ValueError('release checkout must be clean')
     run('git', 'fetch', 'origin', 'main', '--tags')
@@ -232,12 +255,32 @@ def write_outputs(**values):
                 stream.write(f'{key}={value}\n')
 
 
-def prepare(product, requested):
+def preparation_plan(versions):
+    if not versions or set(versions) - {'desktop', 'runtime'}:
+        raise ValueError('select at least one supported product')
+    products, changes = {}, {}
+    # Validate every product before writing any files or creating a branch.
+    for product in ('desktop', 'runtime'):
+        if product not in versions:
+            continue
+        requested = versions[product]
+        current, files = version_changes(product, requested)
+        if set(changes) & set(files):
+            raise ValueError('product version files overlap')
+        products[product] = {'current': current, 'version': requested}
+        changes.update(files)
+    return products, changes
+
+
+def prepare(versions, notes=''):
     repository, base = github_context()
     if base != command('git', 'rev-parse', 'origin/main'):
         raise ValueError('main advanced before preparation; rerun on the latest main')
-    current, changes = version_changes(product, requested)
-    branch = f'release/{product}-v{requested}'
+    products, changes = preparation_plan(versions)
+    identity = '-'.join(f'{product}-v{data["version"]}' for product, data in products.items())
+    branch = f'release/{identity}'
+    title = 'chore(release): prepare ' + ', '.join(
+        f'{product} {data["version"]}' for product, data in products.items())
     location = f'https://github.com/{repository}/tree/{branch}'
     local = run('git', 'show-ref', '--verify', '--quiet', f'refs/heads/{branch}', check=False)
     if local.returncode not in (0, 1):
@@ -251,8 +294,9 @@ def prepare(product, requested):
     run('git', 'switch', '-c', branch)
     for path, text in changes.items():
         (ROOT / path).write_text(text, encoding='utf-8')
-    if product_version(product) != requested:
-        raise ValueError('written product version does not match the request')
+    for product, requested in versions.items():
+        if product_version(product) != requested:
+            raise ValueError('written product version does not match the request')
     run('git', 'diff', '--check')
     changed_files = set(command('git', 'diff', '--name-only').splitlines())
     if changed_files != set(map(str, changes)):
@@ -260,36 +304,40 @@ def prepare(product, requested):
     run('git', 'config', 'user.name', 'github-actions[bot]')
     run('git', 'config', 'user.email', '41898282+github-actions[bot]@users.noreply.github.com')
     run('git', 'add', '--', *map(str, changes))
-    run('git', 'commit', '-m', f'chore({product}): prepare {requested}')
+    run('git', 'commit', '-m', title)
     head = command('git', 'rev-parse', 'HEAD')
-    summary(f'## Version preparation\nProduct: **{product}**\nVersion: **{current} → {requested}**\n'
+    rows = '\n'.join(f'| {product} | {data["current"]} | {data["version"]} |'
+                     for product, data in products.items())
+    table = '| Product | Current | New |\n| --- | --- | --- |\n' + rows
+    summary(f'## Version preparation\n{table}\n\n'
             f'Base: `{base}`\nCommit: `{head}`\nBranch: {location}\n')
-    write_outputs(branch=branch, sha=head, version=requested, product=product)
+    write_outputs(branch=branch, sha=head, products=json.dumps(products, separators=(',', ':')))
     run('git', 'push', 'origin', f'HEAD:refs/heads/{branch}')
 
     files = '\n'.join(f'- `{path}`' for path in changes)
-    related = (parse_toml('Cargo.toml')['workspace']['package']['version'] if product == 'desktop'
-               else json.loads(read(TAURI))['version'])
-    related_name = 'Bundled Runtime' if product == 'desktop' else 'Desktop (independent version)'
-    artifacts = ('Shell installers, App update packages and SHA256SUMS' if product == 'desktop'
-                 else 'CLI archives, Runtime binaries, SHA256SUMS and update indexes')
-    body = (f'## Version preparation\n\nPrepare **{product} {requested}** from `{base}`.\n\n'
-            f'Version: `{current}` → `{requested}`.\n{related_name}: `{related}`.\n\n'
-            f'Expected artifacts: {artifacts}.\n'
+    artifacts = []
+    if 'desktop' in products:
+        artifacts.append('- Desktop: Shell installers, App packages and SHA256SUMS.')
+    if 'runtime' in products:
+        artifacts.append('- Runtime: CLI archives, binaries, SHA256SUMS and signed update indexes.')
+    bundled = versions.get('runtime', product_version('runtime'))
+    body = (f'## Version preparation\n\nPrepare from `{base}`.\n\n{table}\n\n'
+            f'Bundled Runtime: `{bundled}`. Product versions remain independent.\n\n'
+            + '\n'.join(artifacts) + '\n'
             'Targets: Windows x64, macOS Apple Silicon / Intel, Linux x64 (current release matrix).\n\n'
             f'## Files\n\n{files}\n\n'
             '## Verification\n\nVersion file consistency and `git diff --check` checked by preparation.\n'
             'Rust CI is explicitly dispatched on this branch; review and merge after it succeeds.\n'
             'Publishing is a separate approved action on main.\n'
             'This preparation does not create tags, publish installers, or update feeds.\n\n'
-            '## Release notes\n\nSummarize the user-visible changes before merging.\n')
+            '## Release notes\n\n' + (notes.strip() or 'Summarize the user-visible changes before merging.') + '\n')
     failures = []
     with tempfile.TemporaryDirectory(prefix='anvil-release-pr-') as temporary:
         body_path = Path(temporary) / 'body.md'
         body_path.write_text(body, encoding='utf-8')
         try:
             url = command('gh', 'pr', 'create', '--repo', repository, '--base', 'main', '--head', branch,
-                          '--title', f'chore({product}): prepare {requested}', '--body-file', str(body_path))
+                          '--title', title, '--body-file', str(body_path))
             summary(f'Version PR: {url}\n')
         except (RuntimeError, subprocess.TimeoutExpired, OSError) as error:
             failures.append(str(error))
@@ -334,7 +382,7 @@ def approval_policy(repository, environment):
 
 
 def resolve(product, environment=None):
-    repository, sha = github_context()
+    repository, sha = github_context(releasing=True)
     current = product_version(product)
     key = version_key(current, requested=True)
     tag = f'{product}/v{current}'
@@ -368,25 +416,35 @@ def resolve(product, environment=None):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=('check', 'plan', 'prepare', 'resolve'))
-    parser.add_argument('--product', required=True, choices=('desktop', 'cli'))
+    parser.add_argument('--product', choices=('desktop', 'runtime'))
     parser.add_argument('--version', help='required for plan and prepare')
+    parser.add_argument('--desktop-version', help='Desktop version for joint plan/prepare; omit to skip')
+    parser.add_argument('--runtime-version', help='Runtime version for joint plan/prepare; omit to skip')
+    parser.add_argument('--notes', default='', help='user-facing release notes for the version PR')
     parser.add_argument('--environment', help='protected Environment to check during resolve')
     args = parser.parse_args()
     if args.environment and args.action != 'resolve':
         parser.error('--environment is only accepted for resolve')
+    versions = {product: value for product, value in (
+        ('desktop', args.desktop_version), ('runtime', args.runtime_version)) if value}
     if args.action in ('plan', 'prepare'):
-        if not args.version:
-            parser.error('--version is required for plan and prepare')
-    elif args.version:
-        parser.error('--version is only accepted for plan and prepare')
+        if args.product or args.version:
+            if versions or not args.product or not args.version:
+                parser.error('use --product with --version, or the separate product version options')
+            versions = {args.product: args.version}
+        if not versions:
+            parser.error('specify at least one product version')
+    elif versions or args.version or args.notes:
+        parser.error('version options and notes are only accepted for plan/prepare')
+    elif not args.product:
+        parser.error('--product is required for check/resolve')
     if args.action == 'check':
         print(json.dumps({'product': args.product, 'version': product_version(args.product)}, indent=2))
     elif args.action == 'plan':
-        current, changes = version_changes(args.product, args.version)
-        print(json.dumps({'product': args.product, 'current': current, 'version': args.version,
-                          'files': [str(path) for path in changes]}, indent=2))
+        products, changes = preparation_plan(versions)
+        print(json.dumps({'products': products, 'files': [str(path) for path in changes]}, indent=2))
     elif args.action == 'prepare':
-        prepare(args.product, args.version)
+        prepare(versions, args.notes)
     else:
         resolve(args.product, args.environment)
 

@@ -11,7 +11,7 @@ import subprocess
 import tempfile
 from urllib.parse import quote
 
-from release import version_key
+from release import version_key, validate_release_checkout
 from sign_runtime_index import TARGETS
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -47,6 +47,25 @@ def release(tag):
         page += 1
 
 
+def create_draft(tag, sha, title):
+    # Use the mutation response identity; newly created drafts can be absent from
+    # both tag lookup and the release list for a short time.
+    info = json.loads(gh('api', f'repos/{os.environ["GITHUB_REPOSITORY"]}/releases',
+                         '--method', 'POST', '-f', f'tag_name={tag}',
+                         '-f', f'target_commitish={sha}', '-f', f'name={title}',
+                         '-F', 'draft=true', '-F', 'generate_release_notes=true'))
+    if info.get('tag_name') != tag or info.get('draft') is not True or not isinstance(info.get('id'), int):
+        raise ValueError('Created draft response identity mismatch')
+    return info
+
+
+def release_by_id(info):
+    result = json.loads(gh('api', f'repos/{os.environ["GITHUB_REPOSITORY"]}/releases/{info["id"]}'))
+    if result.get('id') != info['id'] or result.get('tag_name') != info['tag_name']:
+        raise ValueError('Release ID readback identity mismatch')
+    return result
+
+
 def digest(path):
     with path.open('rb') as stream:
         return hashlib.file_digest(stream, 'sha256').hexdigest()
@@ -60,7 +79,7 @@ def report(message):
 
 
 def expected(product, version):
-    if product == 'cli':
+    if product == 'runtime':
         binaries = {f'anvil-{version}-{target}' + ('.exe' if 'windows' in target else '') for target in TARGETS}
         archives = {f'anvil-{version}-{target}' + ('.zip' if 'windows' in target else '.tar.gz') for target in TARGETS}
         return binaries | archives
@@ -127,7 +146,11 @@ def verify_identity(info, sha):
 def download(info, folder, names):
     if {asset['name'] for asset in info['assets']} != names:
         raise ValueError('Remote release attachment set is incomplete or unexpected')
-    gh('release', 'download', info['tag_name'], '--dir', str(folder))
+    for asset in info['assets']:
+        endpoint = f'repos/{os.environ["GITHUB_REPOSITORY"]}/releases/assets/{asset["id"]}'
+        with (folder / asset['name']).open('xb') as stream:
+            subprocess.run(['gh', 'api', endpoint, '-H', 'Accept: application/octet-stream'],
+                           stdout=stream, check=True, timeout=300)
     validate_files(folder, names)
 
 
@@ -225,7 +248,7 @@ def update_feed(tag, files, version, sha):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=('inspect', 'publish'))
-    parser.add_argument('--product', choices=('desktop', 'cli'), required=True)
+    parser.add_argument('--product', choices=('desktop', 'runtime'), required=True)
     args = parser.parse_args()
     tag, sha = os.environ['RELEASE_TAG'], os.environ['RELEASE_SHA']
     version = tag.removeprefix(f'{args.product}/v')
@@ -233,9 +256,9 @@ def main():
     if tag != f'{args.product}/v{version}':
         raise ValueError('Product tag mismatch')
     actual_sha = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
-    if (os.environ.get('GITHUB_EVENT_NAME') != 'workflow_dispatch'
-            or os.environ.get('GITHUB_REF') != 'refs/heads/main' or actual_sha != sha):
-        raise ValueError('Publication requires the fixed checkout of a manual main release')
+    validate_release_checkout(actual_sha)
+    if actual_sha != sha:
+        raise ValueError('publication checkout differs from release SHA')
     info = release(tag)
     if info:
         verify_identity(info, sha)
@@ -247,7 +270,7 @@ def main():
                else 'No published version; build all targets before publication.')
         return
     names = expected(args.product, version)
-    if args.product == 'cli':
+    if args.product == 'runtime':
         names |= {'runtime-index.json', 'latest.json'}
     names.add('SHA256SUMS')
     with tempfile.TemporaryDirectory(prefix='anvil-publish-') as temporary:
@@ -258,7 +281,7 @@ def main():
             validate_files(source, expected(args.product, version))
             for name in expected(args.product, version):
                 shutil.copy2(source / name, folder / name)
-            if args.product == 'cli':
+            if args.product == 'runtime':
                 runtime_index(folder, version)
                 validate_runtime_index(folder, version)
             else:
@@ -267,31 +290,34 @@ def main():
                 script('sign_shell_updates.py', folder, RELEASE_VERSION=version)
             (folder / 'SHA256SUMS').write_text(''.join(f'{digest(folder / name)}  {name}\n' for name in sorted(names - {'SHA256SUMS'})))
             if not info:
-                gh('release', 'create', tag, '--draft', '--verify-tag', '--generate-notes',
-                   '--title', f'Anvil {args.product} v{version}')
+                info = create_draft(tag, sha, f'Anvil {args.product} v{version}')
             # Drafts may be repaired; unexpected old draft assets are removed explicitly.
-            info = release(tag)
-            if not info:
-                raise ValueError('Cannot locate created draft; refusing to upload assets')
+            verify_identity(info, sha)
             if not info['draft']:
                 raise ValueError('Release became public; refusing to replace assets')
+            # Asset operations use the response ID too, avoiding tag/list visibility races.
+            repository = os.environ['GITHUB_REPOSITORY']
             for asset in info['assets']:
-                if asset['name'] not in names:
-                    gh('release', 'delete-asset', tag, asset['name'], '--yes')
-            gh('release', 'upload', tag, *[str(folder / name) for name in sorted(names)], '--clobber')
+                gh('api', f'repos/{repository}/releases/assets/{asset["id"]}', '--method', 'DELETE')
+            for name in sorted(names):
+                endpoint = (f'https://uploads.github.com/repos/{repository}/releases/{info["id"]}/assets'
+                            f'?name={quote(name, safe="")}')
+                gh('api', endpoint, '--method', 'POST', '-H', 'Content-Type: application/octet-stream',
+                   '--input', str(folder / name))
             staged = Path(temporary) / 'draft-readback'
             staged.mkdir()
-            download(release(tag), staged, names)
+            download(release_by_id(info), staged, names)
             if any(digest(folder / name) != digest(staged / name) for name in names):
                 raise ValueError('Draft readback differs from local assets')
             validate_checksums(staged, names)
-            gh('release', 'edit', tag, '--draft=false', '--prerelease' if '-' in version else '--prerelease=false',
-               '--latest' if args.product == 'cli' and '-' not in version else '--latest=false')
+            gh('api', f'repos/{os.environ["GITHUB_REPOSITORY"]}/releases/{info["id"]}',
+               '--method', 'PATCH', '-F', 'draft=false', '-F', f'prerelease={str("-" in version).lower()}',
+               '-f', f'make_latest={str(args.product == "runtime" and "-" not in version).lower()}')
             report(f'## Version release published\n{tag}: all attachments verified before publication.')
         public = Path(temporary) / 'public'
         public.mkdir()
-        info = release(tag)
-        if not info or info['draft']:
+        info = release_by_id(info)
+        if info['draft']:
             raise ValueError('Version release is not public; refusing feed update')
         download(info, public, names)
         validate_checksums(public, names)
