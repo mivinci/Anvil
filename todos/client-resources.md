@@ -356,7 +356,7 @@ Core 新增 resources 模块，ResourceManager 提供读取清单、本地 JAR �
 
 - Core `curseforge` 模块负责官方 API 元数据、Minecraft/Fabric 标签匹配、受限依赖遍历；`anvil serve` 独立模块负责配置、实例读取、并发及超时，前端不请求 CurseForge、不接收 API Key 或下载地址。
 - Runtime 从 `ANVIL_CURSEFORGE_API_KEY` 读取启动配置，Shell 显式传递此环境变量。Key 只在 Rust 内存中使用，HeaderValue 标记 sensitive；不保存到仓库、前端或资源清单。未配置不发送上游请求，配置状态接口仅返回布尔值及提示；非空配置不代表凭据已获官方批准。生产分发的凭据管理另行确定。
-- 请求固定 `https://api.curseforge.com/v1`，禁止重定向；凭据只加入官方 API 请求头。传输错误不透传凭据、原始响应正文或请求调试信息。单响应最多 2 MiB，单请求 12 秒、连接 5 秒；私有传输元数据最多保留 16 个内存响应、5 分钟缓存；公开浏览 DTO 另按下方公共目录规则持久缓存，按访问清理，不启动定时轮询。Runtime 最多两个资源目录请求，额外请求直接拒绝，整个操作 50 秒超时。
+- 请求固定 `https://api.curseforge.com/v1`，禁止重定向；凭据只加入官方 API 请求头。传输错误不透传凭据、原始响应正文或请求调试信息。单响应最多 2 MiB，单请求 30 秒、连接 15 秒；私有传输元数据最多保留 16 个内存响应、5 分钟缓存；公开浏览 DTO 另按下方公共目录规则持久缓存，按访问清理，不启动定时轮询。Runtime 最多两个资源目录请求，额外请求直接拒绝，整个操作 50 秒超时。
 - 鉴权 GET 接口：`/resources/curseforge/configuration`；`/clients/{name}/curseforge/projects?q=&index=`；`/clients/{name}/curseforge/projects/{project}/files?index=`；`/clients/{name}/curseforge/projects/{project}/files/{file}/preview`。实例的游戏版本与 Fabric 来自已安装记录，不接受前端任意 game/loader；原版实例拒绝平台模组浏览。每页 20 项，遵循官方总计 10000 的分页上限。
 - 根文件由用户明确选择，复核游戏/Fabric 标签及可用状态，排除 server pack/early access。必需依赖按项目去重，最多 32 个项目、每文件 128 条关系；从每个依赖首批兼容文件中选择最新可用正式版，找不到则明确阻止预览，不无限翻页或默认选 Beta。循环和集合内平台声明的不兼容关系拒绝；可选依赖只列数量，不自动加入；内嵌库/工具不单独下载，尚未支持的 Include 或未知关系拒绝。
 - 预览要求平台未明确禁止第三方分发、有可用官方 CDN HTTPS 地址、SHA-1、合法 JAR 文件名以及 1–64 MiB 大小；没有下载 URL 时拒绝，不推导/绕过分发地址。此步只使用 URL 做元数据检查，尚不传输文件。预览包含资源清单 revision、文件身份、大小和依赖角色，不是可提交计划 ID。
@@ -582,3 +582,18 @@ launch.rs 保留安装记录/计划身份校验，Fabric 的 classpath 改为已
 ## 资源列表外观试版
 
 模组与光影发现页、项目摘要和兼容版本列表采用页面底色平铺，移除大块卡片背景；本地模组、资源包、光影列表同步采用共享 resource-list/resource-row 样式，通过缩进细线、悬停和选中状态区分行。保留搜索框、侧栏及安装/导入确认面板的原有层次，不改变浏览、分页、计划确认或资源写入流程。前端静态检查与生产构建通过；原生窗口视觉效果待维护者查看。
+
+### CurseForge 凭据与网络联调（2026-11-02）
+
+- 本机凭据只由测试进程读取，不写入源码、输出或日志。真实 API 搜索、项目详情、Minecraft 1.21.1 / Fabric 兼容文件及 Core 依赖预览通过；预览返回 1 个文件、2452735 字节，未下载文件或修改用户实例。
+- 网络对照观察到首次系统 DNS 解析耗时约 12.1 秒，超过原 5 秒连接预算；预热后 Rust 可收到响应。原 12 秒总预算下还观察到响应读取中断。连接/单请求预算调整为 15/30 秒，保留 Runtime 50 秒操作上限、并发限制、响应大小限制与取消边界，不绕过系统 DNS/代理或 TLS 校验。该调整缓解本次慢解析，不能保证任意网络均成功。
+- 本次验证使用 Core 实际提供者；桌面 UI、实际下载与安装仍待验收。
+
+- 开发入口使用项目根目录 `.env`（Node dotenv 解析，显式进程环境变量优先），不再读取用户配置目录。`.env.example` 提供字段说明，真实 `.env` 由 Git 忽略；沿用 Shell 到 Runtime 的环境传递机制，不把凭据写入包或前端配置。未启动/重启用户开发进程，桌面搜索与安装由维护者验收。
+
+### CurseForge 发行凭据接入（2026-11-02）
+
+- Runtime 统一选择同名运行时覆盖与编译期默认值；显式空运行时值禁用，不回退。默认 Cargo 构建不内置，`bundled-credentials` 才编译读取；Core 继续接收显式参数。开发入口清除 `ANVIL_BUNDLE_CREDENTIALS`，根目录 `.env` 仍仅运行时注入。
+- 批准发布链显式传递 `ANVIL_CURSEFORGE_API_KEY` 仓库 Secret，经 `curseforge_api_key` 参数限定到 Desktop/Runtime 构建步骤；两条发行路径均启用内置，缺少凭据失败，不修改发布审批、版本或签名。没有将真实 Key 写入受版本控制文件，也未发起 CI 或发布。
+- 当前需维护者在仓库 Actions Secrets 配置上述 Secret；桌面搜索与真实安装由维护者验收。
+- 验证：默认构建与开启 feature 的构建各 2 项凭据测试通过（仅假 Key）；Rust 格式、Runtime 严格 Clippy、Node 脚本语法和 4 份工作流 YAML 解析通过。未执行远端 CI 或发行，未把真实 Key 编译进本地测试二进制。

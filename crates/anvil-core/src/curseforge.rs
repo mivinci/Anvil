@@ -139,10 +139,12 @@ impl CurseForge {
         Ok(value)
       })
       .transpose()?;
+    // System DNS can be slow on VPN networks; keep connection setup within the
+    // bounded request budget without bypassing the system resolver or proxy.
     let client = Client::builder()
       .redirect(reqwest::redirect::Policy::none())
-      .timeout(Duration::from_secs(12))
-      .connect_timeout(Duration::from_secs(5))
+      .timeout(Duration::from_secs(30))
+      .connect_timeout(Duration::from_secs(15))
       .build()
       .map_err(|_| Error::Metadata("CurseForge HTTP initialization failed".into()))?;
     Ok(Self {

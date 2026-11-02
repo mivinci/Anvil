@@ -20,7 +20,10 @@ pub(super) struct Catalog {
 }
 impl Catalog {
   pub fn new() -> Self {
-    let key = std::env::var("ANVIL_CURSEFORGE_API_KEY").ok();
+    let key = credential(
+      std::env::var("ANVIL_CURSEFORGE_API_KEY").ok(),
+      bundled_key(),
+    );
     Self::with_key(key)
   }
   pub(super) fn with_key(key: Option<String>) -> Self {
@@ -251,4 +254,57 @@ pub(super) async fn create_plan(
     Ok(Json(response))
   })
   .await
+}
+
+// An explicit empty runtime value disables the bundled credential.
+fn credential(runtime: Option<String>, bundled: Option<&str>) -> Option<String> {
+  runtime.or_else(|| bundled.map(str::to_owned))
+}
+
+#[cfg(feature = "bundled-credentials")]
+fn bundled_key() -> Option<&'static str> {
+  option_env!("ANVIL_CURSEFORGE_API_KEY")
+}
+
+#[cfg(not(feature = "bundled-credentials"))]
+fn bundled_key() -> Option<&'static str> {
+  None
+}
+
+#[cfg(test)]
+mod credential_tests {
+  use super::credential;
+
+  #[test]
+  fn runtime_override_and_explicit_disable_take_precedence() {
+    assert_eq!(
+      credential(Some("runtime".into()), Some("bundled")),
+      Some("runtime".into())
+    );
+    assert_eq!(
+      credential(Some(String::new()), Some("bundled")),
+      Some(String::new())
+    );
+    assert_eq!(credential(None, Some("bundled")), Some("bundled".into()));
+    assert_eq!(credential(None, None), None);
+  }
+
+  #[cfg(feature = "bundled-credentials")]
+  #[test]
+  fn release_feature_uses_compile_time_configuration() {
+    assert_eq!(
+      super::bundled_key(),
+      option_env!("ANVIL_CURSEFORGE_API_KEY")
+    );
+    assert_eq!(
+      credential(None, super::bundled_key()),
+      option_env!("ANVIL_CURSEFORGE_API_KEY").map(str::to_owned)
+    );
+  }
+
+  #[cfg(not(feature = "bundled-credentials"))]
+  #[test]
+  fn ordinary_build_has_no_bundled_credential() {
+    assert_eq!(super::bundled_key(), None);
+  }
 }

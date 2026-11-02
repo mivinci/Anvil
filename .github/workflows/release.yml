@@ -79,6 +79,7 @@ jobs:
       desktop_tag: ${{ needs.plan.outputs.desktop_tag }}
       runtime_tag: ${{ needs.plan.outputs.runtime_tag }}
     secrets:
+      curseforge_api_key: ${{ secrets.ANVIL_CURSEFORGE_API_KEY }}
       desktop_signing_key: ${{ secrets.ANVIL_DESKTOP_TEST_UPDATE_SIGNING_KEY }}
       runtime_signing_key: ${{ secrets.ANVIL_RUNTIME_SIGNING_KEY }}
       macos_certificate_p12: ${{ secrets.ANVIL_MACOS_CERTIFICATE_P12 }}

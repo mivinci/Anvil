@@ -32,3 +32,8 @@ rustc-ice-*.txt
 .DS_Store
 Thumbs.db
 __pycache__
+
+# Local development environment and credentials
+.env
+.env.*
+!.env.example
