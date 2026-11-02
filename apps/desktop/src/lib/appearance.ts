@@ -85,7 +85,7 @@ export function themeStyle(preferences: ThemePreferences, mode: ColorMode): stri
 		'accent-foreground': blend(mode === 'dark' ? '#ffffff' : '#000000', accent, 0.7),
 		accent: `color-mix(in srgb, ${accent} 15%, ${palette.background})`,
 		background, foreground, 'main-pane': background, card, 'card-hover': blend(card, foreground, 0.04),
-		'card-foreground': foreground, popover: blend(background, foreground, 0.04),
+		'card-foreground': foreground, popover: mode === 'dark' ? card : background,
 		'popover-foreground': foreground, secondary: blend(background, foreground, 0.06),
 		'secondary-foreground': foreground, muted: blend(background, foreground, 0.06),
 		'muted-foreground': blend(background, foreground, 0.62),

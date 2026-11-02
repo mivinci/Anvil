@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { supportsShellCapability, type ShellCapability } from './shell-compatibility';
 
 export interface AppInfo {
 	appId: string;
@@ -8,6 +9,7 @@ export interface AppInfo {
 	targetPlatform: string;
 	shellVersion: string;
 	shellApiVersion: string;
+	capabilities?: readonly string[];
 }
 
 export type AppUpdateState =
@@ -28,6 +30,7 @@ export type AppUpdateFailure =
 	| 'invalid_release'
 	| 'download'
 	| 'invalid_package'
+	| 'shell_upgrade_required'
 	| 'version_conflict'
 	| 'cancelled'
 	| 'activation_failed';
@@ -39,6 +42,7 @@ export interface AppUpdateStatus {
 	availableVersion: string | null;
 	downloadedBytes: number;
 	totalBytes: number | null;
+	requiredShellApi?: string | null;
 }
 
 export interface UpdateStatus {
@@ -95,6 +99,7 @@ export interface LoggingStatus {
 
 /** Typed access to the generic native Shell API. */
 export const shell = {
+	hasCapability: async (capability: ShellCapability) => supportsShellCapability(await invoke<AppInfo>('shell_get_app_info'), capability),
 	getLoggingStatus: () => invoke<LoggingStatus>('shell_get_logging_status'),
 	openLogDirectory: () => invoke<void>('shell_open_log_directory'),
 	getAppInfo: () => invoke<AppInfo>('shell_get_app_info'),

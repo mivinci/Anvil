@@ -44,7 +44,7 @@ fn configure_build() -> Result<(), String> {
   })?;
 
   let default_app_id = env::var("ANVIL_DEFAULT_APP_ID").unwrap_or_else(|_| "anvil.desktop".into());
-  let shell_api_version = env::var("ANVIL_SHELL_API_VERSION").unwrap_or_else(|_| "1.0.0".into());
+  let shell_api_version = env::var("ANVIL_SHELL_API_VERSION").unwrap_or_else(|_| "1.1.0".into());
   let tauri_config_path = shell_manifest_dir.join("tauri.conf.json");
   println!("cargo:rerun-if-changed={}", tauri_config_path.display());
   let tauri_config: serde_json::Value =

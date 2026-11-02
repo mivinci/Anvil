@@ -22,7 +22,7 @@ Windows 主窗口启用透明窗口与 Acrylic 毛玻璃（开发和发行配置
 
 ## 构建参数与 App manifest
 
-Shell 构建使用 Cargo 的 target triple 作为目标平台。`ANVIL_DEFAULT_APP_ID` 默认为 `anvil.desktop`，`ANVIL_SHELL_API_VERSION` 默认为 `1.0.0`；`ANVIL_APP_MANIFEST` 可指定与目标平台匹配的 manifest，默认按 target 读取 `apps/desktop/manifests/<target>.json`。manifest 的页面和 sidecar 入口相对于 App 包根目录；`apps/desktop/app-manifest.json` 是 schema 示例。
+Shell 构建使用 Cargo 的 target triple 作为目标平台。`ANVIL_DEFAULT_APP_ID` 默认为 `anvil.desktop`，`ANVIL_SHELL_API_VERSION` 默认为 `1.1.0`；`ANVIL_APP_MANIFEST` 可指定与目标平台匹配的 manifest，默认按 target 读取 `apps/desktop/manifests/<target>.json`。manifest 的页面和 sidecar 入口相对于 App 包根目录；`apps/desktop/app-manifest.json` 是 schema 示例。
 
 本地默认构建目标为 `aarch64-apple-darwin`。交叉构建时，构建脚本按 Cargo target 自动选择对应 manifest；也可以显式指定：
 
@@ -108,3 +108,5 @@ App manifest 可配置 `sidecar_args`（默认空数组），Shell 对包内与 
 Fabric 实例启用/停用/移除本地模组时，现已同步独立副本到 game/mods；共享原件不被修改。受管布局和事务日志支持失败/下次访问恢复，外部同名文件不覆盖。资源页可显式同步，Core/CLI 启动准备也会恢复并检查；依赖/兼容性求解及真实 Fabric 加载验收仍未完成。
 
 WebView 的开发及发行 CSP 允许 HTTPS 图片用于 App 的远程公开图标；其他远程脚本和网络连接策略保持现有范围。具体图片来源、URL 校验与缺失占位由 App 负责，Shell 不识别模组平台。CSP 变更需要重新构建并启动 Shell 后生效。
+
+Shell API 1.1 提供能力清单及明确的 Desktop 不兼容更新状态；必需原生能力提高 App manifest 的 Shell API 最低要求，可选能力由 Desktop 先检查再调用。旧 Shell 的兼容边界与维护规则见[Shell 兼容性](../../todos/shell-compatibility.md)。

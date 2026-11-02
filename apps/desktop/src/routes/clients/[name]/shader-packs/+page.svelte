@@ -103,9 +103,9 @@
 			</div>
 		{:else}
 			<label class="mt-4 flex h-8 shrink-0 items-center gap-2 rounded-lg bg-chrome-hover px-2.5 text-muted-foreground focus-within:ring-1 focus-within:ring-ring"><Search size={14} aria-hidden="true" /><input type="search" bind:value={search} placeholder="搜索光影名称" aria-label="搜索光影" class="min-w-0 flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground" />{#if search}<button type="button" onclick={() => search = ''} aria-label="清空搜索" class="rounded p-0.5 focus-visible:outline-2 focus-visible:outline-ring"><X size={12} aria-hidden="true" /></button>{/if}</label>
-			<ul aria-label="本实例光影" aria-busy={packs.busy} class="mt-3 shrink-0 divide-y divide-border rounded-lg bg-card px-3">
+			<ul aria-label="本实例光影" aria-busy={packs.busy} class="resource-list resource-list-icons mt-3 shrink-0">
 				{#each visible as pack (pack.sha256)}
-					<li class="py-3">
+					<li class="resource-row rounded-md px-2.5 py-3 transition-colors hover:bg-chrome-hover">
 						<div class="flex items-start gap-2.5"><div class="mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg bg-primary/8 text-primary"><FileArchive size={17} strokeWidth={1.5} aria-hidden="true" /></div><div class="min-w-0 flex-1"><h2 class="truncate text-[13px] font-medium" title={pack.filename}>{pack.filename}</h2><p class="mt-1.5 text-[11px] text-muted-foreground">{localPackSize(pack.size)} · 兼容性未确认 · {applied ? '已添加到实例' : '待同步到目录'}</p></div><button type="button" class={`${secondary} w-7 px-0 hover:text-destructive`} disabled={locked} aria-label={`移除 ${pack.filename}`} title="从此实例移除" onclick={() => { packs.selected = null; packs.removing = pack.sha256; }}><Trash2 size={13} aria-hidden="true" /></button></div>
 						{#if packs.removing === pack.sha256}<div class="mt-2 flex flex-wrap items-center justify-end gap-1 rounded-lg bg-chrome-hover px-2 py-2"><p class="mr-auto text-[11px] text-muted-foreground">移除此实例的 ZIP 副本，共享原件保留。</p><button type="button" class={secondary} disabled={packs.busy} onclick={() => packs.removing = null}>取消</button><button type="button" disabled={locked} onclick={() => void packs.remove(pack)} class="h-7 rounded-lg px-2 text-xs text-destructive focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40">{packs.activity === 'removing' ? '移除中…' : '确认移除'}</button></div>{/if}
 					</li>

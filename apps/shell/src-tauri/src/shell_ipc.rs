@@ -14,6 +14,14 @@ const BUNDLED_APP_VERSION: &str = env!("ANVIL_BUNDLED_APP_VERSION");
 const TARGET_PLATFORM: &str = env!("ANVIL_TARGET_PLATFORM");
 const SHELL_VERSION: &str = env!("ANVIL_SHELL_VERSION");
 const SHELL_API_VERSION: &str = env!("ANVIL_SHELL_API_VERSION");
+// Capabilities describe implemented, permission-granted features, not update configuration.
+const SHELL_CAPABILITIES: &[&str] = &[
+  "window.theme",
+  "updates.app",
+  "updates.shell",
+  "logs.open",
+  "external-url.open",
+];
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -25,6 +33,7 @@ pub struct AppInfo {
   pub target_platform: String,
   pub shell_version: String,
   pub shell_api_version: String,
+  pub capabilities: Vec<&'static str>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -121,6 +130,7 @@ pub fn shell_get_app_info(window: WebviewWindow) -> Result<AppInfo, String> {
     target_platform: TARGET_PLATFORM.to_owned(),
     shell_version: SHELL_VERSION.to_owned(),
     shell_api_version: SHELL_API_VERSION.to_owned(),
+    capabilities: SHELL_CAPABILITIES.to_vec(),
   })
 }
 
@@ -340,6 +350,40 @@ mod tests {
       let url = Url::parse(source).unwrap();
       assert!(!is_authorized_shell_origin("main", &url, true), "{source}");
     }
+  }
+
+  #[test]
+  fn advertised_features_have_their_required_native_permissions() {
+    let capability: Value =
+      serde_json::from_str(include_str!("../capabilities/default.json")).unwrap();
+    let permissions = capability["permissions"].as_array().unwrap();
+    for feature in SHELL_CAPABILITIES {
+      let required: &[&str] = match *feature {
+        "window.theme" => &["core:window:allow-set-theme"],
+        "updates.app" => &[
+          "allow-shell-get-update-status",
+          "allow-shell-check-for-updates",
+          "allow-shell-cancel-update",
+          "allow-shell-restart-for-update",
+        ],
+        "updates.shell" => &[
+          "allow-shell-get-update-status",
+          "allow-shell-check-for-updates",
+        ],
+        "logs.open" => &["allow-shell-open-log-directory"],
+        "external-url.open" => &["allow-shell-open-external-url"],
+        _ => panic!("A new capability requires a permission contract test: {feature}"),
+      };
+      for permission in required {
+        assert!(
+          permissions
+            .iter()
+            .any(|value| value.as_str() == Some(permission)),
+          "{feature}: {permission}"
+        );
+      }
+    }
+    assert!(!SHELL_CAPABILITIES.contains(&"window.effects"));
   }
 
   #[test]

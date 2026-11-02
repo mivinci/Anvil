@@ -29,6 +29,22 @@ impl AppManifest {
     expected_target: &str,
     shell_api_version: &str,
   ) -> Result<Self, String> {
+    let manifest = Self::parse_metadata(source, expected_app_id, expected_target)?;
+    if !manifest.supports_shell_api(shell_api_version)? {
+      return Err(format!(
+        "Shell API version {shell_api_version} is outside App compatibility range {}",
+        manifest.shell_api_compatibility
+      ));
+    }
+    Ok(manifest)
+  }
+
+  /// Validate the package contract before distinguishing a genuine Shell upgrade requirement.
+  pub fn parse_metadata(
+    source: &[u8],
+    expected_app_id: &str,
+    expected_target: &str,
+  ) -> Result<Self, String> {
     let manifest: Self = serde_json::from_slice(source)
       .map_err(|error| format!("could not parse JSON or required fields: {error}"))?;
 
@@ -69,17 +85,9 @@ impl AppManifest {
         manifest.http_api_version, manifest.http_api_compatibility
       ));
     }
-    let shell_api_version = Version::parse(shell_api_version)
-      .map_err(|error| format!("ANVIL_SHELL_API_VERSION must be a semantic version: {error}"))?;
-    let compatibility = VersionReq::parse(&manifest.shell_api_compatibility).map_err(|error| {
+    VersionReq::parse(&manifest.shell_api_compatibility).map_err(|error| {
       format!("shell_api_compatibility must be a semantic version requirement: {error}")
     })?;
-    if !compatibility.matches(&shell_api_version) {
-      return Err(format!(
-        "Shell API version {shell_api_version} is outside App compatibility range {}",
-        manifest.shell_api_compatibility
-      ));
-    }
 
     validate_package_entry("page_entry", &manifest.page_entry)?;
     validate_package_entry("sidecar_entry", &manifest.sidecar_entry)?;
@@ -96,6 +104,14 @@ impl AppManifest {
     }
 
     Ok(manifest)
+  }
+
+  pub fn supports_shell_api(&self, version: &str) -> Result<bool, String> {
+    let version = Version::parse(version)
+      .map_err(|error| format!("ANVIL_SHELL_API_VERSION must be a semantic version: {error}"))?;
+    let compatibility = VersionReq::parse(&self.shell_api_compatibility)
+      .map_err(|error| format!("invalid shell_api_compatibility: {error}"))?;
+    Ok(compatibility.matches(&version))
   }
 }
 

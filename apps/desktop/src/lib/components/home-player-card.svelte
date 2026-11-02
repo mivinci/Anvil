@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { DropdownMenu } from 'bits-ui';
-	import { Check, ChevronDown, Gamepad2, LogIn, LogOut, RefreshCw, UserRound } from '@lucide/svelte';
+	import { Check, ChevronDown, Gamepad2, LogIn, LogOut, RefreshCw, TriangleAlert, UserRound } from '@lucide/svelte';
 	import AccountAvatar from './account-avatar.svelte';
 	import HomeQuickPlay from './home-quick-play.svelte';
 	import { getAccountState } from '../account-state.svelte.js';
@@ -16,6 +16,10 @@
 	const launches = getClientLaunchState();
 	const stats = new PlayStatsState();
 	const current = $derived(accounts.currentAccount);
+	const currentExpired = $derived(current ? accounts.isExpired(current.id) : false);
+	const accountStatus = $derived(accounts.loginRunning || accounts.loginStarting ? '正在登录…'
+		: accounts.verifying === current?.id ? '正在确认登录状态…'
+		: currentExpired ? '登录已过期' : 'Microsoft 账户');
 	const accountStats = $derived(playStatsAccount(stats.snapshot, current?.id));
 	const quickPlayHistory = $derived(stats.snapshot?.accounts[accounts.offlineMode ? 'offline' : current?.id ?? 'offline'] ?? null);
 	let hadActive = false;
@@ -69,21 +73,27 @@
 
 	{#if current}
 		<DropdownMenu.Root>
-			<DropdownMenu.Trigger class="group flex w-full min-w-0 items-center gap-3 rounded-lg p-1 text-left transition-colors hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring">
+			<DropdownMenu.Trigger aria-label={`账户：${current.username}，${accountStatus}`} class="group flex w-full min-w-0 items-center gap-3 rounded-lg p-1 text-left transition-colors hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring">
 				<AccountAvatar account={current} size={56} />
 				<span class="min-w-0 flex-1">
 					<span class="block truncate text-[15px] font-semibold leading-5" title={current.username}>{current.username}</span>
-					<span class="mt-1 inline-flex max-w-full items-center rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">Microsoft 账户</span>
+					<span class={`mt-1 inline-flex max-w-full items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${currentExpired ? 'bg-destructive/10 text-destructive' : 'bg-primary/10 text-primary'}`} role="status">{#if currentExpired}<TriangleAlert size={10} class="shrink-0" aria-hidden="true" />{/if}<span class="truncate">{accountStatus}</span></span>
 				</span>
 				<ChevronDown size={14} class="shrink-0 text-muted-foreground" aria-hidden="true" />
 			</DropdownMenu.Trigger>
 			<DropdownMenu.Content side="bottom" align="start" sideOffset={6} collisionPadding={8} class="z-30 w-56 rounded-xl border border-chrome-control-border bg-popover/95 p-1 text-popover-foreground shadow-[0_4px_16px_rgb(0_0_0/0.08)] backdrop-blur-xl outline-none" aria-label="账户">
+				{#if currentExpired}
+					<DropdownMenu.Item class={itemClass} disabled={accounts.busy} onSelect={login}>
+						<LogIn size={14} aria-hidden="true" /><span class="flex-1">重新登录</span>
+					</DropdownMenu.Item>
+					<DropdownMenu.Separator class="mx-1.5 my-1 h-px bg-border/60" />
+				{/if}
 				<p class="px-2 py-1.5 text-[10px] font-medium text-chrome-muted">账户</p>
 				{#each accounts.accounts as account (account.id)}
 					<DropdownMenu.Item class={itemClass} disabled={accounts.busy} onSelect={() => void switchAccount(account.id)}>
 						<AccountAvatar {account} size={22} />
 						<span class="min-w-0 flex-1 truncate">{account.username}</span>
-						{#if account.selected}<Check size={14} aria-label="当前账户" />{/if}
+						{#if accounts.isExpired(account.id)}<TriangleAlert size={13} class="shrink-0 text-destructive" aria-label="登录已过期" />{:else if account.selected}<Check size={14} aria-label="当前账户" />{/if}
 					</DropdownMenu.Item>
 				{/each}
 				<DropdownMenu.Separator class="mx-1.5 my-1 h-px bg-border/60" />

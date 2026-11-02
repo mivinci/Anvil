@@ -17,8 +17,8 @@
 	const items = $derived([
 		{ href: resolve('/clients/[name]', { name }), label: '概览', icon: Box },
 		{ href: resolve('/clients/[name]/mods', { name }), label: '模组', icon: Boxes },
-		{ href: resolve('/clients/[name]/resource-packs', { name }), label: '资源包', icon: Image },
 		{ href: resolve('/clients/[name]/shader-packs', { name }), label: '光影', icon: Sparkles },
+		{ href: resolve('/clients/[name]/resource-packs', { name }), label: '资源包', icon: Image },
 		{ href: resolve('/clients/[name]/logs', { name }), label: '游戏日志', icon: FileText },
 		{ href: resolve('/clients/[name]/settings', { name }), label: '实例设置', icon: Settings2 },
 	]);
