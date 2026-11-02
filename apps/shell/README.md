@@ -22,7 +22,7 @@ Windows 主窗口启用透明窗口与 Acrylic 毛玻璃（开发和发行配置
 
 ## 构建参数与 App manifest
 
-Shell 构建使用 Cargo 的 target triple 作为目标平台。`ANVIL_DEFAULT_APP_ID` 默认为 `anvil.desktop`，`ANVIL_SHELL_API_VERSION` 默认为 `1.0.0`；`ANVIL_APP_MANIFEST` 可指定与目标平台匹配的 manifest，默认按 target 读取 `apps/desktop/manifests/<target>.json`。manifest 的页面和 sidecar 入口相对于 App 包根目录；`apps/desktop/app-manifest.json` 是 schema 示例。
+Shell 构建使用 Cargo 的 target triple 作为目标平台。`ANVIL_DEFAULT_APP_ID` 默认为 `anvil.desktop`，`ANVIL_SHELL_API_VERSION` 默认为 `1.1.0`；`ANVIL_APP_MANIFEST` 可指定与目标平台匹配的 manifest，默认按 target 读取 `apps/desktop/manifests/<target>.json`。manifest 的页面和 sidecar 入口相对于 App 包根目录；`apps/desktop/app-manifest.json` 是 schema 示例。
 
 本地默认构建目标为 `aarch64-apple-darwin`。交叉构建时，构建脚本按 Cargo target 自动选择对应 manifest；也可以显式指定：
 
@@ -108,3 +108,15 @@ App manifest 可配置 `sidecar_args`（默认空数组），Shell 对包内与 
 Fabric 实例启用/停用/移除本地模组时，现已同步独立副本到 game/mods；共享原件不被修改。受管布局和事务日志支持失败/下次访问恢复，外部同名文件不覆盖。资源页可显式同步，Core/CLI 启动准备也会恢复并检查；依赖/兼容性求解及真实 Fabric 加载验收仍未完成。
 
 WebView 的开发及发行 CSP 允许 HTTPS 图片用于 App 的远程公开图标；其他远程脚本和网络连接策略保持现有范围。具体图片来源、URL 校验与缺失占位由 App 负责，Shell 不识别模组平台。CSP 变更需要重新构建并启动 Shell 后生效。
+
+Shell API 1.1 提供能力清单及明确的 Desktop 不兼容更新状态；必需原生能力提高 App manifest 的 Shell API 最低要求，可选能力由 Desktop 先检查再调用。旧 Shell 的兼容边界与维护规则见[Shell 兼容性](../../todos/shell-compatibility.md)。
+
+### CurseForge 开发凭据
+
+`npm run desktop:dev` 读取项目根目录 `.env`，显式进程环境变量优先。可复制 `.env.example` 后填写 `ANVIL_CURSEFORGE_API_KEY`，建议使用单引号包裹密钥。使用 Node 的 dotenv 解析，不执行 shell 命令或变量插值。`.env` 已被 Git 忽略，不打印内容，也不写入安装包或前端配置；Shell 通过现有环境传递机制交给 Runtime。缺少文件时仍可正常启动，CurseForge 显示未配置。只在开发入口读取，正式构建不自动加载；更换配置后需完整重启开发命令。
+
+### CurseForge 发行凭据
+
+发行 Runtime 使用 Cargo feature `bundled-credentials`，通过 `option_env!("ANVIL_CURSEFORGE_API_KEY")` 编译默认值；Cargo 会追踪该编译期环境变量变化，无需构建脚本输出凭据。Runtime 优先使用同名运行时环境变量（显式空值禁用），没有覆盖时使用内置值；都没有则平台未配置。Core 不负责读取环境。
+
+GitHub 仓库 Secret 名为 `ANVIL_CURSEFORGE_API_KEY`，批准发布后以可复用工作流 Secret `curseforge_api_key` 传给构建步骤；独立 Runtime 显式启用 feature，Desktop 构建通过 `ANVIL_BUNDLE_CREDENTIALS=1` 让打包脚本启用相同 feature。发行缺少 Key 则构建失败。普通 CI 无需真实 Key；开发入口移除内置开关，只运行时注入。Key 不进入前端、API 响应或日志，但发行二进制内置凭据可被提取，不能保证保密。轮换仓库 Secret 后需发布新的 Runtime；Desktop 安装基线需在后续安装包发布时同步更新，既有安装包不会随 Secret 修改而改变。

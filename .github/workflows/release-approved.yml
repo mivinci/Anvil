@@ -16,6 +16,8 @@ on:
         required: true
         type: string
     secrets:
+      curseforge_api_key:
+        required: true
       desktop_signing_key:
         required: false
       runtime_signing_key:
@@ -75,6 +77,7 @@ jobs:
       sha: ${{ inputs.sha }}
       tag: ${{ inputs.desktop_tag }}
     secrets:
+      curseforge_api_key: ${{ secrets.curseforge_api_key }}
       desktop_update_signing_key: ${{ secrets.desktop_signing_key }}
       macos_certificate_p12: ${{ secrets.macos_certificate_p12 }}
       macos_certificate_password: ${{ secrets.macos_certificate_password }}
@@ -91,6 +94,7 @@ jobs:
       sha: ${{ inputs.sha }}
       tag: ${{ inputs.runtime_tag }}
     secrets:
+      curseforge_api_key: ${{ secrets.curseforge_api_key }}
       runtime_signing_key: ${{ secrets.runtime_signing_key }}
       macos_certificate_p12: ${{ secrets.macos_certificate_p12 }}
       macos_certificate_password: ${{ secrets.macos_certificate_password }}

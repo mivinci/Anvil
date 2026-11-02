@@ -10,6 +10,8 @@ on:
         required: true
         type: string
     secrets:
+      curseforge_api_key:
+        required: true
       macos_certificate_p12:
         required: false
       macos_certificate_password:
@@ -125,6 +127,9 @@ jobs:
           GITHUB_STATE_FILE: ${{ runner.temp }}/anvil-signing-state
         run: python3 .github/scripts/macos_signing.py setup
       - name: Build Desktop installers
+        env:
+          ANVIL_CURSEFORGE_API_KEY: ${{ secrets.curseforge_api_key }}
+          ANVIL_BUNDLE_CREDENTIALS: '1'
         shell: bash
         run: |
           set -euo pipefail

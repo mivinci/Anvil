@@ -46,8 +46,8 @@
 	const status = $derived(operation && launchActive(operation) ? launchLabel(operation) : '未运行');
 	const links = $derived(detail.client ? [
 		{ title: '模组', hint: modCount !== null ? `${modCount} 个模组` : countLoading ? '读取数量…' : countError ? '数量暂不可用' : '管理与添加模组', icon: Boxes, href: resolve('/clients/[name]/mods', { name: detail.client.name.toLowerCase() }) },
-		{ title: '资源包', hint: packCount !== null ? `${packCount} 个资源包` : countLoading ? '读取数量…' : countError ? '数量暂不可用' : '查看与管理资源包', icon: Image, href: resolve('/clients/[name]/resource-packs', { name: detail.client.name.toLowerCase() }) },
 		{ title: '光影', hint: shaderCount !== null ? `${shaderCount} 个光影` : countLoading ? '读取数量…' : countError ? '数量暂不可用' : '查看与管理光影', icon: Sparkles, href: resolve('/clients/[name]/shader-packs', { name: detail.client.name.toLowerCase() }) },
+		{ title: '资源包', hint: packCount !== null ? `${packCount} 个资源包` : countLoading ? '读取数量…' : countError ? '数量暂不可用' : '查看与管理资源包', icon: Image, href: resolve('/clients/[name]/resource-packs', { name: detail.client.name.toLowerCase() }) },
 	] : []);
 	let copied = $state<string | null>(null);
 	let copyError = $state<string | null>(null);

@@ -54,6 +54,7 @@ pub enum AppUpdateFailure {
   InvalidRelease,
   Download,
   InvalidPackage,
+  ShellUpgradeRequired,
   VersionConflict,
   Cancelled,
   ActivationFailed,
@@ -68,6 +69,7 @@ pub struct AppUpdateStatus {
   pub available_version: Option<String>,
   pub downloaded_bytes: u64,
   pub total_bytes: Option<u64>,
+  pub required_shell_api: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -119,6 +121,7 @@ impl UpdateService {
           available_version: None,
           downloaded_bytes: 0,
           total_bytes: None,
+          required_shell_api: None,
         }),
         cancellation: Mutex::new(None),
       }),
@@ -138,6 +141,7 @@ impl UpdateService {
         available_version: None,
         downloaded_bytes: 0,
         total_bytes: None,
+        required_shell_api: None,
       })
   }
 
@@ -214,6 +218,7 @@ impl UpdateService {
       available_version: None,
       downloaded_bytes: 0,
       total_bytes: None,
+      required_shell_api: None,
     };
     let cancellation = CancellationToken::new();
     if let Ok(mut slot) = self.inner.cancellation.lock() {
@@ -711,13 +716,7 @@ fn extract_package(
   }
 
   let source = read_bounded_file(&package_root.join("manifest.json"), 64 * 1024)?;
-  let manifest = AppManifest::parse_and_validate(
-    &source,
-    &config.app_id,
-    &config.target,
-    &config.shell_api_version,
-  )
-  .map_err(|_| UpdateError::InvalidPackage)?;
+  let manifest = validate_manifest_compatibility(&source, config)?;
   if manifest.version != release.version.to_string() {
     return Err(UpdateError::InvalidPackage);
   }
@@ -826,6 +825,23 @@ fn resolve_regular_file(root: &Path, relative: &str) -> Result<PathBuf, UpdateEr
   Ok(candidate)
 }
 
+fn validate_manifest_compatibility(
+  source: &[u8],
+  config: &UpdateConfig,
+) -> Result<AppManifest, UpdateError> {
+  let manifest = AppManifest::parse_metadata(source, &config.app_id, &config.target)
+    .map_err(|_| UpdateError::InvalidPackage)?;
+  if !manifest
+    .supports_shell_api(&config.shell_api_version)
+    .map_err(|_| UpdateError::InvalidPackage)?
+  {
+    return Err(UpdateError::ShellUpgradeRequired {
+      required: manifest.shell_api_compatibility,
+    });
+  }
+  Ok(manifest)
+}
+
 fn validate_published_manifest(
   package: &PublishedAppVersion,
   config: &UpdateConfig,
@@ -841,13 +857,7 @@ fn validate_published_manifest(
   if source.len() > 64 * 1024 {
     return Err(UpdateError::InvalidPackage);
   }
-  let manifest = AppManifest::parse_and_validate(
-    &source,
-    &config.app_id,
-    &config.target,
-    &config.shell_api_version,
-  )
-  .map_err(|_| UpdateError::InvalidPackage)?;
+  let manifest = validate_manifest_compatibility(&source, config)?;
   if manifest.version != release.version.to_string() || package.version() != &release.version {
     return Err(UpdateError::InvalidPackage);
   }
@@ -1007,6 +1017,10 @@ fn set_failure(inner: &UpdateInner, error: UpdateError) {
     } else {
       AppUpdateState::Failed
     };
+    status.required_shell_api = match &error {
+      UpdateError::ShellUpgradeRequired { required } => Some(required.clone()),
+      _ => None,
+    };
     status.failure = Some(match error {
       UpdateError::Storage => AppUpdateFailure::StorageUnavailable,
       UpdateError::Network => AppUpdateFailure::Network,
@@ -1014,6 +1028,7 @@ fn set_failure(inner: &UpdateInner, error: UpdateError) {
       UpdateError::InvalidRelease => AppUpdateFailure::InvalidRelease,
       UpdateError::Download => AppUpdateFailure::Download,
       UpdateError::InvalidPackage => AppUpdateFailure::InvalidPackage,
+      UpdateError::ShellUpgradeRequired { .. } => AppUpdateFailure::ShellUpgradeRequired,
       UpdateError::VersionConflict => AppUpdateFailure::VersionConflict,
       UpdateError::Cancelled => AppUpdateFailure::Cancelled,
     });
@@ -1034,6 +1049,8 @@ enum UpdateError {
   Download,
   #[error("update package is invalid")]
   InvalidPackage,
+  #[error("App update requires Shell API {required}")]
+  ShellUpgradeRequired { required: String },
   #[error("published version conflicts with downloaded package")]
   VersionConflict,
   #[error("update was cancelled")]
@@ -1151,6 +1168,10 @@ mod tests {
   }
 
   fn package_archive(path: &Path, version: &str) {
+    package_archive_for_shell(path, version, "^1.0.0");
+  }
+
+  fn package_archive_for_shell(path: &Path, version: &str, required: &str) {
     let encoder = GzEncoder::new(File::create(path).unwrap(), Compression::default());
     let mut builder = Builder::new(encoder);
     let manifest = serde_json::json!({
@@ -1162,7 +1183,7 @@ mod tests {
       "sidecar_entry": sidecar_entry(),
       "http_api_version": "1.0.0",
       "http_api_compatibility": "^1.0.0",
-      "shell_api_compatibility": "^1.0.0"
+      "shell_api_compatibility": required
     });
     append_directory(&mut builder, "web/");
     append_directory(&mut builder, "runtime/");
@@ -1478,6 +1499,7 @@ mod tests {
         available_version: None,
         downloaded_bytes: 0,
         total_bytes: None,
+        required_shell_api: None,
       }),
       cancellation: Mutex::new(None),
     });
@@ -1515,6 +1537,116 @@ mod tests {
   }
 
   #[test]
+  fn incompatible_update_reports_required_shell_and_preserves_the_active_app() {
+    let root = tempfile::tempdir().unwrap();
+    let store = active_store(root.path());
+    let pending = store.stage_version().unwrap();
+    fs::write(
+      pending.directory().join("baseline"),
+      b"previous compatible update",
+    )
+    .unwrap();
+    pending.publish(&Version::parse("0.1.1").unwrap()).unwrap();
+    let mut state = store.state().unwrap();
+    state.pending_version = Some(Version::parse("0.1.1").unwrap());
+    store.write_state(&state).unwrap();
+    let before = store.state().unwrap();
+    let archive = root.path().join("package.tar.gz");
+    package_archive_for_shell(&archive, "0.2.0", "^2.0.0");
+    let (manifest_url, public_key, server) = serve_signed_package(fs::read(archive).unwrap(), None);
+    let inner = Arc::new(UpdateInner {
+      config: None,
+      status: Mutex::new(AppUpdateStatus {
+        state: AppUpdateState::Checking,
+        failure: None,
+        current_version: Some("0.1.0".into()),
+        available_version: None,
+        downloaded_bytes: 0,
+        total_bytes: None,
+        required_shell_api: None,
+      }),
+      cancellation: Mutex::new(None),
+    });
+    let mut config = test_config();
+    config.manifest_url = manifest_url;
+    config.public_key = public_key;
+    let error = run_async(run_update_check(
+      inner.clone(),
+      config,
+      store.clone(),
+      CancellationToken::new(),
+    ))
+    .unwrap_err();
+    assert!(matches!(error, UpdateError::ShellUpgradeRequired { .. }));
+    set_failure(&inner, error);
+    server.join().unwrap();
+    let status = inner.status.lock().unwrap();
+    assert_eq!(status.failure, Some(AppUpdateFailure::ShellUpgradeRequired));
+    assert_eq!(status.required_shell_api.as_deref(), Some("^2.0.0"));
+    assert_eq!(status.available_version.as_deref(), Some("0.2.0"));
+    assert_eq!(store.state().unwrap(), before);
+    assert!(
+      store
+        .published_version(&Version::parse("0.2.0").unwrap())
+        .is_err()
+    );
+  }
+
+  #[test]
+  fn valid_newer_shell_requirement_is_distinct_from_a_malformed_manifest() {
+    let root = tempfile::tempdir().unwrap();
+    let archive = root.path().join("package.tar.gz");
+    package_archive_for_shell(&archive, "0.2.0", "^1.1.0");
+    let bytes = fs::read(&archive).unwrap();
+    let release = ReleaseMetadata {
+      version: Version::parse("0.2.0").unwrap(),
+      url: "https://example.test/package".into(),
+      size: bytes.len() as u64,
+      sha256: "ab".repeat(32),
+    };
+    let mut config = test_config();
+    config.shell_api_version = "1.0.0".into();
+    let target = root.path().join("old-shell");
+    fs::create_dir(&target).unwrap();
+    assert!(matches!(
+      extract_package(
+        &archive,
+        &target,
+        &config,
+        &release,
+        &CancellationToken::new()
+      ),
+      Err(UpdateError::ShellUpgradeRequired { .. })
+    ));
+    config.shell_api_version = "1.1.0".into();
+    let target = root.path().join("new-shell");
+    fs::create_dir(&target).unwrap();
+    assert!(
+      extract_package(
+        &archive,
+        &target,
+        &config,
+        &release,
+        &CancellationToken::new()
+      )
+      .is_ok()
+    );
+    package_archive_for_shell(&archive, "0.2.0", "not-a-version-requirement");
+    let target = root.path().join("malformed");
+    fs::create_dir(&target).unwrap();
+    assert!(matches!(
+      extract_package(
+        &archive,
+        &target,
+        &config,
+        &release,
+        &CancellationToken::new()
+      ),
+      Err(UpdateError::InvalidPackage)
+    ));
+  }
+
+  #[test]
   fn does_not_redownload_a_version_that_failed_startup_activation() {
     let root = tempfile::tempdir().unwrap();
     let store = active_store(root.path());
@@ -1541,6 +1673,7 @@ mod tests {
         available_version: None,
         downloaded_bytes: 0,
         total_bytes: None,
+        required_shell_api: None,
       }),
       cancellation: Mutex::new(None),
     });
@@ -1585,6 +1718,7 @@ mod tests {
         available_version: None,
         downloaded_bytes: 0,
         total_bytes: None,
+        required_shell_api: None,
       }),
       cancellation: Mutex::new(None),
     });
@@ -1630,6 +1764,7 @@ mod tests {
         available_version: None,
         downloaded_bytes: 0,
         total_bytes: None,
+        required_shell_api: None,
       }),
       cancellation: Mutex::new(None),
     });

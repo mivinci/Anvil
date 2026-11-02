@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
+	import { shellUpgradeRequired } from '../shell-compatibility';
 	import { onMount } from 'svelte';
 	import { isTauri } from '@tauri-apps/api/core';
 	import { ArrowUp, LoaderCircle } from '@lucide/svelte';
@@ -12,6 +15,7 @@
 	let restartError = $state(false);
 	let refreshTimer: ReturnType<typeof setTimeout> | undefined;
 
+	const shellBlocked = $derived(shellUpgradeRequired(status));
 	const shellUpdateAvailable = $derived(shellUpdate?.state === 'available' && shellUpdate.releaseUrl !== null);
 	const busy = $derived(status?.state === 'checking' || status?.state === 'downloading' || status?.state === 'verifying' || shellUpdate?.state === 'checking');
 	const updateReady = $derived(status?.state === 'staged' || runtimeVersion !== null || shellUpdateAvailable);
@@ -62,7 +66,12 @@
 	});
 </script>
 
-{#if updateReady}
+{#if shellBlocked}
+	<div class="relative grid size-9 place-items-center">
+		<NavButton aria-label="Desktop 更新需要新版启动器，查看更新说明" title="请先更新启动器，当前 Desktop 仍可继续使用" onclick={() => void goto(`${resolve('/settings')}?section=about`)} class="bg-primary/10 text-primary hover:bg-primary/15"><ArrowUp size={17} strokeWidth={2} aria-hidden="true" /></NavButton>
+		<span class="pointer-events-none absolute -right-0.5 -top-0.5 size-2 rounded-full bg-primary ring-2 ring-background" aria-hidden="true"></span>
+	</div>
+{:else if updateReady}
 	<div class="relative grid size-9 place-items-center">
 		<NavButton
 			disabled={restarting}

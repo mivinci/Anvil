@@ -52,9 +52,9 @@
 <div class="flex min-h-0 flex-1 flex-col">
 	{#if files.busy}<p role="status" class="mt-3 flex items-center gap-2 text-xs text-muted-foreground"><LoaderCircle size={13} class="animate-spin motion-reduce:animate-none" aria-hidden="true" />正在读取兼容版本…</p>{/if}
 	{#if files.error || files.value?.refreshError}<p role="alert" class="mt-3 text-xs text-destructive">{files.error ?? files.value?.refreshError}{files.value ? '（保留上次版本）' : ''}<button type="button" class={button} disabled={files.busy || planLocked} onclick={() => { plans.clear(); void load(true); }}>重试</button></p>{/if}
-	<div class="mt-3 min-h-0 flex-1 space-y-0.5 scrollbar-subtle overflow-y-auto overscroll-contain" aria-label="选择兼容版本">
+	<div class="resource-list mt-1 min-h-0 flex-1 scrollbar-subtle overflow-y-auto overscroll-contain" aria-label="选择兼容版本">
 		{#each files.value?.items ?? [] as file (file.id)}
-			<button type="button" aria-pressed={review.selected?.id === file.id} disabled={blocked || planLocked} onclick={() => void plans.select(file)} class={`flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring disabled:opacity-40 ${review.selected?.id === file.id ? 'bg-chrome-selected' : 'hover:bg-chrome-hover'}`}>
+			<button type="button" aria-pressed={review.selected?.id === file.id} disabled={blocked || planLocked} onclick={() => void plans.select(file)} class={`resource-row flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring disabled:opacity-40 ${review.selected?.id === file.id ? 'bg-chrome-selected' : 'hover:bg-chrome-hover'}`}>
 				<span class="min-w-0 flex-1"><span class="block truncate text-xs font-medium" title={file.displayName}>{file.displayName}</span><span class="mt-1 block truncate text-[11px] text-muted-foreground" title={file.fileName}>{file.fileDate.slice(0, 10)} · {file.releaseType === 1 ? 'Release' : file.releaseType === 2 ? 'Beta' : 'Alpha'} · {formatBytes(file.fileLength)}</span></span>
 				{#if review.selected?.id === file.id}<Check size={14} class="shrink-0 text-primary" aria-hidden="true" />{/if}
 			</button>

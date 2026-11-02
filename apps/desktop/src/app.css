@@ -166,3 +166,21 @@
 @media (forced-colors: active) {
 	.overlay-scrollbar { background: GrayText; forced-color-adjust: none; }
 }
+
+/* Flat resource lists share separators; emphasis belongs to interaction states. */
+.resource-list { --resource-divider-inset: 0.625rem; }
+.resource-list-icons { --resource-divider-inset: 3.5rem; }
+.resource-row { position: relative; }
+.resource-row + .resource-row::before {
+	content: '';
+	position: absolute;
+	top: 0;
+	right: 0.625rem;
+	left: var(--resource-divider-inset);
+	height: 1px;
+	background: var(--border);
+	opacity: 0.55;
+	pointer-events: none;
+}
+.resource-row:is(:hover, :focus-visible, [aria-pressed='true'])::before,
+.resource-row:is(:hover, :focus-visible, [aria-pressed='true']) + .resource-row::before { opacity: 0; }

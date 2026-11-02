@@ -11,6 +11,7 @@
 	import AccountProvider from './account-provider.svelte';
 	import AppNavigation from './app-navigation.svelte';
 	import { setAppearance as provideAppearance, defaultTheme, customThemeFrom, readTheme, themeStyle, isColor, type ColorMode, type Palette, type ThemePreferences } from '../appearance';
+	import { shell } from '../shell';
 	import type { AppearanceMode } from './appearance-menu.svelte';
 
 	let { children }: { children: Snippet } = $props();
@@ -56,7 +57,9 @@
 
 	function syncNativeAppearance(mode: AppearanceMode) {
 		if (!isTauri()) return;
-		void getCurrentWindow().setTheme(mode === 'system' ? null : mode).catch((error) => {
+		void shell.hasCapability('window.theme').then(supported => {
+			if (supported && appearance === mode) return getCurrentWindow().setTheme(mode === 'system' ? null : mode);
+		}).catch((error) => {
 			console.error('Failed to synchronize native window appearance:', error);
 		});
 	}

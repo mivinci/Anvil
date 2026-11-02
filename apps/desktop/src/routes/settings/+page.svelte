@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import { Download, Gamepad2, Info, Palette, Search, UserRound } from '@lucide/svelte';
 	import AppearanceSettings from '#lib/components/settings/appearance-settings.svelte';
 	import AboutSettings from '#lib/components/settings/about-settings.svelte';
@@ -12,6 +13,10 @@
 		{ id: 'about', label: '关于', icon: Info, keywords: 'Anvil 版本 Runtime 项目', description: '查看应用信息与项目地址。' },
 	] as const;
 	let selected = $state<string>('appearance');
+	$effect(() => {
+		const section = page.url.searchParams.get('section');
+		if (categories.some(category => category.id === section)) selected = section!;
+	});
 	let query = $state('');
 	const matches = $derived(categories.filter((item) => `${item.label} ${item.keywords}`.toLowerCase().includes(query.trim().toLowerCase())));
 	const current = $derived(categories.find((item) => item.id === selected) ?? categories[0]);

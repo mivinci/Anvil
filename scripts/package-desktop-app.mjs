@@ -21,7 +21,14 @@ validateEntry(manifest.page_entry, 'web/');
 validateEntry(manifest.sidecar_entry, 'runtime/');
 
 run('npm', ['run', 'build', '--workspace', '@anvil/desktop']);
-run('cargo', ['build', '--locked', '--release', '--package', 'anvil', '--target', target]);
+const cargoArgs = ['build', '--locked', '--release', '--package', 'anvil', '--target', target];
+if (process.env.ANVIL_BUNDLE_CREDENTIALS === '1') {
+	if (!process.env.ANVIL_CURSEFORGE_API_KEY?.trim()) {
+		throw new Error('Release build requires ANVIL_CURSEFORGE_API_KEY.');
+	}
+	cargoArgs.push('--features', 'bundled-credentials');
+}
+run('cargo', cargoArgs);
 
 const binaryName = process.platform === 'win32' || target.includes('windows') ? 'anvil.exe' : 'anvil';
 const cargoTargetDirectory = path.resolve(repositoryRoot, process.env.CARGO_TARGET_DIR ?? 'target');
