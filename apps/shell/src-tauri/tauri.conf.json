@@ -27,11 +27,7 @@
           "state": "followsWindowActiveState"
         },
         "titleBarStyle": "Overlay",
-        "hiddenTitle": true,
-        "trafficLightPosition": {
-          "x": 12,
-          "y": 18
-        }
+        "hiddenTitle": true
       }
     ],
     "security": {

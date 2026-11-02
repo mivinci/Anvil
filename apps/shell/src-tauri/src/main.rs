@@ -15,6 +15,9 @@ use tauri::Manager;
 #[cfg(target_os = "windows")]
 mod windows_frame;
 
+#[cfg(target_os = "macos")]
+mod macos_frame;
+
 fn main() {
   let mut logging = Some(anvil_logging::init(
     anvil_logging::Process::Shell,
@@ -38,6 +41,18 @@ fn main() {
     context
   };
 
+  #[cfg(target_os = "macos")]
+  let context = {
+    let mut context = context;
+    for window in &mut context.config_mut().app.windows {
+      if window.label == "main" {
+        // Finish native caption layout before the first visible frame.
+        window.visible = false;
+      }
+    }
+    context
+  };
+
   let app = tauri::Builder::default()
     .manage(
       logging
@@ -49,6 +64,11 @@ fn main() {
     .manage(UpdateService::new())
     .manage(ShellUpdateService::new())
     .setup(|app| {
+      #[cfg(target_os = "macos")]
+      if let Some(window) = app.get_webview_window("main") {
+        macos_frame::install(&window)?;
+        window.show()?;
+      }
       #[cfg(target_os = "windows")]
       if let Some(window) = app.get_webview_window("main") {
         windows_frame::install(&window)?;
