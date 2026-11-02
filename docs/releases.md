@@ -96,3 +96,7 @@ feed 多文件无法原子更新。summary 会分别显示版本公开、附件�
 原运行固定旧提交，重跑不会加载合入 main 的脚本修复。使用 **Recover Desktop release**，选择 main，输入原 Desktop 发布 run ID（alpha.7 为 `40258564717`）。入口核对原运行来自 main 手动发布、审批及全部平台构建成功、原 SHA 的 CI 成功且标签仍指向该 SHA；再经过 `anvil-release` 人工审批。
 
 恢复任务下载原运行的 `desktop-*` artifacts，使用原提交的产品契约和 main 已审查的发布脚本，不重新构建或移动标签。公开版本只恢复 feed。草稿恢复要求原 artifacts 尚未过期（当前保留 7 天）；缺失或附件不完整时停止，不拿其他提交的产物替代。
+
+### macOS 发行工具链
+
+Desktop 与独立 Runtime 的 Apple Silicon / Intel 目标分别使用 `macos-26` / `macos-26-intel`，显式选择 Xcode 26.6（SDK 26.5），构建前输出 Xcode/SDK 版本并校验，不依赖 runner 默认选择。SDK 升级不会提高当前 macOS 最低运行版本；实际系统按钮外观由运行系统与链接 SDK 共同决定。更改工具链后使用新的编译缓存键，既有公开产物与恢复逻辑保持不变。

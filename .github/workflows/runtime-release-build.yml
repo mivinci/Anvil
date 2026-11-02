@@ -99,12 +99,24 @@ jobs:
           if os.environ['RELEASE_TAG'] != f'runtime/v{version}':
               raise SystemExit('Runtime tag does not match workspace version')
           PYCODE
+      - name: Select pinned macOS SDK
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          export DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer
+          test -d "$DEVELOPER_DIR"
+          echo "DEVELOPER_DIR=$DEVELOPER_DIR" >> "$GITHUB_ENV"
+          xcodebuild -version
+          sdk_version="$(xcrun --sdk macosx --show-sdk-version)"
+          echo "macOS SDK: $sdk_version"
+          test "$sdk_version" = 26.5
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
         with:
-          key: release-${{ matrix.target }}
+          key: release-xcode26.6-${{ matrix.target }}
       - name: Import macOS Runtime signing certificate
         if: runner.os == 'macOS'
         env:

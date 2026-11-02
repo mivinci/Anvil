@@ -105,12 +105,24 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes build-essential curl wget file libxdo-dev libssl-dev librsvg2-dev patchelf libwebkit2gtk-4.1-dev
+      - name: Select pinned macOS SDK
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          export DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer
+          test -d "$DEVELOPER_DIR"
+          echo "DEVELOPER_DIR=$DEVELOPER_DIR" >> "$GITHUB_ENV"
+          xcodebuild -version
+          sdk_version="$(xcrun --sdk macosx --show-sdk-version)"
+          echo "macOS SDK: $sdk_version"
+          test "$sdk_version" = 26.5
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
         with:
-          key: desktop-release-${{ matrix.target }}
+          key: desktop-release-xcode26.6-${{ matrix.target }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22.17.0
