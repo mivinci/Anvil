@@ -16,8 +16,8 @@ from release import command, summary, version_key, write_outputs
 
 TARGETS = {
     'x86_64-unknown-linux-gnu': 'ubuntu-22.04',
-    'x86_64-apple-darwin': 'macos-15-intel',
-    'aarch64-apple-darwin': 'macos-15',
+    'x86_64-apple-darwin': 'macos-26-intel',
+    'aarch64-apple-darwin': 'macos-26',
     'x86_64-pc-windows-msvc': 'windows-2022',
 }
 MAX_BYTES = 2 * 1024**3

@@ -120,3 +120,7 @@ Shell API 1.1 提供能力清单及明确的 Desktop 不兼容更新状态；必
 发行 Runtime 使用 Cargo feature `bundled-credentials`，通过 `option_env!("ANVIL_CURSEFORGE_API_KEY")` 编译默认值；Cargo 会追踪该编译期环境变量变化，无需构建脚本输出凭据。Runtime 优先使用同名运行时环境变量（显式空值禁用），没有覆盖时使用内置值；都没有则平台未配置。Core 不负责读取环境。
 
 GitHub 仓库 Secret 名为 `ANVIL_CURSEFORGE_API_KEY`，批准发布后以可复用工作流 Secret `curseforge_api_key` 传给构建步骤；独立 Runtime 显式启用 feature，Desktop 构建通过 `ANVIL_BUNDLE_CREDENTIALS=1` 让打包脚本启用相同 feature。发行缺少 Key 则构建失败。普通 CI 无需真实 Key；开发入口移除内置开关，只运行时注入。Key 不进入前端、API 响应或日志，但发行二进制内置凭据可被提取，不能保证保密。轮换仓库 Secret 后需发布新的 Runtime；Desktop 安装基线需在后续安装包发布时同步更新，既有安装包不会随 Secret 修改而改变。
+
+### macOS 标题栏布局
+
+网页标题栏与 Windows frame 高度均为 32 个逻辑像素。macOS 由 `macos_frame` 在主线程读取原生按钮 frame，换算窗口坐标后对齐到顶部 16 点中线，保留 12 点左侧间距及系统按钮间隔；不依赖链接 SDK 的默认纵向 frame。移除配置中的 `trafficLightPosition`，避免 Wry 每次绘制重新应用固定 inset。主窗口隐藏创建，在 setup 完成原生布局后立即显示，不使用延时补移；缩放/比例变化事件校正，全屏状态保留系统控制。首次显示、缩放与全屏恢复的实际视觉效果需在 dev 与安装包分别验收。
