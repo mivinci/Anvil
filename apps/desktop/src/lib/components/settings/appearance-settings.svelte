@@ -57,7 +57,6 @@
 				{/each}
 			</div>
 		</div>
-		<p class="text-xs text-muted-foreground">{localeState.messages.settings.flow.textSizePreview}</p>
 	</section>
 	<section aria-labelledby="theme-colors" class="space-y-2">
 		<h2 id="theme-colors" class="text-body font-medium">{localeState.messages.settings.flow.themeColors}</h2>

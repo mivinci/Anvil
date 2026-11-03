@@ -37,7 +37,6 @@ export default {
 		textSizeDefault: "标准",
 		textSizeLarge: "较大",
 		textSizeLarger: "更大",
-		textSizePreview: "字号预览：正在使用 Anvil。",
 		visualStyle: "视觉风格",
 		displayMode: "显示模式",
 		themeColors: "主题配色",

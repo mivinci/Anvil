@@ -39,7 +39,6 @@ export default {
 		textSizeDefault: "Default",
 		textSizeLarge: "Large",
 		textSizeLarger: "Larger",
-		textSizePreview: "Text size preview: Using Anvil.",
 		visualStyle: "Visual style",
 		displayMode: "Display mode",
 		themeColors: "Theme colors",
