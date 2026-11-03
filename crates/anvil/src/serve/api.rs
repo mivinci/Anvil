@@ -369,7 +369,7 @@ async fn authorize_request(
       .headers()
       .get(ACCESS_CONTROL_REQUEST_METHOD)
       .and_then(|value| value.to_str().ok())
-      .is_some_and(|method| matches!(method, "GET" | "POST" | "DELETE"));
+      .is_some_and(|method| matches!(method, "GET" | "POST" | "PUT" | "DELETE"));
     let valid_headers = request
       .headers()
       .get(ACCESS_CONTROL_REQUEST_HEADERS)
@@ -435,7 +435,7 @@ fn with_cors(mut response: Response, origin: &str) -> Response {
   headers.insert(VARY, HeaderValue::from_static("Origin"));
   headers.insert(
     ACCESS_CONTROL_ALLOW_METHODS,
-    HeaderValue::from_static("GET, POST, DELETE, OPTIONS"),
+    HeaderValue::from_static("GET, POST, PUT, DELETE, OPTIONS"),
   );
   headers.insert(
     ACCESS_CONTROL_ALLOW_HEADERS,

@@ -68,6 +68,7 @@
 
 ## 第 6 项离线验收
 
+- Runtime CORS 预检允许 `PUT`；否则 WebKit 会以 `Load failed` 拒绝跨源头像上传。回环 sidecar 测试断言 PUT preflight 返回 204 且暴露 Allow-Methods。
 - `instance-avatar.browser.mjs` 使用 loopback fixture 和假 Shell IPC，覆盖卡片默认图案、详情上传、刷新后 ETag 读取、设置恢复默认、8 MiB 超限被前端拒绝、409 busy/400 invalid 失败保留旧图、读失败回退默认，以及 620×420 窄窗裁剪弹窗键盘操作和无横向溢出。
 - 浏览器验收使用本机 Edge 和临时 Playwright 包；截图位于被忽略的 `apps/desktop/.svelte-kit/instance-avatar-qa/`。
 - Runtime 回环 API 测试覆盖鉴权、非法/超限请求、PNG/ETag/304、清除幂等和 8 MiB 路由上限。
