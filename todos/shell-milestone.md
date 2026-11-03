@@ -1,6 +1,6 @@
 # Anvil Shell 执行清单
 
-状态：第 1–9 项已完成。第 10 项已恢复推进：跨平台 Desktop 发行工作流和签名更新 feed 已加入，正在收敛为单 feed + SemVer 预发布版本，待完成 alpha 自测发布及各平台 WebView/回滚 smoke。设计决策见 [Anvil Shell 设计草案](shell-design.md)。
+状态：第 1–9 项及第 11 项实现完成；第 10 项发行链已实现并产生多个 alpha，跨平台真实 WebView、升级和故障回滚验收仍未全部完成。第 11 项记录了 Windows 隔离 smoke，不能代替其他平台；当前发布流程见 release-simplification.md。
 
 ## 范围与既定约定
 
@@ -75,11 +75,11 @@
 
 **签名验证：** 本机 Apple Silicon 的 `npm run desktop:build -- --bundles app` 成功，生成的 `Anvil.app` 通过上述完整性校验，签名显示 `Signature=adhoc` 且包含 sealed resources。Intel 构建、新版 DMG 下载后的 Gatekeeper 手动允许与首次启动仍待验证。
 
-**交付：** `.github/workflows/desktop-release.yml` 以 `desktop/v*` 触发 Windows x64、macOS Intel/Apple Silicon 与 Linux x64 构建，打包 Shell、默认 App 和 signed update metadata；Desktop 与 Shell 共用唯一更新 feed。稳定版本使用 `X.Y.Z`，预发布使用 SemVer 后缀（如 `X.Y.Z-alpha.N`、`X.Y.Z-test.N`、`X.Y.Z-rc.N`），同样发布到该 feed。Windows 预发布只打 NSIS，Linux 预发布只打 DEB（RPM 打包器不接受文字型预发布版本）；稳定版使用平台默认安装包。Runtime `cli/v*` 发布同步维护唯一 `runtime-updates` 签名索引。稳定版本拒绝自动更新到预发布版本；预发布版本按 SemVer 顺序更新，并可升级到 stable。发行前检查产品版本与 tag 一致，并验证签名密钥配对。
+**交付：** `Prepare release` 准备版本 PR，main 的可信 Rust CI 成功后由 `release.yml` 生成计划，一次审批后调用 Desktop/Runtime 构建。Desktop 标签 `desktop/v*`，Runtime 标签 `runtime/v*`，历史 `cli/v*` 保留；更新 feed、签名和平台产物规则见 [发布指南](../docs/releases.md)。
 
 **验收：** 2026-10-24 本机 Windows `npm run desktop:check` 通过（0 errors/0 warnings），`npm run desktop:package` 和 `npm run desktop:build` 成功；0.1.3 MSI 为 11.31 MiB，NSIS 为 7.70 MiB。`cargo test --locked --offline -p anvil-shell` 通过（38 项；有 4 条既有 unused-import 警告）。测试发布 [Actions run 40091697113](https://github.com/mivinci/Anvil/actions/runs/40091697113) 成功构建并发布 Windows x64、macOS Intel/Apple Silicon 与 Linux x64 产物；历史版本 `desktop-test/v0.1.3` 曾更新独立测试 feed。Windows 更新包的签名清单 Ed25519 验证通过，下载包大小和 SHA-256 与清单匹配，包内 manifest 为 `anvil.desktop` 0.1.3。已在隔离 Windows 数据目录完成实际双重更新 smoke：Shell 重启后从包内 Runtime 0.1.0 切换到签名 feed 的 Runtime 0.1.4（API 1.0.0）；随后 Desktop 0.1.2 更新到 0.1.3，状态记录 `previous_healthy_version=0.1.2`、`pending_version=null`、`activation_in_progress=false` 且无失败，窗口响应正常，Runtime 仍运行于 sidecar-store 0.1.4。未实测的平台仍待平台 smoke，不据此宣称已支持；失败回滚仍待单独 smoke。当前发布流程已简化为单 feed，稳定版本不接收 SemVer 预发布，旧 test feed 仅作为历史产物保留。
 
-### 11. [ ] 实现 Shell 重装更新提示
+### 11. [x] 实现 Shell 重装更新提示
 
 **交付：** Shell 的显示版本来自 Tauri 安装包版本。Shell 启动时检查按 target 签名的版本清单，运行期间每小时尝试、持久限频 24 小时；About 页面可手动立即检查。所有版本共用单一 `shell-updates-stable` feed，使用 Desktop 更新密钥并由 release workflow 自动签名发布。稳定 Shell 不显示 alpha/test/rc 预发布更新；预发布 Shell 按 SemVer 顺序更新，并可更新到稳定版本。清单绑定 `anvil-shell`、SemVer、target 和该版本 GitHub release 页面。更新按钮显示无文字的向上箭头，点击打开发布页；用户选择匹配原安装方式的平台安装器并重新安装。
 

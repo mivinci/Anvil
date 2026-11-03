@@ -1,6 +1,6 @@
 # 原版客户端首条可用流程
 
-状态：桌面客户端业务接入进行中。第 1–6 项、第 7.1–7.2 项及第 8 项的 CLI 接入已实现。Core 已包含客户端文件安装、运行目录准备、Microsoft 设备码授权 provider、系统凭证库适配、公开账户资料存储与结构化启动参数。CLI 已提供客户端与账户流程。桌面 Runtime 与页面已接入版本目录、安装/列表及账户选择、设备码登录和登出；客户端启动待接。WebView 中的真实安装、Microsoft 登录和 OS 凭证库尚未 smoke；Shell 的 App 版本生命周期、sidecar 监管、Runtime 健康连接与更新回滚见 [Shell 执行清单](shell-milestone.md)，Shell 不负责 Core 业务命令。
+状态：Core/CLI 基础流程和桌面版本目录、安装/列表、Microsoft 登录、客户端启动与进程状态均已实现；Microsoft 登录已由维护者确认可用。Runtime 位于 crates/anvil/src/serve，作为 anvil serve 运行；Shell 不承担领域业务。实现清单与真实游戏/系统凭证库/OS 架构验收分别记录，不能由编译或单个平台推断其他平台已验证。
 
 ## 目标
 
@@ -108,33 +108,40 @@ anvil --data-dir ./anvil-data client install vanilla --version 1.21.1
 
 **CLI 本地验收：** 2026-10-21 `cargo test --locked --offline -p anvil -p anvil-core`：1 项 CLI 单测、20 项 CLI 集成测试、62 项 Core 测试通过，1 项真实 Mojang metadata smoke 忽略。CLI 测试验证账户 profile 的原子存储、空客户端/账户列表的 JSON stdout、无效客户端名/Client ID 和缺少客户端错误；Core 测试验证重复安装结果与 LaunchSpec 生命周期内实例锁保持。Loopback fixture 测试需本地网络权限，本次仅访问回环地址；没有进行真实 Microsoft 登录、系统凭证库写入、Mojang 下载或客户端启动。
 
-**桌面工程：** 已删除原 Slint `anvil-gui` crate 与桌面依赖。`apps/shell/src-tauri` 是 Cargo workspace 中的通用 Tauri 宿主；`apps/desktop` 是独立的 SvelteKit App npm workspace，通过 Shell 加载。前端使用 shadcn-svelte 组件配置和 Lucide 图标，并继承根 `tsconfig.json`。通用 Runtime API、sidecar 进程监管、健康端点与客户端版本/安装/列表及账户接口已实现。Runtime 启动协议、HTTP API、安装任务和账户流程分别位于 `crates/anvil-desktop-runtime/src/lib.rs`、`protocol.rs`、`api.rs`、`operations.rs`、`accounts.rs`；页面在 `apps/desktop/src/routes/+page.svelte`。客户端启动仍待接入。
+**桌面工程：** 已删除原 Slint `anvil-gui` crate 与桌面依赖。`apps/shell/src-tauri` 是 Cargo workspace 中的通用 Tauri 宿主；`apps/desktop` 是独立的 SvelteKit App npm workspace，通过 Shell 加载。前端使用 shadcn-svelte 组件配置和 Lucide 图标，并继承根 `tsconfig.json`。通用 Runtime API、sidecar 进程监管、健康端点与客户端版本/安装/列表及账户接口已实现。Runtime 已合入 `crates/anvil/src/serve`，HTTP 路由、安装任务、账户与启动分别见 `api.rs`、`operations.rs`、`accounts.rs`、`launches.rs`；页面由 `apps/desktop` 提供。客户端启动已接入。
 
 **桌面验收：** 2026-10-22 本机运行 `npm run desktop:dev` 后，Tauri 窗口成功打开并显示客户端基础页面；截图未显示底部 Runtime 状态，因此只确认窗口与页面加载，不作为 Runtime 健康确认。既有 `npm run desktop:check`（0 错误、0 警告）、`npm run desktop:build`、`cargo check --offline -p anvil-shell` 与 `cargo fmt --all -- --check` 通过；Tauri 生成 `target/release/anvil-shell`。Runtime 业务 API/页面的当前编译检查见第 9 项。真实设备码登录、OS 凭证库、各 OS/CPU 的真实安装和游戏启动仍需维护者手动 smoke 逐一记录。Linux 桌面构建已加入 Live CI。
 
-### 9. [ ] 接入桌面客户端版本目录、安装与列表
+### 9. [x] 接入桌面客户端版本目录、安装与列表
 
 **交付：** Runtime 用 Axum 提供鉴权后的 `/client/versions`、`/clients`、`/clients/install` 和 `/operations/{id}` 查询/取消接口；请求限定在 loopback、允许来源白名单与短期 Bearer 凭据，安装请求体有大小上限。安装作为后台任务执行 Core 的 metadata 解析、平台计划、q2q-http 校验下载和原子提交；前端可选正式版本、命名实例、查看阶段/文件进度并取消。`lib.rs` 只负责 Shell/sidecar 启动协议；路由与任务生命周期分别位于 `api.rs`、`operations.rs`。
 
-**当前进度：** 接口已实现；旧页面的安装入口在桌面 UI 重构时移除，当前已恢复真实客户端列表、搜索、手动刷新与加载/错误/空状态；安装入口已接入版本目录/选择和名称校验，安装提交、任务进度和取消已接入，自动刷新、显式重试与只读实例详情已接入，真实安装验收待完成，后续按[桌面客户端页面清单](desktop-client-library.md)逐项接入。`cargo check --offline -p anvil-desktop-runtime` 通过；`npm run desktop:check` 通过（0 错误、0 警告）。本轮没有增加或运行测试；HTTP 业务路由与真实 Mojang 下载尚未在 WebView 中 smoke，因此本项仍未验收完成。桌面开发命令仍为 `npm run desktop:dev`。
+**当前进度：** 版本目录、列表、搜索、安装、阶段进度、暂停/继续、取消、显式重试和完成后刷新均已接入。实际验收按 [客户端页面](desktop-client-library.md) 记录，未验证的平台/异常路径继续保留。
 
-### 10. [ ] 接入桌面账户登录与账户列表
+### 10. [x] 接入桌面账户登录与账户列表
 
 **交付：** 桌面 Runtime 复用 `AccountService`、Microsoft 设备码 provider、系统 CredentialStore 和 CLI 的公开 profile 存储；Runtime 以状态查询暴露设备码、验证地址、轮询/取消及完成结果，绝不把 access/refresh token 返回给页面。页面能添加、列出和登出账户，并在凭证库不可用时显示明确错误。
 
-**当前进度：** Runtime 已实现账户列表、设备码授权状态、取消、切换账户和登出；桌面 UI 重构后已接入账户菜单和登录弹窗，账户管理弹窗继续按[桌面账户登录清单](desktop-account-login.md)实施。公开 Client ID 已移至 Runtime 应用配置，界面不再要求填写。Sidecar 关闭时会取消安装/授权任务，并等待它们进入终态后退出。编译/前端检查结果与第 9 项共用；未做真实 Microsoft 登录和系统凭证库 smoke，因此本项仍未验收完成。
+**当前进度：** 账户菜单、设备码登录、切换、登出及启动会话校验已接入，维护者确认真实登录可用。独立管理弹窗与平台凭证库验收见 [账户清单](desktop-account-login.md)。
 
 **验收：** 使用 provider/credential-store fixture 覆盖设备码批准、拒绝、过期、取消、令牌刷新和登出；手动完成一次真实 Microsoft 设备码登录及登出，确认 refresh token 只进入系统凭证库。无注册 Client ID 时引导用户通过配置提供，不猜测或内置凭证。
 
-### 11. [ ] 接入客户端启动与进程状态
+### 11. [x] 接入客户端启动与进程状态
+
+**当前进度：** Runtime `launches.rs` 与桌面 `client-launch-state.svelte.ts`、`client-launch-controls.svelte` 已接入；真实游戏与平台验收继续按下方条件记录。
 
 **交付：** 页面选择已安装客户端和账户后，Runtime 复用 Core 构造 LaunchSpec、准备 Java/assets/natives 并以前台方式启动游戏；任务支持取消、运行状态和结构化退出结果。实例锁和会话目录生命周期覆盖游戏进程，不将 Minecraft 启动职责交给 Shell。
 
 **验收：** fixture 验证缺少账户、损坏安装文件、Java 安装/取消、启动参数和会话清理；维护者在目标平台用真实账户启动 1.21.1，记录进程退出、游戏日志和实例用户数据保留情况。没有完成真实启动的 OS/CPU 组合不标记为已验证。
 
-## 首批不包含
+## 首轮历史范围（不代表当前功能缺失）
 
-Fabric、Forge、NeoForge、整合包、账号共享/云同步、后台启动、MCP、自动迁移旧启动器数据和自动更新。每项需要独立的数据与生命周期方案。
+首轮曾排除加载器、整合包和更新；当前 Fabric、整合包导入/导出及 App/Runtime 更新已实现。Forge/NeoForge、账号云同步、后台托管、MCP 和旧启动器迁移仍未实现。
+
+## 剩余验收
+
+- [ ] 按 OS/CPU/游戏版本记录真实安装、启动、退出和实例数据保留。
+- [ ] 补齐系统凭证库与安装/启动取消、损坏文件、会话清理的实机验收；Microsoft 登录本身不再列为等待应用审核。
 
 ## 依据
 

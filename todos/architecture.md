@@ -1,6 +1,6 @@
 # Anvil 架构方案
 
-状态：workspace、CLI、托管 Java 管理、Core 客户端文件安装与原版服务端 `create` / `list` / `start` 首轮已实现；客户端 CLI 流程已接入共享 Core。旧 Slint crate 已移除；桌面端由通用 Tauri Shell 和 SvelteKit App 组成，Runtime 已提供客户端版本目录、安装/列表及账户 API；UI 重构后已接入窗口框架、账户菜单和登录弹窗，安装页面待重新接入，客户端启动和真实下载/登录验收仍待完成。Shell 职责与页面更新方案见 [Anvil Shell 设计草案](shell-design.md)，逐项实施顺序见 [Shell 执行清单](shell-milestone.md)。当前能力与验证边界见 [原版客户端首条可用流程](client-milestone.md)、[Java 管理](java-management.md) 和 [服务端实施项](server-milestone.md)。
+状态：本文保留整体方案与阶段设计；当前 crate 边界与能力以 .agent/architecture.md 为准。Core/CLI、桌面安装/登录/启动、Fabric、本地与在线资源及整合包导入/导出均已实现；剩余开发和验收入口见 todos/README.md。
 
 Minecraft 文件清单、元数据差异和参数生成依据见 [Minecraft 文件安装与启动设计依据](minecraft-installation.md)，其中区分已核对的官方数据与仍需实际运行验证的行为。
 
@@ -264,8 +264,8 @@ CLI 将系统信号映射为 core 取消或服务端停止，保持清理语义�
 2. [x] **Java 管理首轮。** Temurin 大版本/精确版本解析、q2q-http 下载、受限解包、可执行性检查、安装记录、列表/卸载与 JSON 输出；Linux 真实安装及本地测试通过。Windows/macOS 结果待远端 CI，详见 Java 管理文档。
 3. [x] **版本与安装计划。** 已选定首批客户端版本和架构；版本 JSON、Java 要求、Artifact、平台计划与资源集合校验见[客户端实施项](client-milestone.md)。
 4. [x] **Minecraft 下载与安装。** Core 已使用 q2q-http 完成客户端游戏文件下载/校验、共享缓存、natives 准备与 `installed.json` 原子提交；桌面 Runtime 与页面的连接仍在第 6 阶段推进。
-5. [ ] **服务端 CLI（分步实施中）。** 已完成版本元数据、q2q-http 服务端 JAR 下载、`create` / `list`、Java/EULA 预检、前台 `start` 生命周期和 JSONL 自动化事件；按 [服务端实施项](server-milestone.md) 完成 Ctrl-C 与跨平台验证。
-6. [ ] **客户端与桌面流程。** Core 与 CLI 已接入客户端元数据、文件安装、账户授权和启动参数；桌面 Runtime/SvelteKit App 已接入版本目录、安装/列表和账户管理。客户端启动尚待接入，WebView 真实安装、Microsoft 登录、系统凭证库和游戏启动 smoke 尚待验收，详见[客户端实施项](client-milestone.md)。
+5. [x] **服务端 CLI 首轮。** 已完成版本元数据、q2q-http 服务端 JAR 下载、`create` / `list`、Java/EULA 预检、前台 `start` 生命周期和 JSONL 自动化事件；按 [服务端实施项](server-milestone.md) 完成 Ctrl-C 与跨平台验证。
+6. [x] **客户端与桌面流程首轮。** Core 与 CLI 已接入客户端元数据、文件安装、账户授权和启动参数；桌面 Runtime/SvelteKit App 已接入版本目录、安装/列表和账户管理。客户端启动已接入，Microsoft 登录已确认；其余 WebView、系统凭证库与真实游戏 smoke 按平台记录，详见[客户端实施项](client-milestone.md)。
 7. [ ] **后台托管与 AI 接口。** 评审并实现监督进程、本地 IPC、跨命令状态与 stop，再接入 MCP；在长期任务所有权明确后提供后台一键启动。
 8. [ ] **跨平台与资源收敛。** 按具体 OS/CPU/游戏版本验证并完成 CLI 与 Tauri 桌面端打包和资源测量；之后再扩展模组与整合包。
 

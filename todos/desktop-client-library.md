@@ -4,7 +4,7 @@
 
 在现有 App Shell 的主内容卡片内实现原版 Minecraft 客户端管理，沿用中性墨灰、淡紫强调和 13px 正文字号。每完成一项停下来由维护者查看；中途遇到需要决定的产品或接口问题，先停止并询问。
 
-Runtime 已提供 `/clients`、`/client/versions`、`/clients/install` 和安装任务查询/取消接口。客户端启动接口与卡片启动按钮已接入，真实启动验收待维护者操作。实例安装目录由现有 Core/Runtime 管理，当前安装 API 仅接收名称和版本，不提供任意目录选择。真实 Minecraft API 登录暂被应用审核阻塞，不影响客户端列表和安装页面开发。
+Runtime 已提供 `/clients`、`/client/versions`、`/clients/install` 和安装任务查询/取消接口。客户端启动接口与卡片启动按钮已接入，真实启动验收待维护者操作。实例安装目录由现有 Core/Runtime 管理，当前安装 API 仅接收名称和版本，不提供任意目录选择。Microsoft 登录已由维护者确认完成，不再以应用审核作为当前阻塞。
 
 ## 执行项
 
