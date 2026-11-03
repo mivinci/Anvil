@@ -21,9 +21,9 @@
 
 1. [x] 规格与展示基础：通用 Avatar、实例默认图案、稳定 ID/加载失败回退。
 2. [x] Core：有界解码/静态格式、标准化 PNG、原子替换/清除、路径/锁及失败测试。
-3. [ ] Runtime：鉴权图片读取/上传/清除、受限 DTO、错误码和资源更新标识。
-4. [ ] 通用图片选择/裁剪：PNG/JPEG/WebP、大小提示、缩放/移动、正方形输出、取消与对象 URL 清理。
-5. [ ] UI 接入：卡片/详情/设置共享头像与编辑入口、恢复默认、刷新与双语文案。
+3. [x] Runtime：鉴权图片读取/上传/清除、受限 DTO、错误码和资源更新标识。
+4. [x] 通用图片选择/裁剪：PNG/JPEG/WebP、大小提示、缩放/移动、正方形输出、取消与对象 URL 清理。
+5. [x] UI 接入：卡片/详情/设置共享头像与编辑入口、恢复默认、刷新与双语文案。
 6. [ ] 验收：离线服务/API/浏览器，损坏/超限/失败保留、图片刷新、键盘与窄窗；原生选图跨平台实测单独记录。
 
 ## 第 1 项验证
@@ -78,8 +78,12 @@
 第 6 项离线部分已完成：Runtime/API/浏览器、失败保留、超限、读失败回退、键盘与窄窗均已验收；原生 WebView、系统文件选择器和真实游戏忙碌锁由维护者跨平台实测。当前授权仅提交/推送交接分支，没有创建 PR、合并或发布授权。
 
 - Core 实现：crates/anvil-core/src/client/avatar.rs；公开导出见 client.rs；对应测试 client_avatar.rs。头像上传与清除目前遵守实例忙锁，读取只取设置锁。
-- 展示组件：components/ui/avatar.svelte 为通用 fallback 容器；components/clients/instance-avatar.svelte 组合稳定图案；instance-avatar.ts 为纯图案函数。尚未在任何业务页面挂载，没有现成的选图/裁剪 UI。
-- Runtime 参考现有 serve/client_settings.rs、client_resources.rs 和 api.rs 的鉴权/限额/错误模式。图片 GET 必须使用鉴权，不能把 Runtime token 写进图片 URL；优先通过 fetch 读取 blob，再由展示层管理对象 URL。标准 PNG 的 revision 可用作缓存更新标识，不是修改事务版本。
-- 后续裁剪组件不绑定实例 API；实例层负责请求、错误与缓存失效。复用当前双语词典和主题组件，避免原生 select。更新文案后运行 npm run desktop:i18n-check。
+- 展示组件：components/ui/avatar.svelte 为通用 fallback 容器；components/clients/instance-avatar.svelte 组合稳定图案；client-avatar.svelte 读取窗口级 blob 状态；client-avatar-editor.svelte 负责选图、裁剪和上传。
+- Runtime 实现见 serve/client_avatar.rs，沿用 client_settings.rs/client_resources.rs 的鉴权、限额和错误模式；GET 返回 blob + ETag，PUT/DELETE 使用写入门禁。标准 PNG revision 仅作缓存标识，不是修改事务版本。
+- 裁剪组件不绑定实例 API；实例层负责请求、错误与缓存失效。更新文案后运行 npm run desktop:i18n-check。
 - 测试命令：cargo test -p anvil-core --offline client::avatar -- --test-threads=1（11 项）；同命令筛选 client::removal（4 项）；cargo clippy -p anvil-core --all-targets --offline -- -D warnings；cargo fmt --all -- --check；node --experimental-strip-types --test apps/desktop/tests/instance-avatar.test.ts（2 项）；npm run desktop:check。
-- 以上验证已在本机通过；未做 Runtime/UI 集成，未启动真实游戏或操作用户实例。不要把步骤 1–2 写成可用的自定义头像功能。
+- 以上验证已在本机通过；Runtime/UI 已集成，离线浏览器已验收。未做原生 WebView、系统文件选择器、跨平台 Core 特殊文件和真实游戏忙碌锁验收，不把这些写成已通过。
+
+## 剩余事项
+
+功能执行项 1–5 已完成，第 6 项只剩原生跨平台验收：macOS/Windows 系统文件选择器、原生 WebView 裁剪/刷新/失败回退、真实游戏运行时忙锁，以及 Windows reparse point/特殊文件行为。上述完成后再创建 PR、合并和发布；当前分支没有 PR。
