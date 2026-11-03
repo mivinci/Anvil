@@ -125,16 +125,26 @@ try {
 		}, { origin, blockStorage, runtimeState, savedLocale });
 		return context;
 	}
+	async function chooseLanguage(page, value) {
+		await page.locator('#app-language').click();
+		const label = value === 'system' ? /System default|跟随系统/ : value === 'en' ? 'English' : '简体中文';
+		const option = page.getByRole('option', { name: label, exact: true });
+		if (value !== 'system') assert.equal(await option.locator('span[lang]').getAttribute('lang'), value);
+		await option.click();
+	}
 	const normal = await context();
 	const page = await normal.newPage();
 	page.setDefaultTimeout(10000);
 	await page.goto(`${origin}/settings`);
-	await page.locator('#app-language').selectOption('en');
+	await chooseLanguage(page, 'en');
 	await page.getByRole('heading', { name: 'General', exact: true }).waitFor();
 	assert.equal(await page.locator('html').getAttribute('lang'), 'en');
 	assert.equal(await page.evaluate(() => localStorage.getItem('anvil.locale')), 'en');
 	assert.equal(await page.title(), 'Settings · Anvil');
-	assert.equal(await page.locator('option[value="zh-CN"]').getAttribute('lang'), 'zh-CN');
+	await page.locator('#app-language').click();
+	assert.equal(await page.getByRole('option', { name: '简体中文', exact: true }).locator('span[lang]').getAttribute('lang'), 'zh-CN');
+	await page.keyboard.press('Escape');
+	assert.equal(await page.locator('#app-language').evaluate(element => element === document.activeElement), true);
 	await page.getByRole('navigation', { name: 'Main navigation', exact: true }).waitFor();
 	await page.getByRole('button', { name: 'Back', exact: true }).waitFor();
 	await page.getByRole('button', { name: 'Tasks', exact: true }).click();
@@ -143,22 +153,22 @@ try {
 	await page.screenshot({ path: path.join(output, 'general-en.png') });
 	await page.reload();
 	await page.getByRole('heading', { name: 'General', exact: true }).waitFor();
-	assert.equal(await page.locator('#app-language').inputValue(), 'en');
+	assert.equal(await page.locator('#app-language').innerText(), 'English');
 	await page.getByRole('searchbox', { name: 'Search settings categories' }).fill('语言');
-	await page.locator('#app-language').selectOption('zh-CN');
+	await chooseLanguage(page, 'zh-CN');
 	assert.equal(await page.getByRole('searchbox').inputValue(), '语言');
 	await page.getByRole('heading', { name: '通用', exact: true }).waitFor();
 	await page.getByRole('searchbox').fill('');
-	await page.locator('#app-language').selectOption('system');
+	await chooseLanguage(page, 'system');
 	assert.equal(await page.evaluate(() => localStorage.getItem('anvil.locale')), null);
 	assert.equal(await page.locator('html').getAttribute('lang'), 'zh-CN');
 	await page.goto(`${origin}/settings?section=appearance`);
 	await page.getByRole('heading', { name: '外观', exact: true }).waitFor();
 	await page.getByRole('button', { name: '通用', exact: true }).click();
-	await page.locator('#app-language').selectOption('en');
+	await chooseLanguage(page, 'en');
 	await page.getByRole('heading', { name: 'General', exact: true }).waitFor();
 	await page.getByRole('button', { name: 'Appearance', exact: true }).waitFor();
-	assert.equal(await page.locator('#app-language').inputValue(), 'en');
+	assert.equal(await page.locator('#app-language').innerText(), 'English');
 	await page.getByRole('button', { name: 'Servers', exact: true }).click();
 	await page.getByText('Coming soon', { exact: true }).waitFor();
 	assert.equal(await page.title(), 'Servers · Anvil');
@@ -331,7 +341,7 @@ try {
 	const blockedPage = await blocked.newPage();
 	await blockedPage.goto(`${origin}/settings`);
 	await blockedPage.getByRole('status').filter({ hasText: '无法读取已保存的语言' }).waitFor();
-	await blockedPage.locator('#app-language').selectOption('en');
+	await chooseLanguage(blockedPage, 'en');
 	await blockedPage.getByRole('status').filter({ hasText: 'only to this window' }).waitFor();
 	assert.equal(await blockedPage.locator('html').getAttribute('lang'), 'en');
 	await blockedPage.screenshot({ path: path.join(output, 'general-storage-blocked.png') });

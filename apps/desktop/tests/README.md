@@ -53,7 +53,7 @@ npm run build --workspace @anvil/desktop
 node apps/desktop/tests/settings-language.browser.mjs
 ```
 
-只启动临时 loopback fixture 和无头浏览器，阻止外网请求，不连接真实 Runtime 或账户。覆盖语言选择、刷新持久化、系统默认、双语搜索、section 链接和存储被禁用的提示；截图写入已忽略的 .svelte-kit/settings-language-qa。900×680 的本机 Edge 检查不能替代原生 Tauri 与跨平台验收。
+只启动临时 loopback fixture 和无头浏览器，阻止外网请求，不连接真实 Runtime 或账户。覆盖自定义语言菜单选择、语言选项 lang 标注、Escape 关闭后焦点返回、刷新持久化、系统默认、双语搜索、section 链接和存储被禁用的提示；截图写入已忽略的 .svelte-kit/settings-language-qa。900×680 的本机 Edge 检查不能替代原生 Tauri 与跨平台验收。
 
 同一浏览器脚本还覆盖公共壳层的英文导航、后退、任务空态、ComingSoon、页面标题、404 错误页与 Runtime 连接失败提示；业务进度与账户子菜单覆盖见下文；原生平台结果仍独立记录。
 
