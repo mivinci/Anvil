@@ -1,6 +1,6 @@
 # 实例自定义头像
 
-状态：第 1–3 项展示基础、Core 存储与 Runtime 鉴权 API 已本地实现，尚未接入实例页面与选图裁剪；已提交至 codex/instance-avatars 分支交接，尚未创建 PR。
+状态：第 1–4 项展示基础、Core 存储、Runtime 鉴权 API 与通用裁剪组件已本地实现，尚未接入实例页面和文件选择入口；已提交至 codex/instance-avatars 分支交接，尚未创建 PR。
 
 ## 产品与数据边界
 
@@ -48,9 +48,18 @@
 - 错误沿用 Runtime 结构化错误码；实例忙锁、损坏/超限、越界和链接拒绝由 Core 返回 4xx。
 - 回环测试覆盖未鉴权 401、无头像 404、非法图片 400、上传/读取/ETag、304、清除与幂等清除；测试使用临时实例和合成 PNG。
 
+## 第 4 项实现与验证
+
+- `components/ui/image-crop-dialog.svelte`：接收已选择的 `File`，输出 512×512 PNG `Blob`，不请求实例/API；文件选择入口留给实例层。
+- `image-crop.ts`：校验 8 MiB、1600 万像素和 16000 单边限制；cover 缩放、平移边界、源图裁剪矩形和缩放限制均为纯函数。
+- 交互：正方形预览、拖动、滚轮/滑块/按钮缩放、重置、取消/应用；方向键平移、`+/-` 缩放、`0` 重置；窄窗和短窗口自适应。
+- 预览使用 `object URL`，换图/卸载/关闭时回收；最终 Canvas 输出 PNG；动画格式由 Core 最终拒绝，UI 不宣称已识别动画。
+- 文案已加入中英文 `common.imageCrop`，通过 i18n guard；未接入实例卡片、详情或设置。
+- 验证：6 项裁剪几何/文件校验测试通过；Svelte 检查 0 错误/0 警告；桌面生产构建通过。
+
 ## 接续入口
 
-第 3 项已完成。下一步从第 4 项通用图片选择/裁剪开始，按项推进，做完一项先说明下一项内容并请维护者确认。当前授权仅提交/推送交接分支，没有创建 PR、合并或发布授权。
+第 4 项已完成。下一步从第 5 项 UI 接入开始，按项推进，做完一项先说明下一项内容并请维护者确认。当前授权仅提交/推送交接分支，没有创建 PR、合并或发布授权。
 
 - Core 实现：crates/anvil-core/src/client/avatar.rs；公开导出见 client.rs；对应测试 client_avatar.rs。头像上传与清除目前遵守实例忙锁，读取只取设置锁。
 - 展示组件：components/ui/avatar.svelte 为通用 fallback 容器；components/clients/instance-avatar.svelte 组合稳定图案；instance-avatar.ts 为纯图案函数。尚未在任何业务页面挂载，没有现成的选图/裁剪 UI。
