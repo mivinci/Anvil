@@ -63,7 +63,7 @@ node apps/desktop/tests/settings-language.browser.mjs
 node --experimental-strip-types --test apps/desktop/tests/*.test.ts apps/desktop/tests/locale-state.test.mjs apps/desktop/tests/modpack-import.test.mjs apps/desktop/tests/modpack-export.test.mjs apps/desktop/tests/client-flow-state.test.mjs apps/desktop/tests/runtime-request.test.mjs apps/desktop/tests/i18n-guard.test.mjs
 ```
 
-当前共 95 项，新增客户端流程测试使用编译后的真实 Svelte 状态与假 API，验证阶段/失败/删除回执的语言切换及技术详情保留。compile-locale.mjs 是这些测试的编译辅助，不运行真实 Runtime。settings-language.browser.mjs 另覆盖英文首页、官方原文保留、Fabric 安装三步选择和中文实例搜索；只选配置，不提交安装或删除。
+当前共 100 项，新增客户端流程测试使用编译后的真实 Svelte 状态与假 API，验证阶段/失败/删除回执的语言切换及技术详情保留。compile-locale.mjs 是这些测试的编译辅助，不运行真实 Runtime。settings-language.browser.mjs 另覆盖英文首页、官方原文保留、Fabric 安装三步选择和中文实例搜索；只选配置，不提交安装或删除。
 
 实例管理迁移后，同一语言浏览器脚本覆盖英文详情侧栏、实例设置、本地 ZIP 校验、光影环境和空态、日志原文、崩溃报告空态与整合包导出选项；不提交设置、导入或导出。导出状态测试覆盖语言切换后的阶段及错误详情，shader-packs 测试覆盖稳定 ZIP issue、双语校验和原二进制大小语义。
 
@@ -93,3 +93,12 @@ node --test apps/desktop/tests/i18n-guard.test.mjs
 守卫递归扫描 Desktop src 的 TS/JS/Svelte/HTML/CSS/SVG/JSON，词典目录之外发现汉字即失败并报告位置；同时比较中英文词典的嵌套键、类型、数组长度和函数插值参数数量。启动 HTML 的双语 span 必须各出现一次且与 common.loading 完全一致，仅屏蔽这两段已验证文字，不豁免整个文件。当前不需要其他允许列表。CI 在 Svelte 检查前运行守卫，并运行其四项拒绝边界测试。
 
 浏览器结果仅代表本机无头 Edge + 本地 fixture。原生 Tauri WebView 仍需在 macOS/Windows 分别记录：首次进入时语言/闪烁、设置即时切换与页面状态、关闭重启后的语言保留、系统语言回退，以及 620px 英文布局。未执行的平台保持待验收，不将本地浏览器结果登记为原生通过。
+
+## 首次启动欢迎页
+
+```sh
+npm run build --workspace @anvil/desktop
+node apps/desktop/tests/welcome.browser.mjs
+```
+
+复用已有 Playwright/Edge 配置，仅 loopback fixture，拦截外网；覆盖新用户深链进入、欢迎期间不挂载业务 providers、英文/深色实时切换、中途刷新、完成后回首页与持久跳过，以及已有 Runtime 实例跳过。截图位于忽略目录 .svelte-kit/welcome-qa。welcome-state.test.ts 纳入全部 TS 测试，覆盖状态与存储失败；故障矩阵另覆盖已有偏好/账户、数据不确定、存储不可读/写入失败；双语 × 620/1280px × 三种模式 × 四套主题共 48 组，检查键盘选择、Escape 返回焦点、无横向溢出和完成按钮可到达。已在本地通过，不替代原生窗口控制验收。既有 settings-language 脚本显式设置欢迎完成标记，专注设置流程。

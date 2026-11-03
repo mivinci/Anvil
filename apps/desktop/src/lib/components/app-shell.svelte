@@ -7,6 +7,7 @@
 	setPageSidebarState(new PageSidebarState());
 	import AppTitlebar from './app-titlebar.svelte';
 	import AppStartup from './app-startup.svelte';
+	import WelcomeGate from './welcome-gate.svelte';
 	import OverlayScrollbars from './overlay-scrollbars.svelte';
 	import ClientInstallProvider from './clients/client-install-provider.svelte';
 	import AccountProvider from './account-provider.svelte';
@@ -79,6 +80,7 @@
 	style={themeStyle(colors, resolvedMode)}
 >
 	<AppStartup>
+	<WelcomeGate>
 	<AccountProvider>
 	<ClientInstallProvider>
 		<AppTitlebar />
@@ -92,6 +94,7 @@
 		</div>
 	</ClientInstallProvider>
 	</AccountProvider>
+	</WelcomeGate>
 	</AppStartup>
 	<OverlayScrollbars />
 </div>

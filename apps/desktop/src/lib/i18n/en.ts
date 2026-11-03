@@ -7,6 +7,7 @@ import instance from './en/instance.ts';
 import mods from './en/mods.ts';
 import settings from './en/settings.ts';
 import account from './en/account.ts';
+import welcome from './en/welcome.ts';
 import errors from './en/errors.ts';
 
-export const en: Messages = { common, nav, home, clients, instance, mods, settings, account, errors };
+export const en: Messages = { common, nav, home, clients, instance, mods, settings, account, errors, welcome };

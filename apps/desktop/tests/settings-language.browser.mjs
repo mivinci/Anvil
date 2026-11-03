@@ -110,6 +110,7 @@ try {
 		await context.route('**/*', route => route.request().url().startsWith(origin + '/') ? route.continue() : route.abort());
 		await context.addInitScript(({ origin, blockStorage, runtimeState, savedLocale }) => {
 			window.isTauri = true;
+			localStorage.setItem('anvil.welcome', 'complete');
 			window.__TAURI_INTERNALS__ = { metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main' } }, invoke: async (command, args) => {
 				if (command === 'shell_get_runtime_connection') return { baseUrl: origin, token: 'fixture', apiVersion: '1.0.0' };
 				if (command === 'shell_get_runtime_status') return { state: runtimeState, runtimeVersion: '26.0.0-fixture', apiVersion: '1.0.0', availableRuntimeVersion: null };
