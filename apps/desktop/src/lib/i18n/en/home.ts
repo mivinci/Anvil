@@ -10,7 +10,7 @@ export default {
 		"newsList": "Minecraft news list",
 		"previousNews": "Previous news item",
 		"nextNews": "Next news item",
-		"lessMinute": "Less than a minute",
+		"lessMinute": "Less than 1 min",
 		"continueWorld": "Continue your adventure here",
 		"installFirst": "Install a game version first",
 		"allInstances": "All instances",
@@ -76,10 +76,10 @@ export default {
 		"reloadInstances": "Reload instances",
 		"retry": "Retry"
 	},
-	lessMinute: "Less than a minute",
+	lessMinute: "Less than 1 min",
 	noRecord: "No history yet",
 	justNow: "Just now",
-	minutes: (count: number, formatted: string) => `${formatted} ${count === 1 ? 'minute' : 'minutes'}`,
+	minutes: (count: number, formatted: string) => `${formatted} min`,
 	hours: (count: number, formatted: string) => `${formatted} ${count === 1 ? 'hour' : 'hours'}`,
 	playCount: (count: number, formatted: string) => `${formatted} ${count === 1 ? 'launch' : 'launches'}`,
 

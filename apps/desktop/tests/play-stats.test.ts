@@ -65,8 +65,8 @@ test('account lookup filters by the current account id', () => {
 
 
 test('English statistics use locale-aware units and plurals', () => {
-	assert.equal(formatPlayDuration(60_000, 'en'), '1 minute');
-	assert.equal(formatPlayDuration(120_000, 'en'), '2 minutes');
+	assert.equal(formatPlayDuration(60_000, 'en'), '1 min');
+	assert.equal(formatPlayDuration(120_000, 'en'), '2 min');
 	assert.equal(formatPlayDuration(3_600_000, 'en'), '1.0 hour');
 	assert.equal(formatPlayCount(1, 'en'), '1 launch');
 	assert.equal(formatPlayCount(2, 'en'), '2 launches');
