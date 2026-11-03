@@ -157,7 +157,7 @@
 	}
 
 	body {
-		@apply min-h-screen min-w-[760px] bg-transparent text-foreground;
+		@apply min-h-screen min-w-[620px] bg-transparent text-foreground;
 	}
 }
 

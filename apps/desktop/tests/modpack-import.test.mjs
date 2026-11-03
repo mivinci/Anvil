@@ -1,3 +1,4 @@
+import { compileLocale } from './compile-locale.mjs';
 import assert from 'node:assert/strict';
 import { test, after } from 'node:test';
 import { readFile, writeFile, mkdtemp, mkdir, rm } from 'node:fs/promises';
@@ -11,6 +12,7 @@ const root = fileURLToPath(new URL('../../../', import.meta.url));
 await mkdir(resolve(root, 'target'), { recursive: true });
 const directory = await mkdtemp(resolve(root, 'target/modpack-ui-test-'));
 after(() => rm(directory, { recursive: true, force: true }));
+const localeUrl = await compileLocale(root, directory);
 const adapter = resolve(directory, 'runtime.mjs');
 await writeFile(adapter, `
 export const api = { operations: [], calls: [], import: null };
@@ -27,6 +29,8 @@ const source = await readFile(resolve(root, 'apps/desktop/src/lib/client-install
 const javascript = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
 const compiled = compileModule(javascript, { filename: 'client-install-state.svelte.js', generate: 'client' }).js.code
   .replace(/import \{ createContext \} from ['"]svelte['"];?/, 'const createContext = () => [() => null, value => value];')
+  .replace(/from ['"]\.\/locale\.svelte\.ts['"]/g, `from ${JSON.stringify(localeUrl)}`)
+  .replace(/from ['"]\.\/runtime-errors\.ts['"]/g, "from './runtime-errors.mjs'")
   .replace(/from ['"]\.\/runtime['"]/g, `from ${JSON.stringify(pathToFileURL(adapter).href)}`);
 await writeFile(resolve(directory, 'state.mjs'), compiled);
 const { api } = await import(pathToFileURL(adapter).href);
@@ -70,4 +74,25 @@ test('cancel during upload cancels the retained backend task', async () => {
 test('reload needs file selection before retry; invalid files never reach Runtime', async () => {
   const state=await ready();api.operations=[operation('parsing','failed')];await state.sync();assert.equal(state.canRetry,false);
   try {await state.importPack(new File(['x'],'other.zip'));assert.equal(api.calls.length,0);assert.match(state.error,/mrpack/);} finally {state.dispose();}
+});
+
+test('active installation and retained failure translate without another request', async () => {
+  const { localeState } = await import(localeUrl);
+  const state = await ready();
+  try {
+    state.operation = operation('parsing');
+    localeState.setLocale('zh-CN');
+    assert.equal(state.label, '正在解析整合包…');
+    const count = api.calls.length;
+    localeState.setLocale('en');
+    assert.equal(state.label, 'Analyzing modpack…');
+    state.operation = { ...operation('java'), progress: { ...operation('java').progress, javaStage: 'downloading', javaMajor: 21 } };
+    assert.equal(state.label, 'Downloading Java 21…');
+    state.operation = null;
+    await state.importPack(new File([], 'empty.mrpack'));
+    assert.match(state.error, /non-empty/);
+    localeState.setLocale('zh-CN');
+    assert.match(state.error, /非空/);
+    assert.equal(api.calls.length, count);
+  } finally { localeState.setLocale('zh-CN'); state.dispose(); }
 });

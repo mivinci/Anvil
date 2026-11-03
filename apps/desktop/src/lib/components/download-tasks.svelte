@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { localeState } from '#lib/locale.svelte.ts';
 	import { onDestroy, tick } from 'svelte';
 	import { Check, Download } from '@lucide/svelte';
 	import { Popover } from 'bits-ui';
@@ -82,8 +83,8 @@
 					: null,
 	);
 	const triggerLabel = $derived(completed
-		? '任务：已完成'
-		: currentLabel ? `任务：${currentLabel}${determinate ? ` ${Math.round(percent)}%` : ''}` : '任务');
+		? localeState.messages.common.tasksCompleted
+		: currentLabel ? localeState.messages.common.taskLabel(currentLabel, determinate ? Math.round(percent) : null) : localeState.messages.common.tasks);
 
 	const activeIds = $derived.by(() => {
 		const ids = new Set<string>();
@@ -143,10 +144,10 @@
 			{/if}
 		{/if}
 	</Popover.Trigger>
-	<Popover.Content side="bottom" align="end" sideOffset={8} collisionPadding={8} class="z-30 max-h-[calc(100dvh-80px)] w-72 overflow-y-auto overscroll-contain cursor-default rounded-xl border border-chrome-control-border bg-popover p-3 text-popover-foreground shadow-lg outline-none" aria-label="任务">
-		<h2 class="mb-3 text-sm font-semibold">任务</h2>
-		{#if installs.operation || installs.starting || installs.error}<ClientInstallProgress onNavigate={() => open = false} /><button type="button" onclick={async () => { open = false; await tick(); installs.detailsOpen = true; }} class="mt-1.5 w-full rounded-md py-1.5 text-xs text-muted-foreground hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring">查看详情</button>
-		{:else if !resources.operation && !resources.error && !resources.starting && !exports.active && !exports.starting && !exports.error && !exports.uncertain && launches.javaTasks.length === 0}<div class="flex flex-col items-center gap-3 py-6 text-chrome-muted"><Download size={24} strokeWidth={1.5} aria-hidden="true" /><p class="text-xs">{installs.syncing ? '正在读取任务…' : '暂无进行中的任务'}</p></div>{/if}
+	<Popover.Content side="bottom" align="end" sideOffset={8} collisionPadding={8} class="z-30 max-h-[calc(100dvh-80px)] w-72 overflow-y-auto overscroll-contain cursor-default rounded-xl border border-chrome-control-border bg-popover p-3 text-popover-foreground shadow-lg outline-none" aria-label={localeState.messages.common.tasks}>
+		<h2 class="mb-3 text-sm font-semibold">{localeState.messages.common.tasks}</h2>
+		{#if installs.operation || installs.starting || installs.error}<ClientInstallProgress onNavigate={() => open = false} /><button type="button" onclick={async () => { open = false; await tick(); installs.detailsOpen = true; }} class="mt-1.5 w-full rounded-md py-1.5 text-xs text-muted-foreground hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring">{localeState.messages.common.taskDetails}</button>
+		{:else if !resources.operation && !resources.error && !resources.starting && !exports.active && !exports.starting && !exports.error && !exports.uncertain && launches.javaTasks.length === 0}<div class="flex flex-col items-center gap-3 py-6 text-chrome-muted"><Download size={24} strokeWidth={1.5} aria-hidden="true" /><p class="text-xs">{installs.syncing ? localeState.messages.common.readingTasks : localeState.messages.common.noTasks}</p></div>{/if}
 		{#if resources.operation || resources.error || resources.starting}<div class={installs.operation || installs.error ? 'mt-2.5 border-t border-border pt-2.5' : ''}><ResourceInstallProgress /></div>{/if}
 		{#if exports.active || exports.starting || exports.error || exports.uncertain || exports.operation?.state === 'failed' || exports.operation?.state === 'cancelled'}<div class={installs.operation || installs.error || resources.operation || resources.starting || resources.error ? 'mt-2.5 border-t border-border pt-2.5' : ''}><ModpackExportProgress /></div>{/if}
 		{#each visibleJavaTasks as operation, index (operation.id)}

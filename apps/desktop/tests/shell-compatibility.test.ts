@@ -23,3 +23,8 @@ test('a damaged package is never mislabeled as a required Shell upgrade', () => 
 	assert.match(shellUpgradeMessage({ availableVersion: '26.1.0' }), /Desktop 26.1.0/);
 	assert.match(shellUpgradeMessage({ availableVersion: null }), /当前版本仍可继续使用/);
 });
+
+test('Shell upgrade guidance is localized without changing capability decisions', () => {
+	assert.match(shellUpgradeMessage({ availableVersion: '26.1.0' }, 'en'), /Desktop 26.1.0 requires a newer launcher/);
+	assert.match(shellUpgradeMessage({ availableVersion: null }, 'en'), /This Desktop update requires a newer launcher/);
+});

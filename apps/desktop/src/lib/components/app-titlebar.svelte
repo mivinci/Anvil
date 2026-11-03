@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { localeState } from '#lib/locale.svelte.ts';
 	import { afterNavigate, goto } from '$app/navigation';
 	import { ArrowLeft, ArrowRight, PanelLeft } from '@lucide/svelte';
 	import { onMount } from 'svelte';
@@ -12,7 +13,7 @@
 	import { getPageSidebarState } from '../page-sidebar-state.svelte.js';
 	const sidebar = getPageSidebarState();
 	const sidebarArea = $derived(page.params.name !== undefined && page.route.id?.startsWith('/clients/') ? 'clients' : page.route.id === '/mods' ? 'mods' : page.route.id === '/shaders' ? 'shaders' : null);
-	const sidebarLabel = $derived(sidebarArea === 'mods' ? '模组筛选侧栏' : sidebarArea === 'shaders' ? '光影筛选侧栏' : '实例侧栏');
+
 	const sidebarId = $derived(sidebarArea === 'mods' ? 'mod-discovery-sidebar' : sidebarArea === 'shaders' ? 'shader-discovery-sidebar' : 'client-detail-sidebar');
 	import DownloadTasks from './download-tasks.svelte';
 
@@ -62,13 +63,13 @@
 <header
 	class={`relative z-10 flex h-8 shrink-0 items-center gap-1 bg-transparent cursor-grab ${windows ? 'pl-2.5' : 'pl-21 pr-2'}`}
 	data-tauri-drag-region
-	aria-label="窗口拖动区域"
+	aria-label={localeState.messages.common.dragRegion}
 >
 	<button
 		type="button"
 		class="grid size-6 cursor-default place-items-center rounded-md text-chrome-muted/80 transition-colors enabled:hover:bg-chrome-selected enabled:hover:text-chrome-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-30"
-		aria-label="后退"
-		title="后退"
+		aria-label={localeState.messages.common.back}
+		title={localeState.messages.common.back}
 		disabled={historyPending || (historyPosition === 0 && !directDetail)}
 		onclick={() => traverseHistory(-1)}
 	><ArrowLeft size={16} aria-hidden="true" />
@@ -76,14 +77,14 @@
 	<button
 		type="button"
 		class="grid size-6 cursor-default place-items-center rounded-md text-chrome-muted/80 transition-colors enabled:hover:bg-chrome-selected enabled:hover:text-chrome-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-30"
-		aria-label="前进"
-		title="前进"
+		aria-label={localeState.messages.common.forward}
+		title={localeState.messages.common.forward}
 		disabled={historyPending || historyPosition >= historyEnd}
 		onclick={() => traverseHistory(1)}
 	><ArrowRight size={16} aria-hidden="true" />
 	</button>
 	{#if sidebarArea}
-		<button type="button" aria-label={`${sidebar[sidebarArea] ? '收起' : '展开'}${sidebarLabel}`} title={`${sidebar[sidebarArea] ? '收起' : '展开'}${sidebarLabel}`} aria-expanded={sidebar[sidebarArea]} aria-controls={sidebarId} onclick={() => sidebar.toggle(sidebarArea!)} class="ml-1 grid size-6 cursor-default place-items-center rounded-md text-chrome-muted/80 transition-colors hover:bg-chrome-selected hover:text-chrome-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"><PanelLeft size={16} aria-hidden="true" /></button>
+		<button type="button" aria-label={localeState.messages.nav.sidebarAction(sidebar[sidebarArea], sidebarArea)} title={localeState.messages.nav.sidebarAction(sidebar[sidebarArea], sidebarArea)} aria-expanded={sidebar[sidebarArea]} aria-controls={sidebarId} onclick={() => sidebar.toggle(sidebarArea!)} class="ml-1 grid size-6 cursor-default place-items-center rounded-md text-chrome-muted/80 transition-colors hover:bg-chrome-selected hover:text-chrome-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"><PanelLeft size={16} aria-hidden="true" /></button>
 	{/if}
 	<div class="ml-auto flex items-center">
 		<DownloadTasks />

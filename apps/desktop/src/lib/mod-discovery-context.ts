@@ -33,14 +33,14 @@ export function updateModDiscoveryContext(url: ReadableUrl, change: { instance?:
 	const next = new URL(url.href);
 	let changed = false;
 	if (change.instance !== undefined) {
-		if (change.instance !== null && !validName(change.instance)) throw new Error('实例名称无效。');
+		if (change.instance !== null && !validName(change.instance)) throw new Error('Invalid instance name.');
 		const name = change.instance?.toLowerCase() ?? null;
 		changed = current.instanceIssue !== null || name !== current.instanceName;
 		next.searchParams.delete('instance');
 		if (name) next.searchParams.set('instance', name);
 	}
 	if (change.source !== undefined) {
-		if (change.source !== 'modrinth' && change.source !== 'curseforge') throw new Error('模组来源无效。');
+		if (change.source !== 'modrinth' && change.source !== 'curseforge') throw new Error('Invalid mod source.');
 		changed ||= current.sourceIssue !== null || change.source !== current.source;
 		next.searchParams.delete('source');
 		if (change.source !== 'modrinth') next.searchParams.set('source', change.source);

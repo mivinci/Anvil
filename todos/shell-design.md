@@ -1,6 +1,6 @@
 # Anvil Shell 设计草案
 
-状态：设计草案。App 页面协议与恢复入口、按 App ID 隔离的版本存储和原子状态文件、Shell 原生 IPC、sidecar 监管、Runtime 连接引导、基线包构建与首次安装、签名 App 更新下载和验证、下次启动激活与健康回滚均已实现。生产 Shell 只将轻量恢复页作为 `frontendDist`，从活动版本 `web/` 目录加载页面。sidecar 产品业务 API 仍未实现；正式更新 URL 与发行公钥尚未配置。`anvil-shell` 不依赖 `anvil-core`；桌面 sidecar 自己依赖 Core。
+状态：通用 Shell 的 App 版本存储、IPC、sidecar 监管、健康连接、签名更新、下次启动激活和回滚均已实现；桌面业务 Runtime 由 anvil serve 承担。正式更新 feed 和构建配置已接入。剩余跨平台更新/恢复验收见 shell-milestone.md，兼容性和窗口验收见 shell-compatibility.md。
 
 ## 目标与职责
 

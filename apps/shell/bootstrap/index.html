@@ -2,9 +2,12 @@
 <html lang="zh-CN">
 	<head>
 		<meta charset="utf-8" />
+		<!-- Custom protocol responses do not pass through Tauri's built-in asset CSP injection. -->
+		<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<meta name="theme-color" content="#101113" />
 		<title>Anvil — 恢复</title>
+		<script src="/__anvil_shell__/recovery.js"></script>
 		<style>
 			:root { color-scheme: dark; font: 15px/1.6 system-ui, sans-serif; background: #101113; color: #e7e8eb; }
 			* { box-sizing: border-box; }
@@ -15,16 +18,18 @@
 			p { margin: 0; color: #a1a4aa; }
 			button { margin-top: 24px; border: 0; border-radius: 9px; padding: 10px 15px; color: #122119; background: #a3e6b3; font: inherit; font-weight: 650; cursor: pointer; }
 			button:focus-visible { outline: 2px solid #e7e8eb; outline-offset: 3px; }
+			[data-recovery-locale="zh-CN"] [data-language="en"], [data-recovery-locale="en"] [data-language="zh-CN"] { display: none; }
+			[data-language] { display: block; }
 			.note { margin-top: 18px; color: #747880; font-size: 12px; }
 		</style>
 	</head>
 	<body>
 		<main>
 			<div class="mark" aria-hidden="true">A</div>
-			<h1>Anvil 暂时无法启动桌面 App</h1>
-			<p>本地 App 页面不存在、损坏，或与当前 Shell 不兼容。可以重试；如果问题仍然存在，请重新安装或修复 App。</p>
-			<button type="button" onclick="location.reload()">重试</button>
-			<div class="note">Shell 恢复入口 · App 页面保存在本机</div>
+			<h1><span lang="zh-CN" data-language="zh-CN">Anvil 暂时无法启动桌面 App</span><span lang="en" data-language="en">Anvil could not start the desktop App</span></h1>
+			<p><span lang="zh-CN" data-language="zh-CN">本地 App 页面不存在、损坏，或与当前 Shell 不兼容。可以重试；如果问题仍然存在，请重新安装或修复 App。</span><span lang="en" data-language="en">The local App pages are missing, damaged or incompatible with this Shell. Try again. If the problem persists, reinstall or repair the App.</span></p>
+			<button type="button" id="retry"><span lang="zh-CN" data-language="zh-CN">重试</span><span lang="en" data-language="en">Retry</span></button>
+			<div class="note"><span lang="zh-CN" data-language="zh-CN">Shell 恢复入口 · App 页面保存在本机</span><span lang="en" data-language="en">Shell recovery · App pages are stored on this device</span></div>
 		</main>
 	</body>
 </html>

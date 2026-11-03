@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { localeState } from '#lib/locale.svelte.ts';
 	import { onMount, type Snippet } from 'svelte';
 	import { isTauri } from '@tauri-apps/api/core';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -6,6 +7,7 @@
 	setPageSidebarState(new PageSidebarState());
 	import AppTitlebar from './app-titlebar.svelte';
 	import AppStartup from './app-startup.svelte';
+	import WelcomeGate from './welcome-gate.svelte';
 	import OverlayScrollbars from './overlay-scrollbars.svelte';
 	import ClientInstallProvider from './clients/client-install-provider.svelte';
 	import AccountProvider from './account-provider.svelte';
@@ -18,18 +20,18 @@
 	let appearance = $state<AppearanceMode>('system');
 	let colors = $state(defaultTheme());
 	let systemDark = $state(false);
-	let saveError = $state<string | null>(null);
+	let saveError = $state<'colors' | 'read' | 'mode' | null>(null);
 	const resolvedMode = $derived(appearance === 'system' ? (systemDark ? 'dark' : 'light') : appearance);
 	provideAppearance({
 		get mode() { return appearance; }, get colors() { return colors; },
-		get resolvedMode() { return resolvedMode; }, get saveError() { return saveError; },
+		get resolvedMode() { return resolvedMode; }, get saveError() { return saveError ? localeState.messages.common.appearanceErrors[saveError] : null; },
 		setMode: setAppearance, setTheme, setColor,
 		customizeTheme: () => { colors = customThemeFrom(colors.theme === 'custom' ? colors.base : colors.theme); saveColors(); },
 		resetColors: () => { colors = { ...customThemeFrom(colors.base), theme: colors.theme }; saveColors(); },
 	});
 	function saveColors() {
 		try { window.localStorage.setItem('anvil.theme', JSON.stringify(colors)); saveError = null; }
-		catch { saveError = '无法保存配色，本次修改仅在当前窗口生效。'; }
+		catch { saveError = 'colors'; }
 	}
 	function setTheme(theme: ThemePreferences['theme']) { colors.theme = theme; saveColors(); }
 	function setColor(mode: ColorMode, key: keyof Palette, value: string) {
@@ -47,7 +49,7 @@
 		try {
 			savedAppearance = window.localStorage.getItem('anvil.appearance');
 			colors = readTheme(window.localStorage.getItem('anvil.theme'));
-		} catch { saveError = '无法读取本机外观设置。'; }
+		} catch { saveError = 'read'; }
 		if (savedAppearance === 'system' || savedAppearance === 'light' || savedAppearance === 'dark') {
 			appearance = savedAppearance;
 		}
@@ -67,7 +69,7 @@
 	function setAppearance(mode: AppearanceMode) {
 		appearance = mode;
 		try { window.localStorage.setItem('anvil.appearance', mode); saveError = null; }
-		catch { saveError = '无法保存外观模式，本次修改仅在当前窗口生效。'; }
+		catch { saveError = 'mode'; }
 		syncNativeAppearance(mode);
 	}
 </script>
@@ -78,6 +80,7 @@
 	style={themeStyle(colors, resolvedMode)}
 >
 	<AppStartup>
+	<WelcomeGate>
 	<AccountProvider>
 	<ClientInstallProvider>
 		<AppTitlebar />
@@ -85,12 +88,13 @@
 		<div class="grid min-h-0 flex-1 grid-cols-[52px_minmax(0,1fr)]">
 			<AppNavigation {appearance} onAppearanceChange={setAppearance} />
 
-			<main class="mb-1 mr-1 flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[12px] bg-main-pane text-foreground" aria-label="主内容区域">
+			<main class="mb-1 mr-1 flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[12px] bg-main-pane text-foreground" aria-label={localeState.messages.common.mainContent}>
 				{@render children()}
 			</main>
 		</div>
 	</ClientInstallProvider>
 	</AccountProvider>
+	</WelcomeGate>
 	</AppStartup>
 	<OverlayScrollbars />
 </div>

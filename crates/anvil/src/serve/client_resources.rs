@@ -27,6 +27,7 @@ pub(super) async fn fabric_game(
   ) {
     return Err(ApiError::new(
       StatusCode::CONFLICT,
+      "fabric_required",
       "当前仅支持为 Fabric 实例浏览模组。",
     ));
   }
@@ -46,6 +47,7 @@ pub(super) async fn limit_resource_requests(request: Request<Body>, next: Next) 
   let Ok(_permit) = RESOURCE_REQUESTS.try_acquire() else {
     return ApiError::new(
       StatusCode::TOO_MANY_REQUESTS,
+      "busy",
       "resource manager is busy; retry after refreshing",
     )
     .into_response();
@@ -63,7 +65,7 @@ pub(super) fn resource_error(error: anvil_core::Error) -> ApiError {
     error_code = error.code(),
     "Client resource operation failed"
   );
-  ApiError::new(status, error.to_string())
+  ApiError::new(status, error.code(), error.to_string())
 }
 pub(super) async fn client_resources(
   State(state): State<AppState>,

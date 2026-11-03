@@ -53,6 +53,7 @@ pub(super) struct Snapshot {
   pub progress: ExportProgress,
   pub result: Option<ResultView>,
   pub error: Option<String>,
+  pub error_code: Option<String>,
 }
 struct Operation {
   cancel: CancellationToken,
@@ -100,13 +101,20 @@ impl ModpackExports {
         .bytes()
         .all(|byte| byte.is_ascii_hexdigit() || byte == b'-')
     {
-      return Err(ApiError::new(StatusCode::BAD_REQUEST, "导出请求标识无效。"));
+      return Err(ApiError::new(
+        StatusCode::BAD_REQUEST,
+        "invalid_argument",
+        "导出请求标识无效。",
+      ));
     }
     let identity = format!(
       "{}\0{}",
       name.to_ascii_lowercase(),
-      serde_json::to_string(&options)
-        .map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, "导出选项无效。"))?
+      serde_json::to_string(&options).map_err(|_| ApiError::new(
+        StatusCode::BAD_REQUEST,
+        "invalid_argument",
+        "导出选项无效。"
+      ))?
     );
     let mut inner = self
       .inner
@@ -115,6 +123,7 @@ impl ModpackExports {
     if inner.stopping {
       return Err(ApiError::new(
         StatusCode::SERVICE_UNAVAILABLE,
+        "runtime_stopping",
         "Runtime 正在停止。",
       ));
     }
@@ -126,6 +135,7 @@ impl ModpackExports {
       if operation.identity != identity {
         return Err(ApiError::new(
           StatusCode::CONFLICT,
+          "request_conflict",
           "导出请求标识已绑定其他实例或选项。",
         ));
       }
@@ -138,18 +148,21 @@ impl ModpackExports {
     {
       return Err(ApiError::new(
         StatusCode::CONFLICT,
+        "busy",
         "已有整合包导出任务，请先等待完成或取消。",
       ));
     }
     let destination = self.destination.clone().ok_or_else(|| {
       ApiError::new(
         StatusCode::SERVICE_UNAVAILABLE,
+        "downloads_unavailable",
         "无法找到系统下载目录，暂不能导出整合包。",
       )
     })?;
     if !destination.is_dir() {
       return Err(ApiError::new(
         StatusCode::SERVICE_UNAVAILABLE,
+        "downloads_unavailable",
         "系统下载目录不可用，暂不能导出整合包。",
       ));
     }
@@ -176,6 +189,7 @@ impl ModpackExports {
       progress,
       result: None,
       error: None,
+      error_code: None,
     };
     let (updates, receiver) = watch::channel(initial.clone());
     let cancel = CancellationToken::new();
@@ -220,10 +234,12 @@ impl ModpackExports {
         }
         Err(error) if error.code() == "cancelled" => {
           snapshot.state = ExportState::Cancelled;
+          snapshot.error_code = Some(error.code().into());
           snapshot.error = Some(error.to_string());
         }
         Err(error) => {
           snapshot.state = ExportState::Failed;
+          snapshot.error_code = Some(error.code().into());
           snapshot.error = Some(error.to_string());
         }
       });
@@ -367,6 +383,7 @@ pub(super) async fn create(
   {
     return Err(ApiError::new(
       StatusCode::CONFLICT,
+      "conflict",
       "实例正在运行、准备启动或修改资源，请等待完成后再导出。",
     ));
   }
@@ -386,7 +403,7 @@ pub(super) async fn get(
     .exports
     .get(id)
     .map(Json)
-    .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "整合包导出任务不存在。"))
+    .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "not_found", "整合包导出任务不存在。"))
 }
 pub(super) async fn cancel(
   State(state): State<AppState>,
@@ -396,7 +413,7 @@ pub(super) async fn cancel(
     .exports
     .cancel(id)
     .map(Json)
-    .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "整合包导出任务不存在。"))
+    .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "not_found", "整合包导出任务不存在。"))
 }
 #[cfg(test)]
 mod tests {

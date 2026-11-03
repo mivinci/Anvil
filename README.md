@@ -10,6 +10,10 @@
 
 遇到问题或有功能建议，欢迎提交 [Issue](https://github.com/mivinci/Anvil/issues)。
 
+## 国际化
+
+桌面界面已实现简体中文和 English，可在“设置 → 通用”切换，默认跟随系统。原生平台验收仍在进行中；翻译维护见[国际化说明](docs/i18n.md)。
+
 ## 从源码运行
 
 需要 Rust 1.90+、Node.js 22.17+ 和 [Tauri 平台依赖](https://v2.tauri.app/start/prerequisites/)。

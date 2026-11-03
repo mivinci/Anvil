@@ -1,10 +1,12 @@
 <script lang="ts">
+	import { localeState } from '#lib/locale.svelte.ts';
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { ArrowUpRight, ChevronLeft, ChevronRight, Pause, Play } from '@lucide/svelte';
-	import { anvilNews } from '../anvil-news';
+	import { getAnvilNews } from '../anvil-news';
 	import AnvilNewsArtwork from './anvil-news-artwork.svelte';
 
+	const anvilNews = $derived(getAnvilNews(localeState.current));
 	let index = $state(0);
 	let paused = $state(false);
 	let hovered = $state(false);
@@ -36,12 +38,12 @@
 	});
 </script>
 
-<section class="group relative isolate h-full min-h-66 min-w-0 overflow-hidden rounded-lg bg-card" aria-labelledby="anvil-news-title" aria-roledescription="轮播"
+<section class="group relative isolate h-full min-h-66 min-w-0 overflow-hidden rounded-lg bg-card" aria-labelledby="anvil-news-title" aria-roledescription={localeState.messages.home.flow.carousel}
 	onmouseenter={() => hovered = true} onmouseleave={() => hovered = false}
 	onfocusin={() => focused = true} onfocusout={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) focused = false; }}>
 	<div class="pointer-events-none absolute inset-0 bg-primary/5" aria-hidden="true"></div>
 	<div class="relative z-10 flex items-center justify-between px-4 pt-4">
-		<h2 id="anvil-news-title" class="text-[11px] font-medium tracking-wide text-muted-foreground">Anvil 动态</h2>
+		<h2 id="anvil-news-title" class="text-[11px] font-medium tracking-wide text-muted-foreground">{localeState.messages.clients.newsTitle}</h2>
 		<span class="text-[10px] tabular-nums text-muted-foreground/70" aria-hidden="true">{String(index + 1).padStart(2, '0')} / {String(anvilNews.length).padStart(2, '0')}</span>
 	</div>
 	{#each anvilNews as item, position (item.id)}
@@ -56,13 +58,13 @@
 		</div>
 	{/each}
 	<div class="absolute inset-x-4 bottom-3 z-10 flex items-center justify-between gap-3">
-		<div class="flex items-center gap-0.5" aria-label="选择 Anvil 动态">
-			{#each anvilNews as item, position (item.id)}<button type="button" onclick={() => select(position)} aria-label={`第 ${position + 1} 条：${item.title.replace('\n', '')}`} aria-pressed={position === index} class="grid h-6 min-w-5 place-items-center rounded focus-visible:outline-2 focus-visible:outline-ring"><span class={`block h-1 rounded-full transition-[width,background-color] duration-300 motion-reduce:transition-none ${position === index ? 'w-5 bg-primary' : 'w-1 bg-primary/25'}`}></span></button>{/each}
+		<div class="flex items-center gap-0.5" aria-label={localeState.messages.home.flow.chooseAnvilNews}>
+			{#each anvilNews as item, position (item.id)}<button type="button" onclick={() => select(position)} aria-label={localeState.messages.clients.newsItem(position + 1, item.title.replace('\n', ''))} aria-pressed={position === index} class="grid h-6 min-w-5 place-items-center rounded focus-visible:outline-2 focus-visible:outline-ring"><span class={`block h-1 rounded-full transition-[width,background-color] duration-300 motion-reduce:transition-none ${position === index ? 'w-5 bg-primary' : 'w-1 bg-primary/25'}`}></span></button>{/each}
 		</div>
 		<div class="flex items-center gap-0.5">
-			<button type="button" class={controlClass} onclick={() => paused = !paused} disabled={reducedMotion} aria-label={reducedMotion ? '已根据系统设置停用自动轮播' : paused ? '开启自动轮播' : '暂停自动轮播'} title={reducedMotion ? '已根据系统设置停用自动轮播' : paused ? '开启自动轮播' : '暂停自动轮播'} aria-pressed={paused || reducedMotion}>{#if paused || reducedMotion}<Play size={11} aria-hidden="true" />{:else}<Pause size={11} aria-hidden="true" />{/if}</button>
-			<button type="button" class={controlClass} onclick={() => select(index - 1)} aria-label="上一条动态"><ChevronLeft size={14} aria-hidden="true" /></button>
-			<button type="button" class={controlClass} onclick={() => select(index + 1)} aria-label="下一条动态"><ChevronRight size={14} aria-hidden="true" /></button>
+			<button type="button" class={controlClass} onclick={() => paused = !paused} disabled={reducedMotion} aria-label={reducedMotion ? localeState.messages.home.flow.reducedMotion : paused ? localeState.messages.home.flow.autoplay : localeState.messages.home.flow.pauseAutoplay} title={reducedMotion ? localeState.messages.home.flow.reducedMotion : paused ? localeState.messages.home.flow.autoplay : localeState.messages.home.flow.pauseAutoplay} aria-pressed={paused || reducedMotion}>{#if paused || reducedMotion}<Play size={11} aria-hidden="true" />{:else}<Pause size={11} aria-hidden="true" />{/if}</button>
+			<button type="button" class={controlClass} onclick={() => select(index - 1)} aria-label={localeState.messages.home.flow.previousNews}><ChevronLeft size={14} aria-hidden="true" /></button>
+			<button type="button" class={controlClass} onclick={() => select(index + 1)} aria-label={localeState.messages.home.flow.nextNews}><ChevronRight size={14} aria-hidden="true" /></button>
 		</div>
 	</div>
 </section>

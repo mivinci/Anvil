@@ -1,6 +1,6 @@
 # 整合包导入
 
-状态：格式/ZIP、Core 安装、Runtime 全局任务及桌面入口已在本地接入，等待维护者真实包验收。Q2Q 的重定向 URL policy 已合入（PR #97，提交 `a9bc58f0`）；Anvil 改动仍未提交、未推送，不代表已发布功能。
+状态：Core、Runtime 与桌面导入入口已合入 main（PR #16）；Q2Q URL policy 已合入，Cargo.lock 锁定远端提交 a9bc58f0，不依赖本地路径 patch。维护者已完成“海岛生存”的真实导入并发现中文名称问题，修复已合入；游戏启动、完整异常路径及平台范围仍待验收。
 
 ## 产品流程
 
@@ -32,6 +32,8 @@
 6. [ ] **验收与状态文档**：离线端到端/异常路径、浅深色及离页接续；真实包下载/游戏启动由维护者验收，明确平台范围。
 
 ## 第一项实现与验证
+
+以下为分阶段实现与当时的检查记录；其中“尚未接入/未提交”等描述只对应当时阶段，当前状态以上方摘要和清单为准。
 
 Core `modpack` 模块已提供有界 `parse_index` 和只读 Plan：限定 8 MiB index、10,000 文件、单文件 1 GiB、声明总量 16 GiB；验证包身份、原版/Fabric 依赖、必需哈希、白名单 HTTPS 下载地址、跨平台路径及文件/目录冲突。服务端文件跳过，可选客户端文件默认包含；总下载量仅统计客户端选中文件。ZIP entry、解压和重定向安全边界尚未实现，不能仅凭 index 验证执行安装。
 
@@ -66,7 +68,7 @@ Q2Q 已合并可选 `url_policy` 及共享连接池/请求/文件/磁盘预算�
 
 验证：18 项整合包 Core fixture、5 项 Runtime fixture 与 5 项真实 rune 编译后的前端状态测试通过；扩大 Core/CLI 回归通过（Core 146 项，Runtime 25 项，CLI 20 项及 Runtime 进程测试 1 项，真实下载 smoke 保持 ignored）。最近的限额/目录同步调整另外重跑了相关 Core/Runtime 测试。clippy、Rust 格式、Svelte 检查和前端 production build 通过。未进行原生 WebView、真实整合包下载或游戏启动验收。
 
-维护者确认先不提交，两个仓库都保留本地改动。Anvil 的临时 `.cargo/config.toml` 通过相邻 Q2Q 的本地路径启用 patch，并已加入本机 Git 排除；正式交付前必须删除本地覆盖、将 Q2Q 能力作为可获取提交锁定并重验，不能提交路径版锁文件。当前可在仓库根目录运行 `npm run desktop:dev` 测试，Runtime Rust 有变化时需要退出整条命令后重新启动。
+正式代码已通过 PR #16 合入；Cargo.lock 使用 Q2Q 远端提交，不需要本地路径覆盖。开发测试使用 `npm run desktop:dev`；Runtime Rust 有变化时需要退出整条命令后重新启动。
 
 ## 中文实例详情校验
 

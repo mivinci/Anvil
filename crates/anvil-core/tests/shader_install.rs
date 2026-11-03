@@ -72,6 +72,7 @@ fn preview(items: Vec<PreviewItem>) -> DependencyPreview {
     items,
     optional_projects: vec![],
     warnings: vec![],
+    warning_details: vec![],
   }
 }
 fn iris(manager: &ResourceManager, depends: Value) -> PreviewItem {

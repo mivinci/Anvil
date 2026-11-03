@@ -8,6 +8,8 @@ use tauri::http::{Method, Request, Response, StatusCode, header};
 
 const MAX_MANIFEST_BYTES: u64 = 64 * 1024;
 const MAX_PAGE_RESOURCE_BYTES: u64 = 64 * 1024 * 1024;
+const RECOVERY_SCRIPT_PATH: &str = "/__anvil_shell__/recovery.js";
+const RECOVERY_SCRIPT: &[u8] = include_bytes!("../../bootstrap/__anvil_shell__/recovery.js");
 const RECOVERY_PAGE: &[u8] = include_bytes!("../../bootstrap/index.html");
 
 #[derive(Debug, Clone)]
@@ -62,6 +64,16 @@ impl AppPageProtocol {
         StatusCode::BAD_REQUEST,
         "text/plain; charset=utf-8",
         b"invalid App protocol authority".to_vec(),
+        head_only,
+      );
+    }
+    // Reserved Shell resource: recovery must not depend on a readable App package.
+    // Check method and authority first; never map other bootstrap paths to disk.
+    if request_path == RECOVERY_SCRIPT_PATH {
+      return response(
+        StatusCode::OK,
+        "text/javascript; charset=utf-8",
+        RECOVERY_SCRIPT.to_vec(),
         head_only,
       );
     }

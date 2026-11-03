@@ -9,7 +9,12 @@ test('download counts compact large values while keeping zero distinct from miss
 	for (const value of [null, undefined, -1, 0.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) assert.equal(formatModDownloads(value), null);
 });
 test('update dates use the upstream timestamp and a consistent UTC calendar date', () => {
-	assert.equal(formatModUpdated('2026-10-24T12:30:00Z'), '2026-10-24');
-	assert.equal(formatModUpdated('2026-10-24T00:30:00+08:00'), '2026-10-23');
+	assert.equal(formatModUpdated('2026-10-24T12:30:00Z'), '2026年10月24日');
+	assert.equal(formatModUpdated('2026-10-24T00:30:00+08:00'), '2026年10月23日');
 	for (const value of [null, undefined, '', 'not a date', '2026', '2026-10-24', '2026-99-99T00:00:00Z']) assert.equal(formatModUpdated(value), null);
+});
+
+test('English statistics use compact counts and a locale date with the same UTC boundary', () => {
+	assert.equal(formatModDownloads(12500, 'en'), '12.5K');
+	assert.equal(formatModUpdated('2026-10-24T00:30:00+08:00', 'en'), 'Oct 23, 2026');
 });

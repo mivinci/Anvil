@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { localeState } from '#lib/locale.svelte.ts';
 	import { resolve } from '$app/paths';
 	import { Gamepad2, LoaderCircle, Plus, RefreshCw } from '@lucide/svelte';
 	import type { PlayStatsAccount } from '../runtime';
@@ -26,9 +27,9 @@
 	const client = $derived(library.clients.find(value => value.name.toLowerCase() === operation?.name.toLowerCase()) ?? pending ?? recent);
 	const name = $derived(operation?.name ?? client?.name);
 	const running = $derived(operation?.phase === 'running');
-	const status = $derived(launches.uncertain ? '运行状态待确认' : operation
-		? running ? `${operation.offlineTest ? '离线运行中' : '运行中'}${operation.startedAt ? ` · ${formatPlayDuration(now - operation.startedAt)}` : ''}` : launchLabel(operation)
-		: pending ? '正在准备启动…' : '最近游玩');
+	const status = $derived(launches.uncertain ? localeState.messages.home.flow.runningUnconfirmed : operation
+		? running ? `${operation.offlineTest ? localeState.messages.home.flow.offlinePlaying : localeState.messages.home.flow.running}${operation.startedAt ? ` · ${formatPlayDuration(now - operation.startedAt, localeState.current)}` : ''}` : launchLabel(operation)
+		: pending ? localeState.messages.home.flow.preparingLaunch : localeState.messages.home.flow.recentPlay);
 	const iconAction = 'grid size-7 shrink-0 place-items-center rounded-lg text-primary transition-colors hover:bg-primary/10 focus-visible:outline-2 focus-visible:outline-ring';
 
 	$effect(() => {
@@ -39,7 +40,7 @@
 	});
 </script>
 
-<div class="mt-3 grid min-h-12 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 rounded-lg bg-primary/8 px-2.5 py-2 text-[11px]" aria-label="快捷游玩">
+<div class="mt-3 grid min-h-12 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 rounded-lg bg-primary/8 px-2.5 py-2 text-[11px]" aria-label={localeState.messages.home.flow.quickPlay}>
 	{#if name}
 		<a href={resolve('/clients/[name]', { name: name.toLowerCase() })} class="min-w-0 rounded focus-visible:outline-2 focus-visible:outline-ring" title={name}>
 			<span class="flex items-center gap-1.5">
@@ -49,19 +50,19 @@
 			<span class="mt-0.5 ml-3 block truncate text-[10px] text-muted-foreground" role="status" title={status}>{status}</span>
 		</a>
 		{#if launches.uncertain}
-			<button type="button" class={iconAction} onclick={() => void launches.sync()} aria-label="刷新运行状态" title="刷新运行状态"><RefreshCw size={13} aria-hidden="true" /></button>
+			<button type="button" class={iconAction} onclick={() => void launches.sync()} aria-label={localeState.messages.home.flow.refreshRunning} title={localeState.messages.home.flow.refreshRunning}><RefreshCw size={13} aria-hidden="true" /></button>
 		{:else if running || operation?.phase === 'stopping' || (operation && !client)}
-			<a href={resolve('/clients/[name]/logs', { name: name.toLowerCase() })} class="rounded-md px-1 py-1 text-primary hover:underline focus-visible:outline-2 focus-visible:outline-ring">日志</a>
+			<a href={resolve('/clients/[name]/logs', { name: name.toLowerCase() })} class="rounded-md px-1 py-1 text-primary hover:underline focus-visible:outline-2 focus-visible:outline-ring">{localeState.messages.home.flow.logs}</a>
 		{:else if client}
 			<ClientLaunchControls {client} compact feedback reserveCancel={false} />
 		{/if}
-		{#if active.length > 1}<a href={resolve('/clients')} class="col-span-2 mt-1 ml-3 w-fit rounded text-[10px] text-primary hover:underline">另有 {active.length - 1} 个活动实例</a>{/if}
+		{#if active.length > 1}<a href={resolve('/clients')} class="col-span-2 mt-1 ml-3 w-fit rounded text-[10px] text-primary hover:underline">{localeState.messages.clients.otherActive(active.length - 1)}</a>{/if}
 	{:else if library.error}
-		<span class="text-muted-foreground">实例暂不可用</span><button type="button" class={iconAction} onclick={() => void library.refresh()} aria-label="重新读取实例"><RefreshCw size={13} aria-hidden="true" /></button>
+		<span class="text-muted-foreground">{localeState.messages.home.flow.instanceUnavailable}</span><button type="button" class={iconAction} onclick={() => void library.refresh()} aria-label={localeState.messages.home.flow.reloadInstances}><RefreshCw size={13} aria-hidden="true" /></button>
 	{:else if !library.loaded || historyLoading}
-		<span class="text-muted-foreground" role="status">正在读取最近游玩…</span><LoaderCircle size={13} class="animate-spin text-muted-foreground motion-reduce:animate-none" aria-hidden="true" />
+		<span class="text-muted-foreground" role="status">{localeState.messages.home.flow.loadingRecent}</span><LoaderCircle size={13} class="animate-spin text-muted-foreground motion-reduce:animate-none" aria-hidden="true" />
 	{:else}
-		<div class="min-w-0"><p class="font-medium">{library.clients.length ? '选择一个实例' : '开始第一次游玩'}</p><p class="mt-0.5 text-[10px] text-muted-foreground">{library.clients.length ? '从这里继续你的世界' : '先安装一个游戏版本'}</p></div>
-		<a href={resolve('/clients')} class={iconAction} aria-label={library.clients.length ? '前往实例库' : '安装游戏版本'} title={library.clients.length ? '前往实例库' : '安装游戏版本'}>{#if library.clients.length}<Gamepad2 size={15} aria-hidden="true" />{:else}<Plus size={15} aria-hidden="true" />{/if}</a>
+		<div class="min-w-0"><p class="font-medium">{library.clients.length ? localeState.messages.home.flow.chooseInstance : localeState.messages.home.flow.firstPlay}</p><p class="mt-0.5 text-[10px] text-muted-foreground">{library.clients.length ? localeState.messages.home.flow.continueWorld : localeState.messages.home.flow.installFirst}</p></div>
+		<a href={resolve('/clients')} class={iconAction} aria-label={library.clients.length ? localeState.messages.home.flow.openLibrary : localeState.messages.home.flow.installGame} title={library.clients.length ? localeState.messages.home.flow.openLibrary : localeState.messages.home.flow.installGame}>{#if library.clients.length}<Gamepad2 size={15} aria-hidden="true" />{:else}<Plus size={15} aria-hidden="true" />{/if}</a>
 	{/if}
 </div>

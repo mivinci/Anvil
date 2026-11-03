@@ -57,10 +57,17 @@ test('all preset body and button text meet 4.5:1 contrast in both modes', () => 
 	for (const preset of themePresets) {
 		for (const mode of ['light', 'dark'] as const) {
 			const palette = preset[mode];
-			assert.ok(contrast(palette.background, palette.foreground) >= 4.5, `${preset.name} ${mode} background`);
-			assert.ok(contrast(palette.card, palette.foreground) >= 4.5, `${preset.name} ${mode} card`);
+			assert.ok(contrast(palette.background, palette.foreground) >= 4.5, `${preset.id} ${mode} background`);
+			assert.ok(contrast(palette.card, palette.foreground) >= 4.5, `${preset.id} ${mode} card`);
 			const style = Object.fromEntries(themeStyle(customThemeFrom(preset.id), mode).split(';').map(field => field.split(':')));
-			assert.ok(contrast(style['--primary']!, style['--primary-foreground']!) >= 4.5, `${preset.name} ${mode} button`);
+			assert.ok(contrast(style['--primary']!, style['--primary-foreground']!) >= 4.5, `${preset.id} ${mode} button`);
 		}
 	}
+});
+
+test('preset names are localized independently from stable identities and colors', async () => {
+	const { themePresetName } = await import('../src/lib/appearance.ts');
+	assert.equal(themePresetName('default', 'en'), 'Shulker Purple');
+	assert.equal(themePresetName('default', 'zh-CN'), '潜影紫');
+	assert.equal(themePresetName('allay', 'en'), 'Allay Blue');
 });

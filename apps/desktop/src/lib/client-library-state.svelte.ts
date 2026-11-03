@@ -1,3 +1,4 @@
+import { localeState } from './locale.svelte.ts';
 import { createContext } from 'svelte';
 import { listInstalledClients, type InstalledClient, type ClientInstallOperation } from './runtime';
 
@@ -11,12 +12,13 @@ export class ClientLibraryState {
 	error = $state<string | null>(null);
 	query = $state('');
 	lastCompleted = $state<InstallReceipt | null>(null);
-	removalNotice = $state<string | null>(null);
+	private removed = $state<{ name: string; cleanupPending: boolean } | null>(null);
+	get removalNotice() { return this.removed ? localeState.messages.clients.removedNotice(this.removed.name, this.removed.cleanupPending) : null; }
 	acceptRemoved(name: string, cleanupPending: boolean) {
 		this.revision++;
 		this.clients = this.clients.filter(client => client.name.toLowerCase() !== name.toLowerCase());
 		if (this.lastCompleted?.name.toLowerCase() === name.toLowerCase()) this.lastCompleted = null;
-		this.removalNotice = cleanupPending ? `实例 ${name} 已移除，部分文件可能尚未清理，请查看日志。` : `已删除实例 ${name}。`;
+		this.removed = { name, cleanupPending };
 		void this.refresh();
 	}
 	private disposed = false;
@@ -46,7 +48,7 @@ export class ClientLibraryState {
 		try {
 			const result = await listInstalledClients({ signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15_000)]) });
 			if (this.disposed) return;
-			if (!Array.isArray(result) || result.some((item) => !item || typeof item.id !== 'string' || typeof item.name !== 'string' || typeof item.versionId !== 'string') || new Set(result.map((item) => item.id)).size !== result.length) throw new Error('客户端列表格式不正确。');
+			if (!Array.isArray(result) || result.some((item) => !item || typeof item.id !== 'string' || typeof item.name !== 'string' || typeof item.versionId !== 'string') || new Set(result.map((item) => item.id)).size !== result.length) throw new Error(localeState.messages.clients.flow.invalidClients);
 			// A read started before publication must not overwrite the newer receipt.
 			if (revision !== this.revision) { this.refreshQueued = true; return; }
 			this.clients = result;

@@ -77,6 +77,7 @@ async fn bad_archive_fails_retained_task_and_deletes_upload_without_network() {
   let ended = terminal(&runtime, op.id).await;
   assert!(matches!(ended.state, OperationState::Failed));
   assert!(ended.error.is_some());
+  assert_eq!(ended.error_code.as_deref(), Some("invalid_argument"));
   assert!(!original.exists());
   assert!(
     ClientInstaller::new(runtime.context.clone())

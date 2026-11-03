@@ -8,7 +8,7 @@
 </script>
 
 <svelte:head>
-	<title>Anvil 本地</title>
+	<title>Anvil</title>
 </svelte:head>
 
 <AppShell>

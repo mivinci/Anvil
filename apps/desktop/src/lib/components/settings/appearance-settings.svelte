@@ -1,6 +1,7 @@
 <script lang="ts">
+	import { localeState } from '#lib/locale.svelte.js';
 	import { Monitor, Moon, Sun } from '@lucide/svelte';
-	import { getAppearance, getThemePreset, themePresets, type ColorMode, type Palette, type ThemePreferences } from '../../appearance';
+	import { getAppearance, getThemePreset, themePresets, themePresetName, type ColorMode, type Palette, type ThemePreferences } from '../../appearance';
 	import ColorControl from './color-control.svelte';
 	const appearance = getAppearance();
 	let editingMode = $state<ColorMode>('light');
@@ -8,21 +9,21 @@
 	const colorMode = $derived(editing ? editingMode : appearance.resolvedMode);
 	const presetPalette = $derived(getThemePreset(appearance.colors.theme)[appearance.resolvedMode]);
 	const swatches = ['#827099', '#b5a0ce', '#688c83', '#7393b3', '#b88472'];
-	const modes = [
-		{ value: 'system', label: '跟随系统', icon: Monitor },
-		{ value: 'light', label: '浅色', icon: Sun },
-		{ value: 'dark', label: '深色', icon: Moon },
-	] as const;
+	const modes = $derived([
+		{ value: 'system', label: localeState.messages.settings.flow.system, icon: Monitor },
+		{ value: 'light', label: localeState.messages.settings.flow.light, icon: Sun },
+		{ value: 'dark', label: localeState.messages.settings.flow.dark, icon: Moon },
+	] as const);
 </script>
 
 <div class="space-y-5">
 	<section aria-labelledby="visual-style" class="space-y-2">
-		<h2 id="visual-style" class="text-[13px] font-medium">视觉风格</h2>
+		<h2 id="visual-style" class="text-[13px] font-medium">{localeState.messages.settings.flow.visualStyle}</h2>
 		<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 rounded-lg bg-card px-3.5 py-3">
 			<div class="flex items-center gap-3">
-				<div><h3 class="text-[13px] font-medium">显示模式</h3></div>
+				<div><h3 class="text-[13px] font-medium">{localeState.messages.settings.flow.displayMode}</h3></div>
 			</div>
-			<div class="grid shrink-0 grid-cols-3 gap-2" role="group" aria-label="显示模式">
+			<div class="grid shrink-0 grid-cols-3 gap-2" role="group" aria-label={localeState.messages.settings.flow.displayMode}>
 				{#each modes as mode}
 					{@const Icon = mode.icon}
 					<button type="button" aria-pressed={appearance.mode === mode.value} onclick={() => appearance.setMode(mode.value)} class={`group w-21 rounded-md p-1 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${appearance.mode === mode.value ? 'bg-primary/8 ring-2 ring-primary' : 'hover:bg-chrome-hover'}`}>
@@ -39,42 +40,42 @@
 		</div>
 	</section>
 	<section aria-labelledby="theme-colors" class="space-y-2">
-		<h2 id="theme-colors" class="text-[13px] font-medium">主题配色</h2>
+		<h2 id="theme-colors" class="text-[13px] font-medium">{localeState.messages.settings.flow.themeColors}</h2>
 		<div class="divide-y divide-border rounded-lg bg-card px-3.5">
 			<div class="flex min-h-10 items-center justify-between gap-4 py-2">
-				<label for="theme-preset" class="text-[13px]">主题</label>
-				<select id="theme-preset" value={appearance.colors.theme} onchange={(event) => appearance.setTheme(event.currentTarget.value as ThemePreferences['theme'])} class="h-7 rounded-md border border-border bg-main-pane px-2 text-xs text-foreground focus-visible:outline-2 focus-visible:outline-ring">{#each themePresets as preset}<option value={preset.id}>{preset.name}</option>{/each}<option value="custom">自定义</option></select>
+				<label for="theme-preset" class="text-[13px]">{localeState.messages.settings.flow.theme}</label>
+				<select id="theme-preset" value={appearance.colors.theme} onchange={(event) => appearance.setTheme(event.currentTarget.value as ThemePreferences['theme'])} class="h-7 rounded-md border border-border bg-main-pane px-2 text-xs text-foreground focus-visible:outline-2 focus-visible:outline-ring">{#each themePresets as preset}<option value={preset.id}>{themePresetName(preset.id, localeState.current)}</option>{/each}<option value="custom">{localeState.messages.settings.flow.custom}</option></select>
 			</div>
 			{#if appearance.colors.theme === 'custom'}
 				<div class="flex min-h-10 flex-wrap items-center justify-between gap-2 py-2">
-					<span class="text-[13px]">编辑配色</span>
-					<div class="inline-flex rounded-[10px] bg-chrome-hover p-0.75" role="group" aria-label="编辑浅色或深色配色">
-						{#each ['light', 'dark'] as mode}<button type="button" aria-pressed={colorMode === mode} onclick={() => { editingMode = mode as ColorMode; editing = true; }} class={`rounded-[7px] px-2 py-0.5 text-xs leading-4 focus-visible:outline-2 focus-visible:outline-ring ${colorMode === mode ? 'bg-chrome-selected text-accent-foreground' : 'text-muted-foreground'}`}>{mode === 'light' ? '浅色' : '深色'}</button>{/each}
+					<span class="text-[13px]">{localeState.messages.settings.flow.editColors}</span>
+					<div class="inline-flex rounded-[10px] bg-chrome-hover p-0.75" role="group" aria-label={localeState.messages.settings.flow.editMode}>
+						{#each ['light', 'dark'] as mode}<button type="button" aria-pressed={colorMode === mode} onclick={() => { editingMode = mode as ColorMode; editing = true; }} class={`rounded-[7px] px-2 py-0.5 text-xs leading-4 focus-visible:outline-2 focus-visible:outline-ring ${colorMode === mode ? 'bg-chrome-selected text-accent-foreground' : 'text-muted-foreground'}`}>{mode === 'light' ? localeState.messages.settings.flow.light : localeState.messages.settings.flow.dark}</button>{/each}
 					</div>
 				</div>
-				{#each [{ key: 'background', label: '页面背景' }, { key: 'card', label: '卡片背景' }, { key: 'foreground', label: '文字颜色' }] as field}
+				{#each [{ key: 'background', label: localeState.messages.settings.flow.background }, { key: 'card', label: localeState.messages.settings.flow.card }, { key: 'foreground', label: localeState.messages.settings.flow.foreground }] as field}
 					<div class="flex min-h-10 items-center justify-between gap-4 py-2"><span class="text-[13px]">{field.label}</span><ColorControl label={field.label} value={appearance.colors[colorMode][field.key as keyof Palette]} onChange={(value) => appearance.setColor(colorMode, field.key as keyof Palette, value)} /></div>
 				{/each}
 				<div class="flex min-h-10 flex-wrap items-center justify-between gap-3 py-2">
-					<span class="text-[13px]">强调色</span>
+					<span class="text-[13px]">{localeState.messages.settings.flow.accent}</span>
 					<div class="flex flex-wrap items-center justify-end gap-2">
-						<div class="flex gap-1.5" role="group" aria-label="强调色色板">{#each swatches as color}<button type="button" aria-label={`强调色 ${color}`} aria-pressed={appearance.colors[colorMode].accent === color} onclick={() => appearance.setColor(colorMode, 'accent', color)} class={`size-3.5 rounded-full border border-border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${appearance.colors[colorMode].accent === color ? 'ring-1 ring-ring ring-offset-2 ring-offset-card' : ''}`} style:background-color={color}></button>{/each}</div>
-						<ColorControl label="强调色" value={appearance.colors[colorMode].accent} onChange={(value) => appearance.setColor(colorMode, 'accent', value)} />
+						<div class="flex gap-1.5" role="group" aria-label={localeState.messages.settings.flow.accentSwatches}>{#each swatches as color}<button type="button" aria-label={localeState.messages.settings.accentLabel(color)} aria-pressed={appearance.colors[colorMode].accent === color} onclick={() => appearance.setColor(colorMode, 'accent', color)} class={`size-3.5 rounded-full border border-border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${appearance.colors[colorMode].accent === color ? 'ring-1 ring-ring ring-offset-2 ring-offset-card' : ''}`} style:background-color={color}></button>{/each}</div>
+						<ColorControl label={localeState.messages.settings.flow.accent} value={appearance.colors[colorMode].accent} onChange={(value) => appearance.setColor(colorMode, 'accent', value)} />
 					</div>
 				</div>
 			{:else}
 				<div class="flex min-h-10 items-center justify-between gap-4 py-2">
-					<span class="text-[13px]">主题色板</span>
-					<div class="flex items-center gap-1.5" aria-label={`${appearance.resolvedMode === 'dark' ? '深色' : '浅色'}模式主题色板`}>
-						{#each [{ color: presetPalette.background, label: '页面背景' }, { color: presetPalette.card, label: '卡片背景' }, { color: presetPalette.foreground, label: '文字颜色' }, { color: presetPalette.accent, label: '强调色' }] as swatch}<span class="size-3.5 rounded-full border border-border" style:background-color={swatch.color} title={`${swatch.label} ${swatch.color}`}></span>{/each}
+					<span class="text-[13px]">{localeState.messages.settings.flow.palette}</span>
+					<div class="flex items-center gap-1.5" aria-label={localeState.messages.settings.paletteLabel(appearance.resolvedMode === 'dark')}>
+						{#each [{ color: presetPalette.background, label: localeState.messages.settings.flow.background }, { color: presetPalette.card, label: localeState.messages.settings.flow.card }, { color: presetPalette.foreground, label: localeState.messages.settings.flow.foreground }, { color: presetPalette.accent, label: localeState.messages.settings.flow.accent }] as swatch}<span class="size-3.5 rounded-full border border-border" style:background-color={swatch.color} title={`${swatch.label} ${swatch.color}`}></span>{/each}
 					</div>
 				</div>
 			{/if}
-			<div class="flex min-h-10 items-center justify-between gap-4 py-2"><div><span class="text-[13px]">窗口材质</span></div><span class="shrink-0 text-xs text-muted-foreground">原生毛玻璃</span></div>
+			<div class="flex min-h-10 items-center justify-between gap-4 py-2"><div><span class="text-[13px]">{localeState.messages.settings.flow.windowMaterial}</span></div><span class="shrink-0 text-xs text-muted-foreground">{localeState.messages.settings.flow.frostedGlass}</span></div>
 		</div>
 		<div class="flex flex-wrap items-center justify-between gap-3 pt-2">
-			<p class="text-[11px] text-muted-foreground">{appearance.colors.theme === 'custom' ? '浅色与深色配色分别保存，切换对应模式可预览。' : '预设包含固定的浅色与深色配色。'}</p>
-			<button type="button" onclick={() => appearance.colors.theme === 'custom' ? appearance.resetColors() : appearance.customizeTheme()} class="shrink-0 rounded px-1.5 py-1 text-xs text-muted-foreground hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring">{appearance.colors.theme === 'custom' ? '重置自定义配色' : '基于此主题自定义'}</button>
+			<p class="text-[11px] text-muted-foreground">{appearance.colors.theme === 'custom' ? localeState.messages.settings.flow.customHint : localeState.messages.settings.flow.presetHint}</p>
+			<button type="button" onclick={() => appearance.colors.theme === 'custom' ? appearance.resetColors() : appearance.customizeTheme()} class="shrink-0 rounded px-1.5 py-1 text-xs text-muted-foreground hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring">{appearance.colors.theme === 'custom' ? localeState.messages.settings.flow.resetColors : localeState.messages.settings.flow.customize}</button>
 		</div>
 		{#if appearance.saveError}<p role="alert" class="text-[11px] text-destructive">{appearance.saveError}</p>{/if}
 	</section>

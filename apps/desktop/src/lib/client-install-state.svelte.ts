@@ -1,16 +1,18 @@
+import { requestErrorMessage } from './runtime-errors.ts';
+import { localeState } from './locale.svelte.ts';
 import { createContext } from 'svelte';
 import {
 	listClientInstallOperations, startClientInstall, importClientModpack, getClientInstallOperation, cancelClientInstall,
 	RuntimeRequestError, pauseClientInstall, resumeClientInstall, type ClientInstallOperation, type ClientLoaderSpec,
 } from './runtime';
 
-export const installStages = {
-	uploading: '正在读取整合包…',
-	parsing: '正在解析整合包…', applying: '正在应用整合包配置…',
-	java: '正在准备 Java',
-	resolving: '正在读取 Minecraft 版本信息', planning: '正在准备 Minecraft 安装计划', downloading: '正在下载 Minecraft',
-	verifying: '正在校验 Minecraft 文件', publishing: '正在保存 Minecraft 实例', completed: 'Minecraft 安装完成',
-};
+export const installStages = () => ({
+	uploading: localeState.messages.clients.flow.readingPack,
+	parsing: localeState.messages.clients.flow.parsingPack, applying: localeState.messages.clients.flow.applyingPack,
+	java: localeState.messages.clients.flow.preparingJava,
+	resolving: localeState.messages.clients.flow.resolvingMinecraft, planning: localeState.messages.clients.flow.planningMinecraft, downloading: localeState.messages.clients.flow.downloadingMinecraft,
+	verifying: localeState.messages.clients.flow.verifyingMinecraft, publishing: localeState.messages.clients.flow.publishingMinecraft, completed: localeState.messages.clients.flow.installed,
+});
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
 export class ClientInstallState {
 	operation = $state<ClientInstallOperation | null>(null);
@@ -23,7 +25,9 @@ export class ClientInstallState {
 	detailsOpen = $state(false);
 	bytesPerSecond = $state<number | null>(null);
 	private speedSample: { id: number; bytes: number; time: number } | null = null;
-	error = $state<string | null>(null);
+	private errorValue = $state<string | (() => string) | null>(null);
+	get error(): string | null { const value = this.errorValue; return typeof value === 'function' ? value() : value; }
+	set error(value: string | (() => string) | null) { this.errorValue = value; }
 	errorDetail = $state<string | null>(null);
 	intent = $state<{ name: string; versionId: string } | null>(null);
 	importFile = $state<File | null>(null);
@@ -46,27 +50,26 @@ export class ClientInstallState {
 	get canRetry() { return (!this.operation?.importRequestId || !!this.importFile) && this.canStart && (this.operation?.state === 'failed' || this.operation?.state === 'cancelled'); }
 	get canCancel() { if (this.starting && this.uploadController) return true; return this.active && !this.changingPause && !this.operation?.cancelRequested && !this.cancelling && this.operation?.progress.stage !== 'publishing'; }
 	get label() {
-		if (this.retrying) return '正在确认重试条件…';
-		if (this.starting) return this.importing ? '正在读取整合包…' : '正在创建安装任务…';
-		if (this.syncing) return '正在读取安装任务…';
-		if (this.changingPause) return this.operation?.state === 'paused' ? '正在请求继续…' : '正在请求暂停…';
-		if (this.cancelling || this.operation?.cancelRequested) return '正在取消并清理…';
-		if (this.operation?.state === 'pausing') return '正在暂停传输…';
-		if (this.operation?.state === 'paused') return 'Minecraft 下载已暂停';
-		if (this.operation?.state === 'resuming') return '正在继续下载 Minecraft…';
-		if (this.operation?.state === 'completed') return '安装完成';
-		if (this.operation?.state === 'failed') return '安装失败';
-		if (this.operation?.state === 'cancelled') return '安装已取消';
+		if (this.retrying) return localeState.messages.clients.flow.checkingRetry;
+		if (this.starting) return this.importing ? localeState.messages.clients.flow.readingPack : localeState.messages.clients.flow.creatingTask;
+		if (this.syncing) return localeState.messages.clients.flow.loadingTask;
+		if (this.changingPause) return this.operation?.state === 'paused' ? localeState.messages.clients.flow.requestResume : localeState.messages.clients.flow.requestPause;
+		if (this.cancelling || this.operation?.cancelRequested) return localeState.messages.clients.flow.cancelling;
+		if (this.operation?.state === 'pausing') return localeState.messages.clients.flow.pausingTransfer;
+		if (this.operation?.state === 'paused') return localeState.messages.clients.flow.minecraftPaused;
+		if (this.operation?.state === 'resuming') return localeState.messages.clients.flow.resumingMinecraft;
+		if (this.operation?.state === 'completed') return localeState.messages.clients.flow.installComplete;
+		if (this.operation?.state === 'failed') return localeState.messages.clients.flow.installFailed;
+		if (this.operation?.state === 'cancelled') return localeState.messages.clients.flow.installCancelled;
 		if (this.operation?.progress.stage === 'java') {
 			const progress = this.operation.progress, java = `Java${progress.javaMajor ? ` ${progress.javaMajor}` : ''}`;
-			const steps = { resolving: '查找', downloading: '下载', extracting: '解压', validating: '校验', publishing: '安装', completed: '准备完成' };
-			return progress.javaStage === 'completed' ? `${java} 已就绪` : `正在${progress.javaStage ? steps[progress.javaStage] : '准备'} ${java}…`;
+			return localeState.messages.clients.javaStage(progress.javaStage, java);
 		}
-		if (this.operation?.importRequestId && this.operation.progress.stage === 'downloading') return '正在下载整合包及游戏文件';
+		if (this.operation?.importRequestId && this.operation.progress.stage === 'downloading') return localeState.messages.clients.flow.downloadingPack;
 		if (this.operation?.progress.stage === 'downloading') {
-			return this.operation.progress.receivedBytes > 0 ? '正在下载缺失的 Minecraft 文件' : '正在校验并复用本地 Minecraft 缓存';
+			return this.operation.progress.receivedBytes > 0 ? localeState.messages.clients.flow.downloadingMissing : localeState.messages.clients.flow.reusingMinecraft;
 		}
-		return this.operation ? installStages[this.operation.progress.stage] : '暂无安装任务';
+		return this.operation ? installStages()[this.operation.progress.stage] : localeState.messages.clients.flow.noInstall;
 	}
 	private async request<T>(run: (signal: AbortSignal) => Promise<T>): Promise<T> {
 		const controller = new AbortController();
@@ -124,7 +127,7 @@ export class ClientInstallState {
 			if (!this.disposed && generation === this.generation) {
 				this.bytesPerSecond = null;
 				this.speedSample = null;
-				this.error = '暂时无法读取进度，安装结果尚未确认，请重新查询。';
+				this.error = () => (localeState.messages.clients.flow.progressUnknown);
 				this.errorDetail = message(error);
 				this.uncertain = true;
 			}
@@ -146,7 +149,7 @@ export class ClientInstallState {
 			this.apply(active ?? known ?? operations.at(-1) ?? null);
 			this.uncertain = false;
 		} catch (error) {
-			if (!this.disposed) { this.uncertain = true; this.error = '无法确认安装任务状态，请重新查询后再安装。'; this.errorDetail = message(error); }
+			if (!this.disposed) { this.uncertain = true; this.error = () => (localeState.messages.clients.flow.installStateUnknown); this.errorDetail = message(error); }
 		} finally { this.syncing = false; this.schedule(); }
 	}
 	async start(name: string, versionId: string, loader: ClientLoaderSpec | null = null) {
@@ -167,16 +170,16 @@ export class ClientInstallState {
 		} catch (error) {
 			if (this.disposed) return;
 			if (error instanceof RuntimeRequestError && error.status >= 400 && error.status < 500 && error.status !== 409) {
-				this.error = '无法创建安装任务，请检查实例名称和版本。'; this.errorDetail = message(error);
+				this.error = () => requestErrorMessage(error, localeState.current, (localeState.messages.clients.flow.createFailed)); this.errorDetail = message(error);
 			} else {
 				try {
 					const operations = await this.request((signal) => listClientInstallOperations({ signal }));
 					if (this.disposed) return;
 					const recovered = operations.find((item) => ['running', 'pausing', 'paused', 'resuming'].includes(item.state)) ?? operations.findLast((item) => item.id > previousId && item.name === name && item.versionId === versionId && JSON.stringify(item.loader ?? null) === JSON.stringify(loader));
 					if (recovered) { this.apply(recovered); this.uncertain = false; }
-					else { this.uncertain = true; this.error = '提交结果尚未确认，请重新查询，不要重复安装。'; this.errorDetail = message(error); }
+					else { this.uncertain = true; this.error = () => (localeState.messages.clients.flow.submitUnknown); this.errorDetail = message(error); }
 				} catch (recoveryError) {
-					if (!this.disposed) { this.uncertain = true; this.error = '提交结果尚未确认，请重新查询，不要重复安装。'; this.errorDetail = message(recoveryError); }
+					if (!this.disposed) { this.uncertain = true; this.error = () => (localeState.messages.clients.flow.submitUnknown); this.errorDetail = message(recoveryError); }
 				}
 			}
 		} finally { this.starting = false; this.schedule(); }
@@ -184,12 +187,12 @@ export class ClientInstallState {
 	async importPack(file: File) {
 		if (this.disposed || !this.canStart) return;
 		if (!file.name.toLowerCase().endsWith('.mrpack') || file.size === 0 || file.size > 512 * 1024 * 1024) {
-			this.operation = null; this.importFile = null; this.intent = { name: file.name, versionId: '待解析' };
-			this.error = '请选择非空的 .mrpack 文件，最大 512 MiB。'; return;
+			this.operation = null; this.importFile = null; this.intent = { name: file.name, versionId: 'unknown' };
+			this.error = () => (localeState.messages.clients.flow.invalidPack); return;
 		}
 		this.starting = true; this.stopPolling(); this.clearError();
 		this.importFile = file; this.importRequestId = crypto.randomUUID();
-		this.intent = { name: file.name.replace(/\.mrpack$/i, ''), versionId: '待解析' };
+		this.intent = { name: file.name.replace(/\.mrpack$/i, ''), versionId: 'unknown' };
 		this.operation = null;
 		const requestId = this.importRequestId;
 		const controller = new AbortController(); this.uploadController = controller;
@@ -209,8 +212,8 @@ export class ClientInstallState {
 						if (!this.disposed) this.apply(stopped);
 					}
 				}
-				else { this.uncertain = false; this.error = controller.signal.aborted ? '整合包上传已取消。' : '整合包上传未完成，请重新导入。'; this.errorDetail = message(error); }
-			} catch (recoveryError) { this.uncertain = true; this.error = '导入提交结果尚未确认，请先重新查询。'; this.errorDetail = message(recoveryError); }
+				else { this.uncertain = false; this.error = () => requestErrorMessage(error, localeState.current, (controller.signal.aborted ? localeState.messages.clients.flow.uploadCancelled : localeState.messages.clients.flow.uploadFailed)); this.errorDetail = message(error); }
+			} catch (recoveryError) { this.uncertain = true; this.error = () => (localeState.messages.clients.flow.importUnknown); this.errorDetail = message(recoveryError); }
 		} finally { this.uploadController = null; this.starting = false; this.schedule(); }
 	}
 	async retry() {
@@ -239,7 +242,7 @@ export class ClientInstallState {
 			const operation = await this.request((signal) => cancelClientInstall(this.operation!.id, { signal }));
 			if (!this.disposed) { this.apply(operation); this.uncertain = false; }
 		} catch (error) {
-			if (!this.disposed) { this.uncertain = true; this.error = '取消结果尚未确认，请重新查询。'; this.errorDetail = message(error); }
+			if (!this.disposed) { this.uncertain = true; this.error = () => (localeState.messages.clients.flow.cancelUnknown); this.errorDetail = message(error); }
 		} finally { this.cancelling = false; this.schedule(); }
 	}
 	async setPaused(paused: boolean) {
@@ -254,7 +257,7 @@ export class ClientInstallState {
 		} catch (error) {
 			if (!this.disposed) {
 				this.uncertain = true;
-				this.error = '任务状态可能已变化，请重新查询后再操作。';
+				this.error = () => requestErrorMessage(error, localeState.current, (localeState.messages.clients.flow.stateChanged));
 				this.errorDetail = message(error);
 			}
 		} finally { this.changingPause = false; this.schedule(); }

@@ -37,12 +37,14 @@ impl Catalog {
     let provider = self.provider.as_ref().map_err(|_| {
       ApiError::new(
         StatusCode::SERVICE_UNAVAILABLE,
+        "provider_not_configured",
         "CurseForge 配置无效，请检查 Runtime 环境变量。",
       )
     })?;
     if !provider.configured() {
       return Err(ApiError::new(
         StatusCode::SERVICE_UNAVAILABLE,
+        "provider_not_configured",
         "CurseForge API Key 尚未配置，正在等待申请。",
       ));
     }
@@ -52,6 +54,7 @@ impl Catalog {
     self.slots.try_acquire().map_err(|_| {
       ApiError::new(
         StatusCode::TOO_MANY_REQUESTS,
+        "busy",
         "资源目录正在处理其他请求，请稍后重试。",
       )
     })
@@ -113,14 +116,20 @@ fn upstream(error: anvil_core::Error) -> ApiError {
     _ => StatusCode::BAD_GATEWAY,
   };
   // Core sanitizes transport errors and never forwards the upstream body or credential.
-  ApiError::new(status, error.to_string())
+  ApiError::new(status, error.code(), error.to_string())
 }
 async fn bounded<T>(
   future: impl std::future::Future<Output = Result<T, ApiError>>,
 ) -> Result<T, ApiError> {
   tokio::time::timeout(std::time::Duration::from_secs(50), future)
     .await
-    .map_err(|_| ApiError::new(StatusCode::GATEWAY_TIMEOUT, "CurseForge 查询超时，请重试。"))?
+    .map_err(|_| {
+      ApiError::new(
+        StatusCode::GATEWAY_TIMEOUT,
+        "request_timeout",
+        "CurseForge 查询超时，请重试。",
+      )
+    })?
 }
 pub(super) async fn search(
   State(state): State<AppState>,
@@ -147,7 +156,7 @@ pub(super) async fn search(
     )
     .await
     .map(Json)
-    .map_err(|error| ApiError::new(StatusCode::BAD_GATEWAY, error))
+    .map_err(|error| ApiError::new(StatusCode::BAD_GATEWAY, "upstream_unavailable", error))
 }
 pub(super) async fn files(
   State(state): State<AppState>,
@@ -174,7 +183,7 @@ pub(super) async fn files(
     )
     .await
     .map(Json)
-    .map_err(|error| ApiError::new(StatusCode::BAD_GATEWAY, error))
+    .map_err(|error| ApiError::new(StatusCode::BAD_GATEWAY, "upstream_unavailable", error))
 }
 pub(super) async fn preview(
   State(state): State<AppState>,

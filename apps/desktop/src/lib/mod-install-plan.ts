@@ -1,3 +1,4 @@
+import { runtimeErrorCode } from './runtime-errors.ts';
 import type { CurseForgeFile, CurseForgeInstallPlan, ModProjectSummary, ModSource } from './runtime';
 
 export type ModInstallFile = Pick<CurseForgeFile, 'displayName' | 'fileName' | 'fileLength' | 'fileDate' | 'releaseType'> & { id: string | number };
@@ -9,7 +10,7 @@ export type ModInstallPlan = Omit<CurseForgeInstallPlan, 'items' | 'files' | 'op
 export interface ModInstallContext { source: ModSource; name: string; gameVersion: string; project: string }
 export interface ModPlanSnapshot {
 	selected: ModInstallFile | null; plan: ModInstallPlan | null;
-	busy: boolean; error: string | null; expired: boolean; accepted: boolean;
+	busy: boolean; error: string | null; errorCode?: string | null; expired: boolean; accepted: boolean;
 }
 interface Dependencies {
 	read: (context: ModInstallContext, file: ModInstallFile, signal: AbortSignal) => Promise<ModInstallPlan>;
@@ -26,7 +27,7 @@ export class ModInstallPlanState {
 	private generation = 0;
 	private submitting = false;
 	private deadline = 0;
-	private snapshot: ModPlanSnapshot = { selected: null, plan: null, busy: false, error: null, expired: false, accepted: false };
+	private snapshot: ModPlanSnapshot = { selected: null, plan: null, busy: false, error: null, errorCode: null, expired: false, accepted: false };
 	private publish: (value: ModPlanSnapshot) => void;
 	private deps: Dependencies;
 	constructor(deps: Dependencies, publish: (value: ModPlanSnapshot) => void) { this.deps = deps; this.publish = publish; }
@@ -38,7 +39,7 @@ export class ModInstallPlanState {
 	}
 	bind(context: ModInstallContext | null) {
 		this.cancelRead(); this.context = context ? { ...context } : null; this.deadline = 0;
-		this.emit({ selected: null, plan: null, busy: false, error: null, expired: false, accepted: false });
+		this.emit({ selected: null, plan: null, busy: false, error: null, errorCode: null, expired: false, accepted: false });
 	}
 	dispose() { this.cancelRead(); this.context = null; }
 	clear() { const context = this.context; this.bind(context); }
@@ -48,18 +49,18 @@ export class ModInstallPlanState {
 		this.cancelRead();
 		const generation = this.generation, started = this.now();
 		const controller = new AbortController(); this.controller = controller;
-		this.emit({ selected: file, plan: null, busy: true, error: null, expired: false, accepted: false });
+		this.emit({ selected: file, plan: null, busy: true, error: null, errorCode: null, expired: false, accepted: false });
 		try {
 			const plan = await this.deps.read(context, file, AbortSignal.any([controller.signal, AbortSignal.timeout(55_000)]));
 			if (controller.signal.aborted || generation !== this.generation) return;
 			const root = plan.items.find(item => item.direct && String(item.project.id) === context.project && item.file.id === file.id);
-			if (!root || plan.gameVersion !== context.gameVersion || !Number.isSafeInteger(plan.planId) || plan.planId <= 0 || !Number.isFinite(plan.expiresInMs) || plan.expiresInMs <= 0 || plan.expiresInMs > 600_000) throw new Error('安装计划与当前实例或版本不匹配，请重新生成。');
+			if (!root || plan.gameVersion !== context.gameVersion || !Number.isSafeInteger(plan.planId) || plan.planId <= 0 || !Number.isFinite(plan.expiresInMs) || plan.expiresInMs <= 0 || plan.expiresInMs > 600_000) throw new Error('Installation plan does not match the current instance or version.');
 			this.deadline = started + plan.expiresInMs;
 			const remaining = this.deadline - this.now();
 			this.emit({ plan, expired: remaining <= 0 });
 			if (remaining > 0) this.timer = setTimeout(() => { if (generation !== this.generation) return; this.timer = null; this.emit({ expired: true }); }, remaining);
 		} catch (error) {
-			if (!controller.signal.aborted && generation === this.generation) this.emit({ error: error instanceof Error ? error.message : '无法生成安装计划。' });
+			if (!controller.signal.aborted && generation === this.generation) this.emit({ error: error instanceof Error ? error.message : 'Could not prepare installation plan.', errorCode: runtimeErrorCode(error) });
 		} finally {
 			if (generation === this.generation) { this.controller = null; this.emit({ busy: false }); }
 		}

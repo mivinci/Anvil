@@ -44,6 +44,7 @@ impl Search {
     {
       return Err(ApiError::new(
         StatusCode::BAD_REQUEST,
+        "invalid_argument",
         "模组查询无效；当前仅支持 Fabric。",
       ));
     }
@@ -72,7 +73,11 @@ impl ShaderSearch {
       || self.q.chars().any(char::is_control)
       || self.index > 9980
     {
-      return Err(ApiError::new(StatusCode::BAD_REQUEST, "光影查询无效。"));
+      return Err(ApiError::new(
+        StatusCode::BAD_REQUEST,
+        "invalid_argument",
+        "光影查询无效。",
+      ));
     }
     Ok(())
   }
@@ -132,7 +137,7 @@ pub(super) async fn search(
   };
   result
     .map(Json)
-    .map_err(|e| ApiError::new(StatusCode::BAD_GATEWAY, e))
+    .map_err(|e| ApiError::new(StatusCode::BAD_GATEWAY, "upstream_unavailable", e))
 }
 pub(super) async fn project(
   State(state): State<AppState>,
@@ -157,7 +162,13 @@ pub(super) async fn project(
         .parse::<u32>()
         .ok()
         .filter(|p| *p > 0)
-        .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, "CurseForge 项目标识无效。"))?;
+        .ok_or_else(|| {
+          ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "invalid_argument",
+            "CurseForge 项目标识无效。",
+          )
+        })?;
       let _slot = state.curseforge.slot()?;
       let provider = state.curseforge.provider()?.clone();
       let query = anvil_core::curseforge::DiscoveryQuery::Project { project };
@@ -170,7 +181,7 @@ pub(super) async fn project(
   };
   result
     .map(Json)
-    .map_err(|e| ApiError::new(StatusCode::BAD_GATEWAY, e))
+    .map_err(|e| ApiError::new(StatusCode::BAD_GATEWAY, "upstream_unavailable", e))
 }
 
 pub(super) async fn shader_search(
@@ -198,7 +209,7 @@ pub(super) async fn shader_search(
     )
     .await
     .map(Json)
-    .map_err(|e| ApiError::new(StatusCode::BAD_GATEWAY, e))
+    .map_err(|e| ApiError::new(StatusCode::BAD_GATEWAY, "upstream_unavailable", e))
 }
 
 pub(super) async fn shader_project(
@@ -222,7 +233,7 @@ pub(super) async fn shader_project(
     )
     .await
     .map(Json)
-    .map_err(|e| ApiError::new(StatusCode::BAD_GATEWAY, e))
+    .map_err(|e| ApiError::new(StatusCode::BAD_GATEWAY, "upstream_unavailable", e))
 }
 
 pub(super) async fn shader_versions(
@@ -233,6 +244,7 @@ pub(super) async fn shader_versions(
   if !anvil_core::metadata::is_valid_version_id(&q.game_version) {
     return Err(ApiError::new(
       StatusCode::BAD_REQUEST,
+      "invalid_argument",
       "光影查询的游戏版本无效。",
     ));
   }
@@ -255,5 +267,5 @@ pub(super) async fn shader_versions(
     )
     .await
     .map(Json)
-    .map_err(|e| ApiError::new(StatusCode::BAD_GATEWAY, e))
+    .map_err(|e| ApiError::new(StatusCode::BAD_GATEWAY, "upstream_unavailable", e))
 }

@@ -32,6 +32,7 @@ impl Catalog {
     self.provider.as_ref().cloned().map_err(|_| {
       ApiError::new(
         StatusCode::SERVICE_UNAVAILABLE,
+        "runtime_unavailable",
         "Modrinth HTTP 初始化失败。",
       )
     })
@@ -40,6 +41,7 @@ impl Catalog {
     self.slots.try_acquire().map_err(|_| {
       ApiError::new(
         StatusCode::TOO_MANY_REQUESTS,
+        "busy",
         "Modrinth 正在处理其他请求，请稍后重试。",
       )
     })
@@ -91,7 +93,7 @@ pub(super) async fn search(
     )
     .await
     .map(Json)
-    .map_err(|e| ApiError::new(StatusCode::BAD_GATEWAY, e))
+    .map_err(|e| ApiError::new(StatusCode::BAD_GATEWAY, "upstream_unavailable", e))
 }
 pub(super) async fn files(
   State(state): State<AppState>,
@@ -119,7 +121,7 @@ pub(super) async fn files(
     )
     .await
     .map(Json)
-    .map_err(|e| ApiError::new(StatusCode::BAD_GATEWAY, e))
+    .map_err(|e| ApiError::new(StatusCode::BAD_GATEWAY, "upstream_unavailable", e))
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -179,6 +181,7 @@ pub(super) async fn create_plan(
   .map_err(|_| {
     ApiError::new(
       StatusCode::GATEWAY_TIMEOUT,
+      "request_timeout",
       "Modrinth 依赖查询超时，请稍后重试。",
     )
   })?

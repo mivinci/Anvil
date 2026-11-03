@@ -124,6 +124,7 @@ pub struct DependencyPreview {
   pub total_bytes: u64,
   pub optional_projects: Vec<u32>,
   pub warnings: Vec<String>,
+  pub warning_details: Vec<crate::resources::InstallWarning>,
 }
 impl CurseForge {
   pub fn new(key: Option<String>) -> Result<Self> {
@@ -455,15 +456,23 @@ impl CurseForge {
     optional_projects.sort_unstable();
     let mut items: Vec<_> = selected.into_values().collect();
     items.sort_by_key(|i| (!i.direct, i.project.id));
+    let warning_details: Vec<_> = [
+      crate::resources::InstallWarningCode::ReadOnlyPreview,
+      crate::resources::InstallWarningCode::PlatformConstraintsIncomplete,
+      crate::resources::InstallWarningCode::OptionalDependenciesExcluded,
+    ]
+    .into_iter()
+    .map(|code| code.warning())
+    .collect();
     Ok(DependencyPreview {
       items,
       total_bytes,
       optional_projects,
-      warnings: vec![
-        "这是只读依赖预览，尚未下载或修改实例。".into(),
-        "平台标签不包含完整的模组版本约束与客户端侧要求；尚未与已导入的本地模组求解兼容性。".into(),
-        "可选依赖不会自动加入；工具和内嵌依赖不单独下载。".into(),
-      ],
+      warnings: warning_details
+        .iter()
+        .map(|warning| warning.message.clone())
+        .collect(),
+      warning_details,
     })
   }
 }

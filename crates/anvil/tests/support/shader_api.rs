@@ -193,6 +193,9 @@ async fn shader_api_auth_import_revision_and_removal() {
   assert_eq!(status, 200, "{body}");
   let body: Value = serde_json::from_str(&body).unwrap();
   assert_eq!(body["environment"]["status"], "requires_fabric");
+  assert_eq!(body["environment"]["reasonCode"], "shader_requires_fabric");
+  assert!(body["environment"]["reason"].is_string());
+  assert!(body["environment"]["reasonParams"].is_object());
   assert_eq!(body["packs"], json!([]));
   let (status, body) = server
     .request(

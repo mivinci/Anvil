@@ -82,6 +82,20 @@ fn body(response: Response<Vec<u8>>) -> String {
   String::from_utf8(response.into_body()).expect("protocol response is UTF-8")
 }
 
+fn assert_recovery(response: Response<Vec<u8>>) {
+  assert_eq!(response.status(), 200);
+  assert_eq!(
+    response.headers()["content-type"],
+    "text/html; charset=utf-8"
+  );
+  let source = body(response);
+  assert!(source.contains("无法启动桌面 App"));
+  assert!(source.contains("Anvil could not start the desktop App"));
+  assert!(source.contains("/__anvil_shell__/recovery.js"));
+  assert!(source.contains("script-src 'self'"));
+  assert!(!source.contains("onclick="));
+}
+
 #[test]
 fn active_fixture_app_and_local_assets_are_served_with_mime_types() {
   let temp = TempDir::new().expect("temporary data directory");
@@ -114,13 +128,13 @@ fn missing_or_corrupt_app_shows_embedded_recovery_entry() {
   let missing = TempDir::new().expect("temporary data directory");
   let missing_response = protocol(&missing).handle(request(Method::GET, "anvil-app://localhost/"));
   assert_eq!(missing_response.status(), 200);
-  assert!(body(missing_response).contains("恢复入口"));
+  assert_recovery(missing_response);
 
   let corrupt = TempDir::new().expect("temporary data directory");
   publish_fixture(&corrupt, "{invalid json", false);
   let corrupt_response = protocol(&corrupt).handle(request(Method::GET, "anvil-app://localhost/"));
   assert_eq!(corrupt_response.status(), 200);
-  assert!(body(corrupt_response).contains("无法启动桌面 App"));
+  assert_recovery(corrupt_response);
 }
 
 #[test]
@@ -129,14 +143,23 @@ fn missing_page_or_incompatible_manifest_shows_recovery_entry() {
   publish_fixture(&missing_page, &manifest(APP_VERSION), false);
   let missing_response =
     protocol(&missing_page).handle(request(Method::GET, "anvil-app://localhost/"));
-  assert!(body(missing_response).contains("无法启动桌面 App"));
+  assert_recovery(missing_response);
 
   let incompatible = TempDir::new().expect("temporary data directory");
-  let incompatible_manifest = manifest("0.2.0");
-  publish_fixture(&incompatible, &incompatible_manifest, true);
+  let mut incompatible_manifest: serde_json::Value =
+    serde_json::from_str(&manifest(APP_VERSION)).unwrap();
+  incompatible_manifest["shell_api_compatibility"] = ">=99.0.0".into();
+  publish_fixture(&incompatible, &incompatible_manifest.to_string(), true);
   let incompatible_response =
     protocol(&incompatible).handle(request(Method::GET, "anvil-app://localhost/"));
-  assert!(body(incompatible_response).contains("无法启动桌面 App"));
+  assert_recovery(incompatible_response);
+
+  let mismatch = TempDir::new().unwrap();
+  publish_fixture(&mismatch, &manifest("0.2.0"), true);
+  assert!(
+    body(protocol(&mismatch).handle(request(Method::GET, "anvil-app://localhost/")))
+      .contains("无法启动桌面 App")
+  );
 }
 
 #[test]
@@ -213,4 +236,63 @@ fn protocol_never_follows_a_symlink_out_of_the_app_package() {
   let response = protocol(&temp).handle(request(Method::GET, "anvil-app://localhost/outside.js"));
   assert_eq!(response.status(), 404);
   assert!(!body(response).contains("outside secret"));
+}
+
+#[test]
+fn embedded_recovery_script_is_available_without_an_app_and_cannot_be_shadowed() {
+  let temp = TempDir::new().unwrap();
+  let protocol = protocol(&temp);
+  let url = "anvil-app://localhost/__anvil_shell__/recovery.js";
+  let script = protocol.handle(request(Method::GET, url));
+  assert_eq!(script.status(), 200);
+  assert_eq!(
+    script.headers()["content-type"],
+    "text/javascript; charset=utf-8"
+  );
+  assert_eq!(script.headers()["cache-control"], "no-store");
+  assert!(body(script).contains("navigator.languages"));
+  let head = protocol.handle(request(Method::HEAD, url));
+  assert_eq!(head.status(), 200);
+  assert!(head.body().is_empty());
+  assert!(
+    head.headers()["content-length"]
+      .to_str()
+      .unwrap()
+      .parse::<usize>()
+      .unwrap()
+      > 0
+  );
+  assert_eq!(protocol.handle(request(Method::POST, url)).status(), 405);
+  assert_eq!(
+    protocol
+      .handle(request(
+        Method::GET,
+        "anvil-app://evil.example/__anvil_shell__/recovery.js"
+      ))
+      .status(),
+    400
+  );
+  assert_eq!(
+    protocol
+      .handle(request(
+        Method::GET,
+        "anvil-app://localhost/__anvil_shell__/other.js"
+      ))
+      .status(),
+    503
+  );
+
+  publish_fixture(&temp, &manifest(APP_VERSION), true);
+  let embedded_dir = temp
+    .path()
+    .join("apps")
+    .join(APP_ID)
+    .join("versions")
+    .join(APP_VERSION)
+    .join("web/__anvil_shell__");
+  fs::create_dir_all(&embedded_dir).unwrap();
+  fs::write(embedded_dir.join("recovery.js"), "package shadow script").unwrap();
+  let script = body(protocol.handle(request(Method::GET, url)));
+  assert!(script.contains("navigator.languages"));
+  assert!(!script.contains("package shadow script"));
 }

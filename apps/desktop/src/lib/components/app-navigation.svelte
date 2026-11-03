@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { localeState } from '#lib/locale.svelte.ts';
 	import { Blocks, Gamepad2, House, Server, Sparkles } from '@lucide/svelte';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -34,15 +35,15 @@
 	</defs>
 </svg>
 
-<nav class="flex min-h-0 flex-col items-center bg-transparent py-2" aria-label="主导航">
+<nav class="flex min-h-0 flex-col items-center bg-transparent py-2" aria-label={localeState.messages.nav.mainNavigation}>
 	<div class="flex flex-col items-center gap-2">
-		<NavButton aria-label="首页" selected={homeSelected} onclick={() => goto(resolve('/'))}>{#if homeSelected}<HouseFilled />{:else}<House size={19} />{/if}</NavButton>
-		<NavButton aria-label="客户端" selected={clientsSelected} onclick={() => goto(resolve('/clients'))}>
+		<NavButton aria-label={localeState.messages.nav.home} selected={homeSelected} onclick={() => goto(resolve('/'))}>{#if homeSelected}<HouseFilled />{:else}<House size={19} />{/if}</NavButton>
+		<NavButton aria-label={localeState.messages.nav.clients} selected={clientsSelected} onclick={() => goto(resolve('/clients'))}>
 			{#if clientsSelected}<GamepadFilled />{:else}<Gamepad2 size={19} />{/if}
 		</NavButton>
-		<NavButton aria-label="服务端" selected={serversSelected} onclick={() => goto(resolve('/servers'))}>{#if serversSelected}<ServerFilled />{:else}<Server size={19} />{/if}</NavButton>
-		<NavButton aria-label="模组" selected={modsSelected} onclick={() => goto(resolve('/mods'))}>{#if modsSelected}<BlocksFilled />{:else}<Blocks size={19} />{/if}</NavButton>
-		<NavButton aria-label="光影" selected={shadersSelected} onclick={() => goto(resolve('/shaders'))}><Sparkles size={19} /></NavButton>
+		<NavButton aria-label={localeState.messages.nav.servers} selected={serversSelected} onclick={() => goto(resolve('/servers'))}>{#if serversSelected}<ServerFilled />{:else}<Server size={19} />{/if}</NavButton>
+		<NavButton aria-label={localeState.messages.nav.mods} selected={modsSelected} onclick={() => goto(resolve('/mods'))}>{#if modsSelected}<BlocksFilled />{:else}<Blocks size={19} />{/if}</NavButton>
+		<NavButton aria-label={localeState.messages.nav.shaders} selected={shadersSelected} onclick={() => goto(resolve('/shaders'))}><Sparkles size={19} /></NavButton>
 	</div>
 	<div class="mt-auto flex flex-col items-center gap-2.5">
 		<UpdateNavButton />

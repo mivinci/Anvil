@@ -36,7 +36,7 @@ export interface AccountLoginConfiguration {
 }
 
 export class RuntimeRequestError extends Error {
-	constructor(message: string, readonly status: number) {
+	constructor(message: string, readonly status: number, readonly code: string | null = null) {
 		super(message);
 		this.name = 'RuntimeRequestError';
 	}
@@ -60,6 +60,7 @@ export type AccountLoginOperation = {
 		| null;
 	account: AccountSummary | null;
 	error: string | null;
+	errorCode?: string | null;
 };
 
 export type ClientInstallStage =
@@ -102,6 +103,7 @@ export interface ClientInstallOperation {
 		reusedFiles?: number;
 	} | null;
 	error: string | null;
+	errorCode?: string | null;
 }
 
 async function getRuntimeConnection() {
@@ -128,7 +130,9 @@ async function runtimeRequest<T>(path: string, init: RequestInit = {}): Promise<
 			typeof payload.error === 'string'
 				? payload.error
 				: `Runtime request failed (${response.status})`;
-		throw new RuntimeRequestError(message, response.status);
+		const code = typeof payload === 'object' && payload !== null && 'code' in payload
+			&& typeof payload.code === 'string' && /^[a-z][a-z0-9_]{0,63}$/.test(payload.code) ? payload.code : null;
+		throw new RuntimeRequestError(message, response.status, code);
 	}
 	if (payload === null) throw new Error('Runtime returned an invalid JSON response');
 	return payload as T;
@@ -169,6 +173,7 @@ export interface ClientVersionCatalog {
 	freshForMs: number;
 	revision: number;
 	refreshError: string | null;
+	refreshErrorCode?: string | null;
 }
 
 export interface MinecraftNewsItem {
@@ -184,6 +189,7 @@ export interface MinecraftNewsCatalog {
 	freshForMs: number;
 	revision: number;
 	refreshError: string | null;
+	refreshErrorCode?: string | null;
 }
 
 export const getMinecraftNews = (options: { signal?: AbortSignal; refresh?: boolean } = {}) =>
@@ -293,6 +299,7 @@ export interface ShaderMod { version: string; enabled: boolean }
 export interface ShaderEnvironment {
 	status: 'requires_fabric' | 'missing_iris' | 'iris_disabled' | 'missing_dependencies' | 'unconfirmed' | 'ready';
 	iris: ShaderMod | null; sodium: ShaderMod | null; managedOnly: boolean; reason: string;
+	reasonCode?: string; reasonParams?: Record<string, string>;
 }
 export interface ClientShaderPackChange {
 	revision: number; appliedRevision: number | null; packs: ClientShaderPack[];
@@ -318,7 +325,7 @@ export const importClientResourcePack = (name: string, file: File, revision: num
 export const removeClientResourcePack = (name: string, sha256: string, revision: number, signal: AbortSignal) =>
 	runtimeRequest<ClientResourcePacks>(`/clients/${encodeURIComponent(name)}/resource-packs/${encodeURIComponent(sha256)}?revision=${revision}`, { method: 'DELETE', signal });
 
-export interface CatalogStatus { stale: boolean; freshForMs: number; revision: number; refreshError: string | null }
+export interface CatalogStatus { stale: boolean; freshForMs: number; revision: number; refreshError: string | null; refreshErrorCode?: string | null }
 export interface CatalogOptions { refresh?: boolean; after?: number }
 function catalogQuery(options: CatalogOptions = {}) {
 	return { ...(options.refresh ? { refresh: 'true' } : {}), ...(options.after !== undefined ? { after: String(options.after) } : {}) };
@@ -349,6 +356,7 @@ export interface CurseForgePreview {
 	gameVersion: string; revision: number; totalBytes: number;
 	items: { project: CurseForgeProject; file: CurseForgeFile; direct: boolean }[];
 	optionalProjects: number[]; warnings: string[];
+	warningDetails?: { code: string; message: string }[];
 }
 export const getCurseForgeConfiguration = (signal: AbortSignal) =>
 	runtimeRequest<CurseForgeConfiguration>('/resources/curseforge/configuration', { signal });
@@ -411,6 +419,7 @@ export interface ResourceInstallOperation {
 	id: number; name: string; kind: 'mod' | 'shader'; state: 'running' | 'completed' | 'failed' | 'cancelled'; cancelRequested: boolean;
 	progress: { stage: 'preparing' | 'downloading' | 'publishing' | 'completed'; completedFiles: number; totalFiles: number; downloadedBytes: number; totalBytes: number; receivedBytes: number };
 	revision: number | null; error: string | null;
+	errorCode?: string | null;
 }
 export const createCurseForgeInstallPlan = (name: string, project: number, file: number, signal: AbortSignal) =>
 	runtimeRequest<CurseForgeInstallPlan>(`/clients/${encodeURIComponent(name)}/curseforge/projects/${project}/files/${file}/plan`, { method: 'POST', signal });
@@ -448,7 +457,7 @@ export const getPlayStats = (signal: AbortSignal) =>
 	runtimeRequest<PlayStatsSnapshot>('/play-stats', { signal, cache: 'no-store' });
 export type PlayStatsClearTarget = { kind: 'account'; accountId: string } | { kind: 'all' };
 export const clearPlayStats = (target: PlayStatsClearTarget, signal: AbortSignal) => {
-	if (target.kind === 'account' && !target.accountId) throw new Error('请选择要清除记录的账户。');
+	if (target.kind === 'account' && !target.accountId) throw new Error('Choose an account before clearing history.');
 	// A separate route prevents an older Runtime from ignoring a scope query and clearing everyone.
 	const path = target.kind === 'account' ? `/play-stats/accounts/${encodeURIComponent(target.accountId)}` : '/play-stats';
 	return runtimeRequest<PlayStatsSnapshot>(path, { method: 'DELETE', signal });
@@ -495,6 +504,7 @@ export interface ModpackExportOperation {
 	progress: ModpackExportProgress;
 	result: ModpackExportResult | null;
 	error: string | null;
+	errorCode?: string | null;
 }
 export interface ModpackExportSelection {
 	mods: boolean; resourcePacks: boolean; shaderPacks: boolean; config: boolean; worlds: boolean;

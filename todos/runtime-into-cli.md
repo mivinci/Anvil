@@ -8,7 +8,7 @@
 - 终端用户安装的 CLI 与桌面 App 运行的业务逻辑天然同源，口径一致。
 - App 包继续把 `anvil` 二进制作为 sidecar 打入，Shell 现有签名更新通道与启动监管不变。
 
-**进度**：Phase 1–4 的代码已完成（2026-10-23）。CLI release 现在把签名 `runtime-index.json` 发布到固定的 `runtime-updates` feed，Desktop Shell 构建时嵌入该 HTTPS 地址；App 包仍以包内种子兜底，override 失败自动回退并拉黑。真实 Runtime release 和自更新尚未执行验收。
+**进度**：Phase 1–4 代码均已合入；Runtime 产品使用 `runtime/v*` 标签和 `runtime-updates` feed，历史 `cli/v*` 保留。Shell 包内种子、override、失败回退及拉黑机制已实现；已有 Windows 隔离双重更新 smoke 记录见 [Shell 清单](shell-milestone.md)，其他平台和故障恢复不能由此推断通过。
 
 ## Phase 划分
 

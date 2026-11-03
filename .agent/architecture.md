@@ -133,3 +133,21 @@ Runtime 使用固定 `app.q2q.anvil.runtime` 签名标识；本机与 Desktop/CL
 ## 整合包导出
 
 已确认在实例概览启动按钮旁提供次级导出入口，默认导出模组、资源包、光影和配置，存档显式可选；运行中禁用，通过全局任务执行。当前完成 Core 选项/index 和有界只读快照打包、无覆盖发布与离线测试；Runtime 与界面未接入，见[实例导出整合包](../todos/client-modpack-export.md)。
+
+## 桌面语言与错误契约
+
+Desktop 使用 zh-CN/en 词典与窗口级 LocaleState（Svelte rune）。已保存偏好优先，其次系统语言，再回退 zh-CN；本地键为 anvil.locale。切换同步 document.lang，保留页面状态；存储失败仍应用当前窗口选择并显示本地化提示。首帧通过同源外部脚本设置语言，不放开脚本 CSP。Intl 显式接收 locale，十进制 KB 与二进制 KiB 的既有语义分别保留。
+
+Runtime 的应用错误 JSON 保留 error 并新增 code；安装、资源、导出、登录任务新增 errorCode，启动任务沿用原有字段；目录刷新失败使用 refreshErrorCode。Core 失败复用 Error::code()，Runtime 特有失败在分支上显式赋码，不通过诊断句子猜测。光影环境保留 status/reason，并新增 reasonCode/reasonParams。安装计划保留 warnings，同时提供 warningDetails code/message。上述均为兼容的增量字段，HTTP API 维持 1.0.0。
+
+前端按码选择词典。未知码用通用提示；缺少码的旧 Runtime 使用已有上下文回退，原始错误/原因仅作为可展开详情。未知警告不能静默折叠；提交结果未知仍先只读确认，不能因翻译而重发任务。账户名、文件名、验证码、第三方说明和游戏日志保持原文；CLI 和 tracing 不做桌面文案翻译。
+
+Shell 恢复页独立按系统语言匹配 zh/en，无法匹配回退 zh-CN，不读取 App 存储。页面保留静态双语正文，语言与显式重试由 Shell 内置外部脚本完成；自定义协议提供固定保留资源，不依赖活动包，自身 meta CSP 维持 script-src self。
+
+当前主要 Desktop 页面、设置/账户、Runtime 错误映射与 Shell 恢复页已在本地实现；格式化/复数、无障碍名称与 620px/宽窗口双语布局已用 fixture 检查，页面宽度下限与 Shell 的 620px 对齐，概览资源卡按内容宽度切换单列/三列；全量文案守卫已接入 CI，综合浏览器回归已用双语通过；跨平台原生 WebView 验收仍未完成，不能宣称桌面已完整双语。逐项状态见[国际化](../todos/desktop-i18n.md)。
+
+词典维护、翻译术语与新增语言步骤统一见[国际化维护](../docs/i18n.md)。新语言须同步首帧脚本与守卫；Shell 恢复页语言独立维护，不能假设其与 Desktop 偏好相同。
+
+## 首次启动欢迎页
+
+Desktop 在 Runtime 就绪后、账户与安装 providers 挂载前识别首次使用。anvil.welcome 的 pending/complete 独立于现有语言/主题键；已有偏好或 Runtime 账户/实例跳过，无标记且两类数据均确认空时才进入。读取失败不视为空，不写完成标记；欢迎中保存偏好不影响 pending 恢复。页面铺满窗口，保留原生控制与顶部拖动区，提供语言/显示模式/预设主题即时预览；完成后到首页。存储失败不阻止使用。当前已本地接入并通过隔离浏览器矩阵，原生平台实测待完成，见[欢迎页执行项](../todos/desktop-welcome.md)。

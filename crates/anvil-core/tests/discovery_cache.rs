@@ -365,3 +365,58 @@ async fn global_search_and_details_share_the_existing_sixteen_entry_disk_budget(
     .is_some()
   );
 }
+
+#[test]
+fn installation_warning_codes_are_stable_and_preserve_legacy_messages() {
+  use crate::resources::InstallWarningCode;
+  let codes = [
+    (
+      InstallWarningCode::FabricRequiredOnly,
+      "fabric_required_only",
+    ),
+    (
+      InstallWarningCode::PlatformConstraintsIncomplete,
+      "platform_constraints_incomplete",
+    ),
+    (
+      InstallWarningCode::OptionalDependenciesExcluded,
+      "optional_dependencies_excluded",
+    ),
+    (InstallWarningCode::ReadOnlyPreview, "read_only_preview"),
+  ];
+  for (code, expected) in codes {
+    let warning = code.warning();
+    let json = serde_json::to_value(&warning).unwrap();
+    assert_eq!(json["code"], expected);
+    assert_eq!(json["message"], warning.message);
+    assert!(!warning.message.is_empty());
+  }
+}
+
+#[test]
+fn dependency_previews_add_codes_without_replacing_legacy_warning_fields() {
+  let warning = crate::resources::InstallWarningCode::FabricRequiredOnly.warning();
+  let legacy = vec![warning.message.clone()];
+  let modrinth = crate::modrinth::DependencyPreview {
+    items: vec![],
+    total_bytes: 0,
+    optional_projects: vec![],
+    warnings: legacy.clone(),
+    warning_details: vec![warning.clone()],
+  };
+  let curseforge = crate::curseforge::DependencyPreview {
+    items: vec![],
+    total_bytes: 0,
+    optional_projects: vec![],
+    warnings: legacy.clone(),
+    warning_details: vec![warning],
+  };
+  for value in [
+    serde_json::to_value(modrinth).unwrap(),
+    serde_json::to_value(curseforge).unwrap(),
+  ] {
+    assert_eq!(value["warnings"], serde_json::json!(legacy));
+    assert_eq!(value["warningDetails"][0]["code"], "fabric_required_only");
+    assert_eq!(value["warningDetails"][0]["message"], legacy[0]);
+  }
+}

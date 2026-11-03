@@ -17,6 +17,39 @@ pub const MAX_IMPORT_BYTES: usize = 64 * 1024 * 1024;
 pub(crate) const MAX_ENTRIES: usize = 1024;
 const MAX_RECORD_BYTES: usize = 1024 * 1024;
 
+/// Stable, additive UI contract; messages remain available to older clients.
+#[derive(Clone, Copy, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InstallWarningCode {
+  FabricRequiredOnly,
+  PlatformConstraintsIncomplete,
+  OptionalDependenciesExcluded,
+  ReadOnlyPreview,
+}
+#[derive(Clone, Serialize)]
+pub struct InstallWarning {
+  pub code: InstallWarningCode,
+  pub message: String,
+}
+impl InstallWarningCode {
+  pub fn warning(self) -> InstallWarning {
+    let message = match self {
+      Self::FabricRequiredOnly => {
+        "仅安装兼容的 Fabric 主 JAR 和必需依赖；不自动升级或替换已有项目。"
+      }
+      Self::PlatformConstraintsIncomplete => {
+        "平台标签不包含完整的模组版本约束与客户端侧要求；尚未与已导入的本地模组求解兼容性。"
+      }
+      Self::OptionalDependenciesExcluded => "可选依赖不会自动加入；工具和内嵌依赖不单独下载。",
+      Self::ReadOnlyPreview => "这是只读依赖预览，尚未下载或修改实例。",
+    };
+    InstallWarning {
+      code: self,
+      message: message.into(),
+    }
+  }
+}
+
 mod shader_environment;
 pub use shader_environment::{
   ShaderEnvironment, ShaderEnvironmentStatus, ShaderMod, ShaderPackCollection,

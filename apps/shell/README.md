@@ -2,7 +2,7 @@
 
 Anvil Shell 是原生 Tauri 宿主。Rust crate 位于 `src-tauri/`，属于仓库的 Cargo workspace。桌面 SvelteKit 页面由同级的 `apps/desktop` npm workspace 独立维护。
 
-开发模式由 Vite 提供桌面页面；生产 Shell 的 `frontendDist` 只包含 `bootstrap/index.html` 恢复入口。生产窗口通过 `anvil-app://localhost/` 加载本地 App 版本目录中的页面。协议只允许从活动版本 manifest 指定的 `web/` 目录读取资源，并根据文件类型返回 MIME；没有活动版本、manifest 损坏或页面入口缺失时显示恢复页。
+开发模式由 Vite 提供桌面页面；生产 Shell 的 `frontendDist` 包含 `bootstrap/` 下的恢复页面和独立脚本。生产窗口通过 `anvil-app://localhost/` 加载本地 App 版本目录中的页面。协议只允许从活动版本 manifest 指定的 `web/` 目录读取资源，并根据文件类型返回 MIME；没有活动版本、manifest 损坏或页面入口缺失时显示恢复页。
 
 在仓库根目录运行 `npm run desktop:dev` 可启动桌面开发模式。该命令使用单独的 Tauri 开发配置：macOS 保留窗口效果，并让主窗口通过 `devUrl` 加载 Vite 页面；开发时直接启动 `apps/desktop/baseline` 中本次构建的 sidecar，不使用已安装的活动版本，也不进行版本激活、回滚或后台更新检查，避免新页面连接旧 API。正式构建仍使用 `anvil-app://localhost/` 加载活动 App 版本。
 
@@ -70,6 +70,21 @@ Desktop 与 Runtime 的发布采用“版本 PR 合入 main → 确切提交 CI 
 Shell 更新构建使用 `ANVIL_SHELL_UPDATE_MANIFEST_URL` 和 `ANVIL_SHELL_UPDATE_PUBLIC_KEY`；release workflow 始终注入唯一 feed 与 Desktop 更新公钥。
 
 准备版本时运行 `Prepare release`，由工作流同步对应产品的版本文件并创建 PR；不要手动创建发布标签。Desktop 与 Runtime 的版本、兼容 API 以及联合发布顺序见[发布指南](../../docs/releases.md)。
+
+## 恢复页与验证
+
+恢复页按 navigator.languages 的顺序匹配 zh/en，列表为空时使用 navigator.language，无法匹配时回退 zh-CN；不访问 Desktop 的 anvil.locale 或其他存储。脚本在正文解析前设置 lang、标题与显示语言；脚本不可用时仍保留带 lang 标注的双语正文。重试仅由用户点击触发，不设自动重载或轮询。
+
+anvil-app 自定义协议不会经过 Tauri 内置 App asset 的 CSP 注入，恢复页自身声明 script-src 'self'，重试不使用内联事件。`/__anvil_shell__/recovery.js` 为 Shell 保留的内嵌资源，在活动包缺失、损坏或不兼容时仍可读取；只接受原有本地 authority 下的 GET/HEAD，不能被 App 包的同名文件覆盖，也不提供任意 bootstrap 文件读取。其余 App 路径与存储安全边界保持原行为，未放宽 Tauri CSP 配置。
+
+```sh
+node --test apps/shell/tests/recovery.test.mjs
+cargo test -p anvil-shell --test app_protocol --offline
+# 需要本机已有 Playwright 与 Edge，通过 ANVIL_PLAYWRIGHT_MODULE 指定包目录。
+node apps/shell/tests/recovery.browser.mjs
+```
+
+协议测试使用临时 App 目录，覆盖缺包、manifest/入口损坏、真实 Shell API 范围不匹配、版本身份不匹配及脚本可用性/来源/方法限制。浏览器仅用临时 loopback 服务读取内置资源，验证系统语言、受限 CSP 下重试、存储不可用与静态双语回退；截图输出到被忽略的 target/shell-recovery-qa。它不启动 Tauri 或真实 Runtime，不能替代 macOS/Windows 原生 WebView 实测。
 
 ## Shell IPC
 

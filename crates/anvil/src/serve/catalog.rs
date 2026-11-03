@@ -70,6 +70,7 @@ pub(super) struct CatalogResult<T> {
   pub fresh_for_ms: u64,
   pub revision: u64,
   pub refresh_error: Option<String>,
+  pub refresh_error_code: Option<&'static str>,
 }
 
 impl<S: Source + Default> Default for Catalog<S> {
@@ -239,6 +240,7 @@ fn snapshot<T: Clone>(
       ttl.saturating_sub(age).as_millis() as u64
     },
     revision: state.revision,
+    refresh_error_code: refresh_error.as_ref().map(|_| "catalog_refresh_failed"),
     refresh_error,
   }
 }

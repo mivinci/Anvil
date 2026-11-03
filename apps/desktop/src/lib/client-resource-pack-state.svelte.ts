@@ -1,3 +1,5 @@
+import { requestErrorMessage } from './runtime-errors.ts';
+import { localeState } from './locale.svelte.ts';
 import { localPackFileError, localPackSize } from './local-pack';
 import {
 	listClientResourcePacks, importClientResourcePack, removeClientResourcePack, syncClientResources,
@@ -12,7 +14,7 @@ function validFormat(value: ResourcePackFormat) {
 export function validateClientResourcePacks(result: ClientResourcePacks): ClientResourcePacks {
 	if (!result || !Number.isSafeInteger(result.revision) || result.revision < 0
 		|| !(result.appliedRevision === null || (Number.isSafeInteger(result.appliedRevision) && result.appliedRevision >= 0 && result.appliedRevision <= result.revision))
-		|| !Array.isArray(result.packs) || result.packs.length > 1024) throw new Error('资源包清单格式不正确。');
+		|| !Array.isArray(result.packs) || result.packs.length > 1024) throw new Error(localeState.messages.instance.detail.invalidPackList);
 	const hashes = new Set<string>(), names = new Set<string>();
 	for (const pack of result.packs) {
 		const meta = pack?.metadata;
@@ -22,7 +24,7 @@ export function validateClientResourcePacks(result: ClientResourcePacks): Client
 			|| !validFormat(meta.minFormat) || !validFormat(meta.maxFormat)
 			|| meta.minFormat.major > meta.maxFormat.major || (meta.minFormat.major === meta.maxFormat.major && meta.minFormat.minor > meta.maxFormat.minor)
 			|| !(meta.packFormat === null || (Number.isInteger(meta.packFormat) && meta.packFormat >= meta.minFormat.major && meta.packFormat <= meta.maxFormat.major))
-			|| hashes.has(pack.sha256) || names.has(pack.filename.toLowerCase())) throw new Error('资源包条目格式不正确。');
+			|| hashes.has(pack.sha256) || names.has(pack.filename.toLowerCase())) throw new Error(localeState.messages.instance.detail.invalidPackEntry);
 		hashes.add(pack.sha256); names.add(pack.filename.toLowerCase());
 	}
 	return result;
@@ -39,11 +41,19 @@ export function resourcePackFormat(pack: ClientResourcePack) {
 export class ClientResourcePackState {
 	collection = $state<ClientResourcePacks | null>(null);
 	activity = $state<'loading' | 'importing' | 'removing' | 'syncing' | null>(null);
-	error = $state<string | null>(null);
+	errorDetail = $state<string | null>(null);
+	private errorValue = $state<string | (() => string | null) | null>(null);
+	get error(): string | null { const value = this.errorValue; return typeof value === 'function' ? value() : value; }
+	set error(value: string | (() => string | null) | null) {
+		this.errorValue = value;
+		if (value === null) this.errorDetail = null;
+	}
 	uncertain = $state(false);
 	selected = $state<File | null>(null);
 	removing = $state<string | null>(null);
-	message = $state<string | null>(null);
+	private messageValue = $state<string | (() => string | null) | null>(null);
+	get message(): string | null { const value = this.messageValue; return typeof value === 'function' ? value() : value; }
+	set message(value: string | (() => string | null) | null) { this.messageValue = value; }
 	readonly busy = $derived(this.activity !== null);
 	private name = '';
 	private request: AbortController | null = null;
@@ -63,7 +73,7 @@ export class ClientResourcePackState {
 		if (this.busy || this.uncertain || !this.collection) return;
 		this.selected = null; this.removing = null; this.message = null;
 		const error = localPackFileError(file);
-		if (error) { this.error = error; return; }
+		if (error) { this.error = () => localPackFileError(file, localeState.current); return; }
 		this.selected = file; this.error = null;
 	}
 	async importSelected() {
@@ -95,12 +105,12 @@ export class ClientResourcePackState {
 			this.collection = result;
 			if (mutation || this.uncertain) { this.selected = null; this.removing = null; }
 			this.uncertain = false;
-			this.message = activity === 'importing' ? '已添加到实例，请在游戏内选择资源包。' : activity === 'removing' ? '已从此实例移除，共享原件保留。' : activity === 'syncing' ? '受管资源文件已同步。' : null;
+			this.message = () => (activity === 'importing' ? localeState.messages.instance.detail.packAdded : activity === 'removing' ? localeState.messages.instance.detail.removed : activity === 'syncing' ? localeState.messages.instance.detail.resourcesSynced : null);
 		} catch (reason) {
 			if (this.request !== controller || controller.signal.aborted) return;
 			if (mutation) this.uncertain = true;
-			const detail = reason instanceof Error ? reason.message : '';
-			this.error = mutation ? `操作结果未确认，请刷新清单后再操作。${detail}` : `暂时无法读取资源包清单。${detail}`;
+			const detail = reason instanceof Error ? reason.message : ''; this.errorDetail = detail;
+			this.error = () => (mutation ? localeState.messages.instance.mutationUnknown : requestErrorMessage(reason, localeState.current, localeState.messages.instance.packsReadFailed));
 		} finally {
 			if (this.request === controller) { this.request = null; this.activity = null; }
 		}

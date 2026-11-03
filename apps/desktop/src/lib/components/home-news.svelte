@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { localeState } from '#lib/locale.svelte.ts';
 	import { onMount } from 'svelte';
 	import { ArrowUpRight, LoaderCircle, Newspaper, RefreshCw } from '@lucide/svelte';
 	import { getMinecraftNews, type MinecraftNewsItem } from '../runtime';
@@ -26,7 +27,7 @@
 			stale = result.stale;
 			error = result.refreshError;
 		} catch (cause) {
-			error = cause instanceof Error ? cause.message : '暂时无法读取 Minecraft 官方新闻。';
+			error = cause instanceof Error ? cause.message : localeState.messages.home.flow.newsFailed;
 		} finally {
 			loading = false;
 			refreshing = false;
@@ -34,14 +35,14 @@
 	}
 
 	function dateLabel(value: string | null) {
-		if (!value) return '日期未提供';
+		if (!value) return localeState.messages.home.flow.noDate;
 		const date = new Date(value);
-		return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'short', day: 'numeric' }).format(date);
+		return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat(localeState.current, { year: 'numeric', month: 'short', day: 'numeric' }).format(date);
 	}
 
 	async function openArticle(item: MinecraftNewsItem) {
 		try { await shell.openExternalUrl(item.url); }
-		catch { error = '无法打开文章链接，请稍后重试。'; }
+		catch { error = localeState.messages.home.flow.openArticleFailed; }
 	}
 </script>
 
@@ -50,17 +51,17 @@
 		<div class="flex shrink-0 items-center justify-between gap-2 px-3 pt-3 pb-1">
 			<div class="flex min-w-0 items-center gap-2">
 				<Newspaper size={15} class="shrink-0 text-primary" aria-hidden="true" />
-				<h2 id="news-title" class="truncate text-[13px] font-semibold">{usingGeneralNews ? 'Minecraft 动态' : 'Java 版动态'}</h2>
+				<h2 id="news-title" class="truncate text-[13px] font-semibold">{usingGeneralNews ? localeState.messages.home.flow.minecraftNews : localeState.messages.home.flow.javaNews}</h2>
 			</div>
 			<div class="flex shrink-0 items-center gap-1">
-				{#if stale}<span class="px-1 text-[10px] text-muted-foreground">缓存</span>{/if}
-				<button type="button" class="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-chrome-hover hover:text-foreground disabled:opacity-50" aria-label="刷新新闻" title="刷新新闻" disabled={loading || refreshing} onclick={() => void loadNews(true)}>
+				{#if stale}<span class="px-1 text-[10px] text-muted-foreground">{localeState.messages.home.flow.cached}</span>{/if}
+				<button type="button" class="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-chrome-hover hover:text-foreground disabled:opacity-50" aria-label={localeState.messages.home.flow.refreshNews} title={localeState.messages.home.flow.refreshNews} disabled={loading || refreshing} onclick={() => void loadNews(true)}>
 					{#if refreshing}<LoaderCircle size={14} class="animate-spin" aria-hidden="true" />{:else}<RefreshCw size={14} aria-hidden="true" />{/if}
 				</button>
 			</div>
 		</div>
 
-		<div class="min-h-0 flex-1 overflow-y-auto overscroll-contain" role="region" aria-label="Minecraft 新闻列表">
+		<div class="min-h-0 flex-1 overflow-y-auto overscroll-contain" role="region" aria-label={localeState.messages.home.flow.newsList}>
 		{#if loading && news.length === 0}
 			<div class="flex min-h-24 items-center justify-center text-muted-foreground" role="status"><LoaderCircle size={16} class="animate-spin" aria-hidden="true" /></div>
 		{:else if visibleNews.length > 0}
@@ -76,11 +77,11 @@
 			</ul>
 		{:else}
 			<div class="flex min-h-24 items-center justify-center text-xs text-muted-foreground" role="status">
-				{error ? '动态暂不可用' : '暂无动态'}
+				{error ? localeState.messages.home.flow.newsUnavailable : localeState.messages.home.flow.noNews}
 			</div>
 		{/if}
 		</div>
 
-		{#if error && visibleNews.length > 0}<p class="shrink-0 truncate px-3 pt-2 pb-3 text-[10px] text-muted-foreground" role="status" title={error}>刷新失败</p>{/if}
+		{#if error && visibleNews.length > 0}<p class="shrink-0 truncate px-3 pt-2 pb-3 text-[10px] text-muted-foreground" role="status">{localeState.messages.home.flow.refreshFailed}</p>{/if}
 	</section>
 </aside>
