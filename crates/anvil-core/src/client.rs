@@ -1,4 +1,5 @@
 //! Verified client artifact downloads and atomic installation snapshots.
+mod avatar;
 pub(crate) mod classpath;
 mod crashes;
 mod install_java;
@@ -8,6 +9,7 @@ pub(crate) use modpack::export_snapshot;
 pub use modpack::modpack_version;
 mod removal;
 mod settings;
+pub use avatar::{ClientAvatar, MAX_AVATAR_INPUT_BYTES, MAX_AVATAR_PIXELS};
 pub use crashes::{ClientCrashReport, ClientCrashReportEntry, ClientCrashReports};
 pub use logs::ClientGameLog;
 pub use removal::ClientRemoval;
