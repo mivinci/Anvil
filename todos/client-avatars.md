@@ -1,6 +1,6 @@
 # 实例自定义头像
 
-状态：第 1–2 项展示基础与 Core 存储已本地实现，尚未接入 Runtime 与实例页面；已按维护者要求提交至 codex/instance-avatars 分支交接，尚未创建 PR。
+状态：第 1–3 项展示基础、Core 存储与 Runtime 鉴权 API 已本地实现，尚未接入实例页面与选图裁剪；已提交至 codex/instance-avatars 分支交接，尚未创建 PR。
 
 ## 产品与数据边界
 
@@ -40,9 +40,17 @@
 
 11 项头像测试通过：三种格式、标准化与 revision、方向信息、动画/超限/损坏、失败保留、清除隔离、读写锁、越界/身份/特殊文件，以及 Unix 符号/硬链接；另 4 项实例删除回归通过。Core 全目标 Clippy、rustfmt 和 diff 检查通过；仅使用合成图片与临时实例，不下载真实图片、不操作用户实例。Windows 分支未在本机执行，后续平台验收独立记录。
 
+## 第 3 项实现与验证
+
+- `GET /clients/{name}/avatar`：鉴权读取标准 PNG，返回 `image/png`、内容 SHA-256 `ETag` 和私有 `Cache-Control`；没有头像返回 404 `avatar_not_found`，`If-None-Match` 命中返回 304。
+- `PUT /clients/{name}/avatar`：原始 PNG/JPEG/WebP 请求体，路由上限 8 MiB；Core 复核格式/像素并标准化为 256×256 PNG；返回 `{ revision }`。写入用独立单并发门禁，忙时 429。
+- `DELETE /clients/{name}/avatar`：清除头像，204；缺失头像重复清除仍 204。
+- 错误沿用 Runtime 结构化错误码；实例忙锁、损坏/超限、越界和链接拒绝由 Core 返回 4xx。
+- 回环测试覆盖未鉴权 401、无头像 404、非法图片 400、上传/读取/ETag、304、清除与幂等清除；测试使用临时实例和合成 PNG。
+
 ## 接续入口
 
-下一步从第 3 项 Runtime 开始，按项推进，做完一项先说明下一项内容并请维护者确认。当前授权仅提交/推送交接分支，没有创建 PR、合并或发布授权。
+第 3 项已完成。下一步从第 4 项通用图片选择/裁剪开始，按项推进，做完一项先说明下一项内容并请维护者确认。当前授权仅提交/推送交接分支，没有创建 PR、合并或发布授权。
 
 - Core 实现：crates/anvil-core/src/client/avatar.rs；公开导出见 client.rs；对应测试 client_avatar.rs。头像上传与清除目前遵守实例忙锁，读取只取设置锁。
 - 展示组件：components/ui/avatar.svelte 为通用 fallback 容器；components/clients/instance-avatar.svelte 组合稳定图案；instance-avatar.ts 为纯图案函数。尚未在任何业务页面挂载，没有现成的选图/裁剪 UI。

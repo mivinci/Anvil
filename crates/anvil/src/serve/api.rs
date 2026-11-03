@@ -235,6 +235,13 @@ pub(super) async fn serve(
       "/clients/{name}/launch-settings",
       get(super::client_settings::get).put(super::client_settings::save),
     )
+    .route(
+      "/clients/{name}/avatar",
+      get(super::client_avatar::get)
+        .put(super::client_avatar::save)
+        .delete(super::client_avatar::clear)
+        .layer(DefaultBodyLimit::max(super::client_avatar::MAX_BODY_BYTES)),
+    )
     .route("/system/memory", get(super::client_settings::memory))
     .route("/clients/{name}/logs/latest", get(client_game_log))
     .route("/clients/{name}/crash-reports", get(client_crash_reports))
