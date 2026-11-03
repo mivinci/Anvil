@@ -127,6 +127,15 @@ async fn avatar_api_authenticates_and_round_trips_a_bounded_image() {
     .request("PUT", path, b"not an image", "image/png", true, &[])
     .await;
   assert_eq!(status, 400);
+  let large_invalid = vec![0u8; 70 * 1024];
+  assert_eq!(
+    server
+      .request("PUT", path, &large_invalid, "image/png", true, &[])
+      .await
+      .0,
+    400,
+    "the avatar route must override the global 64 KiB body limit"
+  );
   let (status, _, body) = server
     .request("PUT", path, PNG, "image/png", true, &[])
     .await;
