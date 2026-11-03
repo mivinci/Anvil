@@ -71,6 +71,7 @@
 - `instance-avatar.browser.mjs` 使用 loopback fixture 和假 Shell IPC，覆盖卡片默认图案、详情上传、刷新后 ETag 读取、设置恢复默认、8 MiB 超限被前端拒绝、409 busy/400 invalid 失败保留旧图、读失败回退默认，以及 620×420 窄窗裁剪弹窗键盘操作和无横向溢出。
 - 浏览器验收使用本机 Edge 和临时 Playwright 包；截图位于被忽略的 `apps/desktop/.svelte-kit/instance-avatar-qa/`。
 - Runtime 回环 API 测试覆盖鉴权、非法/超限请求、PNG/ETag/304、清除幂等和 8 MiB 路由上限。
+- 开发态 Rust 端点改动后必须退出整个 `npm run desktop:dev` 再启动；仅页面热更新会继续使用旧 Runtime。PUT 返回 404/405 时 UI 明确提示重启，并保留旧头像。
 - 尚未验证原生 WebView 的文件选择器、macOS/Windows 实际窗口尺寸、真实游戏运行时的忙碌锁；这些由维护者跨平台实测，不以浏览器结果替代。
 
 ## 接续入口

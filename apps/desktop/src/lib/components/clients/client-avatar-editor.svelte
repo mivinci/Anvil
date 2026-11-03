@@ -26,11 +26,13 @@
 	let selectedFile = $state<File | null>(null);
 	let saving = $state(false);
 	let error = $state<string | null>(null);
+	let errorDetail = $state<string | null>(null);
 	let notice = $state<string | null>(null);
 
 	function choose() {
 		if (saving) return;
 		error = null;
+		errorDetail = null;
 		notice = null;
 		fileInput.value = '';
 		fileInput.click();
@@ -43,6 +45,7 @@
 		input.value = '';
 		if (file) {
 			error = null;
+			errorDetail = null;
 			notice = null;
 			selectedFile = file;
 		}
@@ -50,9 +53,15 @@
 
 	function failure(cause: unknown, fallback: string): string {
 		if (cause instanceof RuntimeRequestError) {
+			errorDetail = `${cause.status}${cause.code ? ` ${cause.code}` : ''}: ${cause.message}`;
+			if (cause.status === 404 || cause.status === 405) return messages.avatarRuntimeOutdated;
 			if (cause.status === 409 || cause.status === 429) return messages.avatarBusy;
+			if (cause.status === 413) return messages.avatarTooLarge;
 			if (cause.status === 400) return messages.avatarInvalid;
+			return fallback;
 		}
+		errorDetail = cause instanceof Error ? cause.message : String(cause);
+		if (cause instanceof TypeError) return messages.avatarUnavailable;
 		return fallback;
 	}
 
@@ -60,6 +69,7 @@
 		if (saving) return;
 		saving = true;
 		error = null;
+		errorDetail = null;
 		notice = null;
 		try {
 			await avatars.upload(name, blob);
@@ -76,6 +86,7 @@
 		if (saving) return;
 		saving = true;
 		error = null;
+		errorDetail = null;
 		notice = null;
 		try {
 			await avatars.clear(name);
@@ -112,6 +123,7 @@
 		<button type="button" disabled={saving} onclick={restore} class="max-w-full text-left text-[10px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40">{messages.restoreAvatar}</button>
 	{/if}
 	{#if showStatus && error}<p role="alert" class="max-w-48 text-[10px] leading-4 text-destructive">{error}</p>{/if}
+	{#if showStatus && errorDetail}<details class="max-w-48 text-[10px] leading-4 text-muted-foreground"><summary>{localeState.messages.errors.technicalDetails}</summary><p class="mt-1 select-text break-all">{errorDetail}</p></details>{/if}
 	{#if showStatus && notice}<p role="status" class="max-w-48 text-[10px] leading-4 text-muted-foreground">{notice}</p>{/if}
 </div>
 

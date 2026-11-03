@@ -268,6 +268,9 @@ export default {
 	"avatarRestoreFailed": "无法恢复默认头像，请重试。",
 	"avatarBusy": "实例正在运行或任务进行中，暂时不能修改头像。",
 	"avatarInvalid": "无法使用这张图片，请换一张。",
+		"avatarRuntimeOutdated": "当前 Runtime 尚未支持头像接口，请完全退出并重启 Anvil。",
+		"avatarUnavailable": "无法连接 Runtime，请完全退出并重启 Anvil 后重试。",
+		"avatarTooLarge": "图片过大，无法上传。",
 		"disabledSuffix": "（已停用）"
 	},
 	mutationUnknown: "操作结果未确认，请刷新清单后再操作。",

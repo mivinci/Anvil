@@ -270,6 +270,9 @@ export default {
 		"avatarRestoreFailed": "Could not restore the default avatar. Please retry.",
 		"avatarBusy": "The instance is running or busy, so the avatar cannot be changed right now.",
 		"avatarInvalid": "This image cannot be used. Choose another one.",
+		"avatarRuntimeOutdated": "This Runtime does not support the avatar API yet. Quit Anvil completely and restart it.",
+		"avatarUnavailable": "Could not connect to Runtime. Quit Anvil completely and restart it, then retry.",
+		"avatarTooLarge": "The image is too large to upload.",
 		"disabledSuffix": "(disabled)"
 	},
 	mutationUnknown: "The result is unconfirmed. Refresh the list before making another change.",

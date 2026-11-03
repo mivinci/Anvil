@@ -56,6 +56,7 @@ const server = createServer(async (req, res) => {
 			puts++;
 			if (putFailure === 'busy') { json(res, { error: '实例正在运行', code: 'busy' }, 409); return; }
 			if (putFailure === 'invalid') { json(res, { error: 'invalid image', code: 'invalid' }, 400); return; }
+			if (putFailure === 'missing') { json(res, { error: 'not found', code: 'not_found' }, 404); return; }
 			const bytes = Buffer.concat(chunks);
 			avatar = { bytes, revision: createHash('sha256').update(bytes).digest('hex') };
 			json(res, { revision: avatar.revision }); return;
@@ -161,6 +162,14 @@ try {
 	await page.getByText('无法使用这张图片，请换一张。', { exact: true }).waitFor();
 	assert.equal(puts, 3);
 	assert.equal(await page.locator('img[src^="blob:"]').count(), 1, 'invalid upload must preserve the previous avatar');
+
+	putFailure = 'missing';
+	await page.locator('input[type="file"][aria-label="更换实例头像"]').setInputFiles({ name: 'missing.png', mimeType: 'image/png', buffer: PNG });
+	await page.getByRole('heading', { name: '裁剪头像', exact: true }).waitFor();
+	await page.getByRole('button', { name: '应用', exact: true }).click();
+	await page.getByText('当前 Runtime 尚未支持头像接口，请完全退出并重启 Anvil。', { exact: true }).waitFor();
+	assert.equal(puts, 4);
+	assert.equal(await page.locator('img[src^="blob:"]').count(), 1, 'outdated Runtime must preserve the previous avatar');
 
 	putFailure = null;
 	await page.setViewportSize({ width: 620, height: 420 });
