@@ -30,7 +30,7 @@ const compiled = compileModule(javascript, { filename: 'modpack-export-state.sve
 await writeFile(resolve(directory, 'state.mjs'), compiled);
 const { api } = await import(pathToFileURL(adapter).href);
 const { ModpackExportState } = await import(pathToFileURL(resolve(directory, 'state.mjs')).href);
-const options = { name: '海岛生存', versionId: '1.0.0', selection: { mods: true, resourcePacks: true, shaderPacks: true, config: true, worlds: false } };
+const options = { name: '海岛生存', versionId: '1.0.0', selection: { mods: true, resourcePacks: true, shaderPacks: true, config: true, worlds: false, avatar: false } };
 function operation(state = 'running', stage = 'collecting', requestId = 'request') {
   return { id: 1, requestId, name: 'test', state, cancelRequested: false,
     progress: { stage, completedFiles: 0, totalFiles: null, processedBytes: 0, totalBytes: null },

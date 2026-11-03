@@ -169,6 +169,17 @@ fn read_avatar(path: &Path) -> Result<Option<ClientAvatar>> {
     _ => Ok(None),
   }
 }
+/// Read the normalized avatar for an instance root; used by export and import staging.
+pub(crate) fn read_instance_avatar(root: &Path) -> Result<Option<ClientAvatar>> {
+  read_avatar(&root.join("avatar.png"))
+}
+
+/// Normalize and atomically write an imported avatar into a trusted staging root.
+pub(crate) fn write_instance_avatar(root: &Path, bytes: &[u8]) -> Result<()> {
+  let avatar = normalize(bytes)?;
+  storage::replace_file(&root.join("avatar.png"), &avatar.png)
+}
+
 impl ClientInstaller {
   pub async fn avatar(&self, name: &str) -> Result<Option<ClientAvatar>> {
     let id = client_instance_id(name)?;

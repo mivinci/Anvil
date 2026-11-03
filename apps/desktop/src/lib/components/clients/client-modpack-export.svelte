@@ -15,7 +15,7 @@
 	let open = $state(false);
 	let name = $state('');
 	let version = $state('1.0.0');
-	let selection = $state<ModpackExportSelection>({ mods: true, resourcePacks: true, shaderPacks: true, config: true, worlds: false });
+	let selection = $state<ModpackExportSelection>({ mods: true, resourcePacks: true, shaderPacks: true, config: true, worlds: false, avatar: false });
 	const operation = $derived(launches.forClient(client.name));
 	const busy = $derived(exports.active || exports.starting || launches.pending.includes(client.name) || launchActive(operation) || installs.active || installs.starting || resources.active || resources.starting);
 	const selected = $derived(Object.values(selection).some(Boolean));
@@ -25,12 +25,13 @@
 		{ key: 'shaderPacks', label: localeState.messages.instance.detail.shaders },
 		{ key: 'config', label: localeState.messages.instance.detail.config },
 		{ key: 'worlds', label: localeState.messages.instance.detail.worlds },
+		{ key: 'avatar', label: localeState.messages.instance.detail.avatar },
 	]);
 	function show() {
 		if (busy) return;
 		name = client.name;
 		version = client.modpackVersionId || '1.0.0';
-		selection = { mods: true, resourcePacks: true, shaderPacks: true, config: true, worlds: false };
+		selection = { mods: true, resourcePacks: true, shaderPacks: true, config: true, worlds: false, avatar: false };
 		exports.error = null;
 		open = true;
 	}

@@ -128,7 +128,7 @@ Runtime 使用固定 `app.q2q.anvil.runtime` 签名标识；本机与 Desktop/CL
 
 ## 整合包导入
 
-已确认在客户端“安装版本”左侧提供“导入”，选择本地 `.mrpack` 后由同一全局任务完成解析和安装，不增加确认弹窗；首期原版/Fabric。当前本地接入 Core index/ZIP、安装事务与共享资源、Runtime 上传/全局任务及桌面入口；真实下载、WebView 和游戏验收待维护者完成。Q2Q 的重定向 URL policy 已合入，Anvil 通过 git 依赖锁定其合并提交，Anvil 改动仍为本地未提交。按项实施与验收范围见[整合包导入](../todos/client-modpacks.md)。
+已确认在客户端“安装版本”左侧提供“导入”，选择本地 `.mrpack` 后由同一全局任务完成解析和安装，不增加确认弹窗；首期原版/Fabric。整合包可选携带实例头像（标准 `overrides/.anvil/avatar.png`，导入到实例根而非游戏目录，其他启动器只忽略该隐藏文件）；当前本地接入 Core index/ZIP、安装事务与共享资源、Runtime 上传/全局任务及桌面入口；真实下载、WebView 和游戏验收待维护者完成。Q2Q 的重定向 URL policy 已合入，Anvil 通过 git 依赖锁定其合并提交，Anvil 改动仍为本地未提交。按项实施与验收范围见[整合包导入](../todos/client-modpacks.md)。
 
 ## 整合包导出
 

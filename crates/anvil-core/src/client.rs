@@ -10,6 +10,7 @@ pub use modpack::modpack_version;
 mod removal;
 mod settings;
 pub use avatar::{ClientAvatar, MAX_AVATAR_INPUT_BYTES, MAX_AVATAR_PIXELS};
+pub(crate) use avatar::{read_instance_avatar, write_instance_avatar};
 pub use crashes::{ClientCrashReport, ClientCrashReportEntry, ClientCrashReports};
 pub use logs::ClientGameLog;
 pub use removal::ClientRemoval;

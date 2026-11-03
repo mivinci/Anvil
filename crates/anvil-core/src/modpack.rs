@@ -14,6 +14,7 @@ use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
 use url::Url;
 
+pub const AVATAR_OVERRIDE_PATH: &str = ".anvil/avatar.png";
 pub const MAX_INDEX_BYTES: usize = 8 * 1024 * 1024;
 const MAX_FILES: usize = 10_000;
 const MAX_FILE_BYTES: u64 = 1024 * 1024 * 1024;

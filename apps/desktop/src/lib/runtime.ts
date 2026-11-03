@@ -559,7 +559,7 @@ export interface ModpackExportOperation {
 	errorCode?: string | null;
 }
 export interface ModpackExportSelection {
-	mods: boolean; resourcePacks: boolean; shaderPacks: boolean; config: boolean; worlds: boolean;
+	mods: boolean; resourcePacks: boolean; shaderPacks: boolean; config: boolean; worlds: boolean; avatar: boolean;
 }
 export interface ModpackExportOptions {
 	name: string; versionId: string; selection: ModpackExportSelection;
