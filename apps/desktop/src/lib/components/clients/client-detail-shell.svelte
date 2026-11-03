@@ -28,7 +28,7 @@
 
 <div class="flex min-h-0 flex-1 overflow-hidden">
 	<PageSidebar open={sidebar.clients} id="client-detail-sidebar" label={localeState.messages.instance.detail.instanceSidebar}>
-		<div class="min-w-0 w-40 shrink-0 px-2 pb-4"><p class="truncate text-[13px] font-semibold" title={client?.name}>{client?.name ?? localeState.messages.instance.detail.details}</p><p class="mt-1 truncate text-[11px] text-muted-foreground">{client ? `Minecraft ${client.versionId}` : 'Minecraft Java'}</p></div>
+		<div class="min-w-0 w-40 shrink-0 px-2 pb-4"><p class="truncate text-[13px] font-semibold" title={client?.name}>{client?.name ?? localeState.messages.instance.detail.details}</p><p class="mt-1 truncate text-[12px] text-muted-foreground">{client ? `Minecraft ${client.versionId}` : 'Minecraft Java'}</p></div>
 		<nav aria-label={localeState.messages.instance.detail.navigation} class="w-40 shrink-0 space-y-1">
 			{#each items as item (item.href)}
 				<a href={item.href} aria-current={page.url.pathname === item.href ? 'page' : undefined} class={pageSidebarItemClass(page.url.pathname === item.href)}><item.icon size={15} strokeWidth={1.7} aria-hidden="true" />{item.label}</a>
@@ -43,7 +43,7 @@
 		{:else if !client}
 			<div class="px-5 py-4 text-[13px] text-muted-foreground" role="alert">{detail.error ?? localeState.messages.instance.detail.notFound}<button type="button" disabled={detail.loading} onclick={() => void detail.load(name)} class="ml-2 text-primary underline underline-offset-2 disabled:opacity-40">{localeState.messages.instance.detail.reload}</button><a href={resolve('/clients')} class="ml-2 text-primary underline underline-offset-2">{localeState.messages.instance.detail.backClients}</a></div>
 		{:else}
-			{#if detail.error}<p role="alert" class="px-5 pt-3 text-[11px] text-destructive">{localeState.messages.instance.detail.refreshKeep}<button type="button" disabled={detail.loading} onclick={() => void detail.load(name)} class="ml-2 underline underline-offset-2">{localeState.messages.instance.detail.retry}</button></p>{/if}
+			{#if detail.error}<p role="alert" class="px-5 pt-3 text-[12px] text-destructive">{localeState.messages.instance.detail.refreshKeep}<button type="button" disabled={detail.loading} onclick={() => void detail.load(name)} class="ml-2 underline underline-offset-2">{localeState.messages.instance.detail.retry}</button></p>{/if}
 			{@render children()}
 		{/if}
 	</div>

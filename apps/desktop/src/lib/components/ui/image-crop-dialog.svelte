@@ -215,7 +215,7 @@
 			<div class="flex items-start justify-between gap-3">
 				<div>
 					<Dialog.Title class="text-sm font-semibold">{messages.title}</Dialog.Title>
-					<Dialog.Description class="mt-1 text-[11px] leading-4 text-muted-foreground">{messages.description}</Dialog.Description>
+					<Dialog.Description class="mt-1 text-[12px] leading-4 text-muted-foreground">{messages.description}</Dialog.Description>
 				</div>
 				<button type="button" aria-label={localeState.messages.common.close} title={localeState.messages.common.close} onclick={onCancel} class="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring"><X size={14} aria-hidden="true" /></button>
 			</div>
@@ -257,7 +257,7 @@
 					<button type="button" aria-label={messages.reset} title={messages.reset} disabled={!ready} onclick={reset} class="grid size-8 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40"><RotateCcw size={14} aria-hidden="true" /></button>
 				</div>
 
-				<div class="flex flex-wrap items-center justify-between gap-1 text-[11px] text-muted-foreground">
+				<div class="flex flex-wrap items-center justify-between gap-1 text-[12px] text-muted-foreground">
 					<span class="min-w-0 truncate" title={fileLabel}>{fileLabel}</span>
 					<span>{messages.hint}</span>
 				</div>

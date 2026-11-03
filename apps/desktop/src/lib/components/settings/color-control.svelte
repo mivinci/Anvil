@@ -17,5 +17,5 @@
 		</label>
 		<input type="text" aria-label={localeState.messages.settings.hexColor(label)} aria-invalid={invalid} {value} maxlength={7} onchange={commit} class="w-16 bg-transparent font-mono text-xs text-foreground outline-none" spellcheck="false" />
 	</div>
-	{#if invalid}<p role="alert" class="mt-1 text-[11px] text-destructive">{localeState.messages.settings.flow.invalidColor}</p>{/if}
+	{#if invalid}<p role="alert" class="mt-1 text-[12px] text-destructive">{localeState.messages.settings.flow.invalidColor}</p>{/if}
 </div>

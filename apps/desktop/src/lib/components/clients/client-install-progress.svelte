@@ -46,7 +46,7 @@
 <div class="space-y-2.5">
 	<div>
 		<p class="truncate text-[13px] font-medium">{operation?.name ?? installs.intent?.name ?? 'Minecraft'}</p>
-		<p class="mt-1 truncate text-[11px] text-muted-foreground">Minecraft {(operation?.versionId ?? installs.intent?.versionId) === 'unknown' ? localeState.messages.clients.flow.pendingParsing : operation?.versionId ?? installs.intent?.versionId ?? '—'}{operation?.loader ? ` · Fabric ${operation.loader.version}` : ''}</p>
+		<p class="mt-1 truncate text-[12px] text-muted-foreground">Minecraft {(operation?.versionId ?? installs.intent?.versionId) === 'unknown' ? localeState.messages.clients.flow.pendingParsing : operation?.versionId ?? installs.intent?.versionId ?? '—'}{operation?.loader ? ` · Fabric ${operation.loader.version}` : ''}</p>
 	</div>
 
 	<div class="flex items-center gap-2">
@@ -58,13 +58,13 @@
 			{:else}<LoaderCircle size={12} class="animate-spin motion-reduce:animate-none" aria-hidden="true" />{/if}
 		</span>
 		<p role="status" class={`min-w-0 flex-1 truncate text-xs ${failed ? 'text-destructive' : 'text-muted-foreground'}`}>{statusLabel}</p>
-		{#if active && percent !== null}<span class="shrink-0 text-[11px] tabular-nums text-muted-foreground">{Math.round(percent)}%</span>{/if}
+		{#if active && percent !== null}<span class="shrink-0 text-[12px] tabular-nums text-muted-foreground">{Math.round(percent)}%</span>{/if}
 	</div>
 
 	{#if active}
 		<div>
 			<progress max="100" value={percent ?? undefined} aria-label={localeState.messages.clients.flow.installProgress} class="block h-1.5 w-full overflow-hidden rounded-full accent-primary [&::-webkit-progress-bar]:rounded-full [&::-webkit-progress-bar]:bg-chrome-hover [&::-webkit-progress-value]:rounded-full [&::-webkit-progress-value]:bg-primary"></progress>
-			<div class="mt-1.5 flex min-h-4 flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[11px] tabular-nums text-muted-foreground">
+			<div class="mt-1.5 flex min-h-4 flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[12px] tabular-nums text-muted-foreground">
 				{#if totalBytes !== null}<span>{operation?.progress.stage === 'java' ? localeState.messages.clients.flow.progress : localeState.messages.clients.flow.prepared} {formatBytes(Math.min(downloadedBytes, totalBytes))} / {formatBytes(totalBytes)}</span>{:else if files !== null}<span>{localeState.messages.clients.flow.files} {operation?.progress.completedFiles ?? 0} / {files}</span>{/if}
 				{#if showSpeed}<span aria-label={localeState.messages.clients.flow.speed}>{installs.bytesPerSecond === null ? '—' : `${formatBytes(installs.bytesPerSecond)}/s`}</span>{/if}
 			</div>
@@ -76,18 +76,18 @@
 			{#each completionStats as stat (stat.label)}
 				<div class="min-w-0 flex-1">
 					<p class="truncate text-[13px] font-medium tabular-nums text-foreground">{stat.value}</p>
-					<p class="mt-0.5 truncate text-[10px] text-muted-foreground">{stat.label}</p>
+					<p class="mt-0.5 truncate text-[12px] text-muted-foreground">{stat.label}</p>
 				</div>
 			{/each}
 		</div>
 	{/if}
 
-	{#if completed && library.loading}<p role="status" class="text-[11px] text-muted-foreground">{localeState.messages.clients.flow.refreshingClients}</p>{/if}
-	{#if completed && library.error}<div role="alert" class="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg bg-chrome-hover px-2.5 py-2 text-[11px] text-muted-foreground"><span>{localeState.messages.clients.flow.installedRefreshFailed}</span><button type="button" disabled={library.loading} onclick={() => void library.refresh()} class="rounded px-1 text-primary underline underline-offset-2 disabled:opacity-40">{localeState.messages.clients.flow.refreshAgain}</button></div>{/if}
-	{#if operation?.importRequestId && (failed || cancelled) && !installs.importFile}<p class="text-[11px] text-muted-foreground">{localeState.messages.clients.flow.reselectPack}</p>{/if}
-	{#if cancelled}<p class="text-[11px] leading-5 text-muted-foreground">{localeState.messages.clients.flow.cacheReusable}</p>{/if}
+	{#if completed && library.loading}<p role="status" class="text-[12px] text-muted-foreground">{localeState.messages.clients.flow.refreshingClients}</p>{/if}
+	{#if completed && library.error}<div role="alert" class="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg bg-chrome-hover px-2.5 py-2 text-[12px] text-muted-foreground"><span>{localeState.messages.clients.flow.installedRefreshFailed}</span><button type="button" disabled={library.loading} onclick={() => void library.refresh()} class="rounded px-1 text-primary underline underline-offset-2 disabled:opacity-40">{localeState.messages.clients.flow.refreshAgain}</button></div>{/if}
+	{#if operation?.importRequestId && (failed || cancelled) && !installs.importFile}<p class="text-[12px] text-muted-foreground">{localeState.messages.clients.flow.reselectPack}</p>{/if}
+	{#if cancelled}<p class="text-[12px] leading-5 text-muted-foreground">{localeState.messages.clients.flow.cacheReusable}</p>{/if}
 	{#if hasError}
-		<div role="alert" class="rounded-lg bg-destructive/5 px-2.5 py-2 text-xs text-destructive">{installs.error ?? runtimeErrorMessage(operation?.errorCode, localeState.current, cancelled ? localeState.messages.clients.flow.cancelInfo : operation?.importRequestId ? localeState.messages.clients.flow.importFailed : localeState.messages.clients.flow.installIncomplete)}<details class="mt-1 text-[11px] text-muted-foreground"><summary class="cursor-default">{localeState.messages.clients.flow.errorDetails}</summary><p class="mt-1 max-h-28 overflow-y-auto select-text whitespace-pre-wrap wrap-break-word">{installs.errorDetail ?? operation?.error}</p></details></div>
+		<div role="alert" class="rounded-lg bg-destructive/5 px-2.5 py-2 text-xs text-destructive">{installs.error ?? runtimeErrorMessage(operation?.errorCode, localeState.current, cancelled ? localeState.messages.clients.flow.cancelInfo : operation?.importRequestId ? localeState.messages.clients.flow.importFailed : localeState.messages.clients.flow.installIncomplete)}<details class="mt-1 text-[12px] text-muted-foreground"><summary class="cursor-default">{localeState.messages.clients.flow.errorDetails}</summary><p class="mt-1 max-h-28 overflow-y-auto select-text whitespace-pre-wrap wrap-break-word">{installs.errorDetail ?? operation?.error}</p></details></div>
 	{/if}
 
 	<div class="flex flex-wrap items-center justify-end gap-1.5">

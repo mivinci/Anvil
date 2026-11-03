@@ -102,7 +102,7 @@
 		<img src="/logo.png" alt="" width="64" height="64" class="size-16 shrink-0 rounded-xl object-cover" />
 		<div class="min-w-0">
 			<p class="text-xl font-semibold tracking-tight">Anvil</p>
-			<p class="mt-1 text-[11px] leading-5 text-muted-foreground">{localeState.messages.settings.flow.productDescription}</p>
+			<p class="mt-1 text-[12px] leading-5 text-muted-foreground">{localeState.messages.settings.flow.productDescription}</p>
 		</div>
 	</div>
 	<section aria-label={localeState.messages.settings.flow.versions} class="space-y-2">
@@ -135,14 +135,14 @@
 		</div>
 		<div class="divide-y divide-border rounded-lg bg-card px-3.5 text-[13px]">
 			<div class="flex items-center justify-between gap-3 py-2">
-				<div class="min-w-0"><p>{localeState.messages.settings.flow.logDirectory}</p><p class="mt-1 select-text break-all text-[11px] leading-4 text-muted-foreground">{logging?.directory ?? (logsLoading ? localeState.messages.settings.flow.reading : isTauri() ? localeState.messages.settings.flow.directoryUnavailable : localeState.messages.settings.flow.desktopOnly)}</p></div>
+				<div class="min-w-0"><p>{localeState.messages.settings.flow.logDirectory}</p><p class="mt-1 select-text break-all text-[12px] leading-4 text-muted-foreground">{logging?.directory ?? (logsLoading ? localeState.messages.settings.flow.reading : isTauri() ? localeState.messages.settings.flow.directoryUnavailable : localeState.messages.settings.flow.desktopOnly)}</p></div>
 				<button type="button" disabled={!logging?.directory || logsOpening} onclick={() => void openLogs()} class="flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-[12px] text-muted-foreground transition-colors hover:bg-chrome-hover hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40"><FolderOpen size={14} aria-hidden="true" />{logsOpening ? localeState.messages.settings.flow.opening : localeState.messages.settings.flow.openDirectory}</button>
 			</div>
 			{#each [['Shell', logging?.fileLoggingAvailable], ['Runtime', runtimeFileLogging]] as [label, available]}
 				<div class="flex min-h-9 items-center justify-between gap-3 py-2"><span>{label}</span><span class="text-right text-[12px] text-muted-foreground" class:text-destructive={available === false}>{logState(available as boolean | null | undefined)}</span></div>
 			{/each}
 		</div>
-		<p class="text-[11px] leading-4 text-muted-foreground">{localeState.messages.settings.flow.logRotation}</p>
+		<p class="text-[12px] leading-4 text-muted-foreground">{localeState.messages.settings.flow.logRotation}</p>
 		{#if logsError}<p role="alert" class="text-[12px] text-destructive">{logsError}</p>{/if}
 	</section>
 	<div class="divide-y divide-border rounded-lg bg-card px-3.5 text-[13px]">

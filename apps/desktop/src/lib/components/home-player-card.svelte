@@ -26,7 +26,7 @@
 	let hadActive = false;
 
 	const itemClass = 'flex min-h-8 cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-[12px] outline-none data-[highlighted]:bg-chrome-hover data-[disabled]:opacity-40';
-	const actionClass = 'inline-flex h-7 items-center gap-1.5 rounded-lg bg-chrome-hover px-2 text-[11px] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40';
+	const actionClass = 'inline-flex h-7 items-center gap-1.5 rounded-lg bg-chrome-hover px-2 text-[12px] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40';
 
 	function clientFor(id: string | null | undefined) {
 		if (!id) return null;
@@ -78,7 +78,7 @@
 				<AccountAvatar account={current} size={56} />
 				<span class="min-w-0 flex-1">
 					<span class="block truncate text-[15px] font-semibold leading-5" title={current.username}>{current.username}</span>
-					<span class={`mt-1 inline-flex max-w-full items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${currentExpired ? 'bg-destructive/10 text-destructive' : 'bg-primary/10 text-primary'}`} role="status">{#if currentExpired}<TriangleAlert size={10} class="shrink-0" aria-hidden="true" />{/if}<span class="truncate">{accountStatus}</span></span>
+					<span class={`mt-1 inline-flex max-w-full items-center gap-1 rounded-full px-1.5 py-0.5 text-[12px] font-medium ${currentExpired ? 'bg-destructive/10 text-destructive' : 'bg-primary/10 text-primary'}`} role="status">{#if currentExpired}<TriangleAlert size={10} class="shrink-0" aria-hidden="true" />{/if}<span class="truncate">{accountStatus}</span></span>
 				</span>
 				<ChevronDown size={14} class="shrink-0 text-muted-foreground" aria-hidden="true" />
 			</DropdownMenu.Trigger>
@@ -89,7 +89,7 @@
 					</DropdownMenu.Item>
 					<DropdownMenu.Separator class="mx-1.5 my-1 h-px bg-border/60" />
 				{/if}
-				<p class="px-2 py-1.5 text-[10px] font-medium text-chrome-muted">{localeState.messages.home.flow.account}</p>
+				<p class="px-2 py-1.5 text-[12px] font-medium text-chrome-muted">{localeState.messages.home.flow.account}</p>
 				{#each accounts.accounts as account (account.id)}
 					<DropdownMenu.Item class={itemClass} disabled={accounts.busy} onSelect={() => void switchAccount(account.id)}>
 						<AccountAvatar {account} size={22} />
@@ -105,21 +105,21 @@
 					<LogOut size={14} strokeWidth={1.75} aria-hidden="true" /><span class="flex-1">{localeState.messages.home.flow.signOut}</span>
 				</DropdownMenu.Item>
 				{#if accounts.error}
-					<p class="px-2 py-1 text-[10px] leading-4 text-destructive" role="alert">{accounts.error.message}</p>
+					<p class="px-2 py-1 text-[12px] leading-4 text-destructive" role="alert">{accounts.error.message}</p>
 				{/if}
 			</DropdownMenu.Content>
 		</DropdownMenu.Root>
 	{:else if loadingAccount}
 		<div class="flex items-center gap-3 p-1" role="status">
 			<span class="grid size-14 shrink-0 place-items-center rounded-xl bg-chrome-hover text-muted-foreground"><UserRound size={22} aria-hidden="true" /></span>
-			<span class="text-[11px] text-muted-foreground">{localeState.messages.home.flow.loadingAccounts}</span>
+			<span class="text-[12px] text-muted-foreground">{localeState.messages.home.flow.loadingAccounts}</span>
 		</div>
 	{:else}
 		<button type="button" onclick={login} class="flex w-full items-center gap-3 rounded-lg p-1 text-left transition-colors hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring">
 			<span class="grid size-14 shrink-0 place-items-center rounded-xl bg-chrome-hover text-muted-foreground"><LogIn size={22} aria-hidden="true" /></span>
 			<span class="min-w-0">
 				<span class="block text-[13px] font-medium">{localeState.messages.home.flow.signInMicrosoft}</span>
-				<span class="mt-1 block text-[10px] text-muted-foreground">{localeState.messages.home.flow.signInStats}</span>
+				<span class="mt-1 block text-[12px] text-muted-foreground">{localeState.messages.home.flow.signInStats}</span>
 			</span>
 		</button>
 	{/if}
@@ -127,19 +127,19 @@
 	{#if current}
 		<div class="mt-3 grid grid-cols-2 gap-2 min-[600px]:grid-cols-4 min-[900px]:grid-cols-2" aria-busy={stats.loading}>
 			<div class="rounded-lg bg-chrome-hover px-2 py-1.5">
-				<p class="text-[10px] text-muted-foreground">{localeState.messages.home.flow.totalPlay}</p>
+				<p class="text-[12px] text-muted-foreground">{localeState.messages.home.flow.totalPlay}</p>
 				<p class="mt-1 truncate text-[14px] font-semibold tabular-nums" title={totalLabel}>{totalLabel}</p>
 			</div>
 			<div class="rounded-lg bg-chrome-hover px-2 py-1.5">
-				<p class="text-[10px] text-muted-foreground">{localeState.messages.home.flow.last7Days}</p>
+				<p class="text-[12px] text-muted-foreground">{localeState.messages.home.flow.last7Days}</p>
 				<p class="mt-1 truncate text-[14px] font-semibold tabular-nums" title={weekLabel}>{weekLabel}</p>
 			</div>
 			<div class="rounded-lg bg-chrome-hover px-2 py-1.5">
-				<p class="text-[10px] text-muted-foreground">{localeState.messages.home.flow.launchCount}</p>
+				<p class="text-[12px] text-muted-foreground">{localeState.messages.home.flow.launchCount}</p>
 				<p class="mt-1 truncate text-[14px] font-semibold tabular-nums" title={launchesLabel}>{launchesLabel}</p>
 			</div>
 			<div class="rounded-lg bg-chrome-hover px-2 py-1.5">
-				<p class="text-[10px] text-muted-foreground">{localeState.messages.home.flow.mostPlayed}</p>
+				<p class="text-[12px] text-muted-foreground">{localeState.messages.home.flow.mostPlayed}</p>
 				<p class="mt-1 truncate text-[14px] font-semibold" title={mostPlayedLabel}>{mostPlayedLabel}</p>
 			</div>
 		</div>
@@ -157,6 +157,6 @@
 	</div>
 
 	{#if current && stats.error}
-		<p role="status" class="mt-2 text-[10px] leading-4 text-muted-foreground">{localeState.messages.home.flow.statsUnavailable} <button type="button" class="text-primary hover:underline" onclick={() => void stats.refresh()}>{localeState.messages.home.flow.retry}</button></p>
+		<p role="status" class="mt-2 text-[12px] leading-4 text-muted-foreground">{localeState.messages.home.flow.statsUnavailable} <button type="button" class="text-primary hover:underline" onclick={() => void stats.refresh()}>{localeState.messages.home.flow.retry}</button></p>
 	{/if}
 </section>

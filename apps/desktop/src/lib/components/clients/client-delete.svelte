@@ -32,10 +32,10 @@
 
 <section aria-label={localeState.messages.clients.delete} class="mt-6 rounded-lg bg-card px-3.5 py-3">
 	<div class="flex items-center justify-between gap-4">
-		<div class="min-w-0"><h2 class="text-[13px] font-medium">{localeState.messages.clients.delete}</h2><p class="mt-1 text-[11px] leading-5 text-muted-foreground">{inUse ? localeState.messages.clients.deleteBusy : statusUnknown ? localeState.messages.clients.deleteChecking : localeState.messages.clients.deleteSummary}</p></div>
+		<div class="min-w-0"><h2 class="text-[13px] font-medium">{localeState.messages.clients.delete}</h2><p class="mt-1 text-[12px] leading-5 text-muted-foreground">{inUse ? localeState.messages.clients.deleteBusy : statusUnknown ? localeState.messages.clients.deleteChecking : localeState.messages.clients.deleteSummary}</p></div>
 		<button type="button" disabled={blocked} onclick={() => { open = true; }} class="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs text-destructive hover:bg-destructive/10 focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40"><Trash2 size={13} aria-hidden="true" />{localeState.messages.clients.delete}</button>
 	</div>
-	{#if removal.uncertain}<div role="alert" class="mt-2 text-[11px] leading-5 text-muted-foreground"><p>{pendingHere ? removal.error : localeState.messages.clients.deleteOther(removal.name)}</p><button type="button" class="mt-1 text-primary disabled:opacity-40" disabled={removal.busy} onclick={() => void reconcile()}>{localeState.messages.clients.deleteRefresh}</button></div>{/if}
+	{#if removal.uncertain}<div role="alert" class="mt-2 text-[12px] leading-5 text-muted-foreground"><p>{pendingHere ? removal.error : localeState.messages.clients.deleteOther(removal.name)}</p><button type="button" class="mt-1 text-primary disabled:opacity-40" disabled={removal.busy} onclick={() => void reconcile()}>{localeState.messages.clients.deleteRefresh}</button></div>{/if}
 </section>
 
 <Dialog.Root open={open} onOpenChange={value => { if (!removal.busy) open = value; }}>

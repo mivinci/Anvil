@@ -40,14 +40,14 @@
 	});
 </script>
 
-<div class="mt-3 grid min-h-12 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 rounded-lg bg-primary/8 px-2.5 py-2 text-[11px]" aria-label={localeState.messages.home.flow.quickPlay}>
+<div class="mt-3 grid min-h-12 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 rounded-lg bg-primary/8 px-2.5 py-2 text-[12px]" aria-label={localeState.messages.home.flow.quickPlay}>
 	{#if name}
 		<a href={resolve('/clients/[name]', { name: name.toLowerCase() })} class="min-w-0 rounded focus-visible:outline-2 focus-visible:outline-ring" title={name}>
 			<span class="flex items-center gap-1.5">
 				<span class={`size-1.5 shrink-0 rounded-full ${launches.uncertain ? 'bg-muted-foreground/50' : running ? 'bg-emerald-500' : 'bg-primary/60'}`} aria-hidden="true"></span>
 				<span class="truncate font-medium">{client?.name ?? name}</span>
 			</span>
-			<span class="mt-0.5 ml-3 block truncate text-[10px] text-muted-foreground" role="status" title={status}>{status}</span>
+			<span class="mt-0.5 ml-3 block truncate text-[12px] text-muted-foreground" role="status" title={status}>{status}</span>
 		</a>
 		{#if launches.uncertain}
 			<button type="button" class={iconAction} onclick={() => void launches.sync()} aria-label={localeState.messages.home.flow.refreshRunning} title={localeState.messages.home.flow.refreshRunning}><RefreshCw size={13} aria-hidden="true" /></button>
@@ -56,13 +56,13 @@
 		{:else if client}
 			<ClientLaunchControls {client} compact feedback reserveCancel={false} />
 		{/if}
-		{#if active.length > 1}<a href={resolve('/clients')} class="col-span-2 mt-1 ml-3 w-fit rounded text-[10px] text-primary hover:underline">{localeState.messages.clients.otherActive(active.length - 1)}</a>{/if}
+		{#if active.length > 1}<a href={resolve('/clients')} class="col-span-2 mt-1 ml-3 w-fit rounded text-[12px] text-primary hover:underline">{localeState.messages.clients.otherActive(active.length - 1)}</a>{/if}
 	{:else if library.error}
 		<span class="text-muted-foreground">{localeState.messages.home.flow.instanceUnavailable}</span><button type="button" class={iconAction} onclick={() => void library.refresh()} aria-label={localeState.messages.home.flow.reloadInstances}><RefreshCw size={13} aria-hidden="true" /></button>
 	{:else if !library.loaded || historyLoading}
 		<span class="text-muted-foreground" role="status">{localeState.messages.home.flow.loadingRecent}</span><LoaderCircle size={13} class="animate-spin text-muted-foreground motion-reduce:animate-none" aria-hidden="true" />
 	{:else}
-		<div class="min-w-0"><p class="font-medium">{library.clients.length ? localeState.messages.home.flow.chooseInstance : localeState.messages.home.flow.firstPlay}</p><p class="mt-0.5 text-[10px] text-muted-foreground">{library.clients.length ? localeState.messages.home.flow.continueWorld : localeState.messages.home.flow.installFirst}</p></div>
+		<div class="min-w-0"><p class="font-medium">{library.clients.length ? localeState.messages.home.flow.chooseInstance : localeState.messages.home.flow.firstPlay}</p><p class="mt-0.5 text-[12px] text-muted-foreground">{library.clients.length ? localeState.messages.home.flow.continueWorld : localeState.messages.home.flow.installFirst}</p></div>
 		<a href={resolve('/clients')} class={iconAction} aria-label={library.clients.length ? localeState.messages.home.flow.openLibrary : localeState.messages.home.flow.installGame} title={library.clients.length ? localeState.messages.home.flow.openLibrary : localeState.messages.home.flow.installGame}>{#if library.clients.length}<Gamepad2 size={15} aria-hidden="true" />{:else}<Plus size={15} aria-hidden="true" />{/if}</a>
 	{/if}
 </div>

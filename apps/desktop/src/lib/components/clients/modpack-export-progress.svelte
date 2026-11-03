@@ -24,20 +24,20 @@
 			{:else}<LoaderCircle size={12} class="animate-spin motion-reduce:animate-none" aria-hidden="true" />{/if}
 		</span>
 		<p role="status" class={`min-w-0 flex-1 truncate ${operation?.state === 'failed' ? 'text-destructive' : 'text-muted-foreground'}`}>{exports.label}</p>
-		{#if percent !== null && exports.active}<span class="shrink-0 text-[11px] tabular-nums text-muted-foreground">{Math.round(percent)}%</span>{/if}
+		{#if percent !== null && exports.active}<span class="shrink-0 text-[12px] tabular-nums text-muted-foreground">{Math.round(percent)}%</span>{/if}
 	</div>
 	{#if operation}
-		<p class="mt-1 truncate text-[11px] text-muted-foreground" title={operation.name}>{operation.name}</p>
+		<p class="mt-1 truncate text-[12px] text-muted-foreground" title={operation.name}>{operation.name}</p>
 		{#if exports.active}
 			<div class="mt-2 h-1 overflow-hidden rounded-full bg-chrome-hover"><div class="h-full rounded-full bg-primary transition-[width] duration-300 motion-reduce:transition-none" style:width={`${percent ?? 0}%`}></div></div>
-			<p class="mt-1.5 text-[11px] tabular-nums text-muted-foreground">{operation.progress.totalFiles === null ? localeState.messages.instance.detail.collectingFiles : localeState.messages.instance.fileProgress(operation.progress.completedFiles, operation.progress.totalFiles)}{#if operation.progress.totalBytes !== null} · {formatBytes(operation.progress.processedBytes)} / {formatBytes(operation.progress.totalBytes)}{/if}</p>
+			<p class="mt-1.5 text-[12px] tabular-nums text-muted-foreground">{operation.progress.totalFiles === null ? localeState.messages.instance.detail.collectingFiles : localeState.messages.instance.fileProgress(operation.progress.completedFiles, operation.progress.totalFiles)}{#if operation.progress.totalBytes !== null} · {formatBytes(operation.progress.processedBytes)} / {formatBytes(operation.progress.totalBytes)}{/if}</p>
 		{/if}
 		{#if operation.state === 'completed' && operation.result}
-			<p class="mt-1.5 break-all text-[11px] leading-4 text-muted-foreground">{localeState.messages.instance.detail.savedTo} {operation.result.path}</p>
-			<p class="mt-1 text-[10px] text-muted-foreground">{formatBytes(operation.result.size)} · {localeState.messages.instance.count(operation.result.files, 'files')}</p>
+			<p class="mt-1.5 break-all text-[12px] leading-4 text-muted-foreground">{localeState.messages.instance.detail.savedTo} {operation.result.path}</p>
+			<p class="mt-1 text-[12px] text-muted-foreground">{formatBytes(operation.result.size)} · {localeState.messages.instance.count(operation.result.files, 'files')}</p>
 		{/if}
-		{#if operation.error || exports.errorDetail}<details class="mt-2 text-[11px] text-muted-foreground"><summary>{localeState.messages.errors.technicalDetails}</summary><p class="whitespace-pre-wrap break-words">{exports.errorDetail ?? operation.error}</p></details>{/if}
-		{#if operation.error || exports.error}<p role="alert" class="mt-2 break-words text-[11px] leading-5 text-destructive">{exports.error ?? runtimeErrorMessage(operation.errorCode, localeState.current, localeState.messages.instance.detail.exportFailed)}</p>{/if}
+		{#if operation.error || exports.errorDetail}<details class="mt-2 text-[12px] text-muted-foreground"><summary>{localeState.messages.errors.technicalDetails}</summary><p class="whitespace-pre-wrap break-words">{exports.errorDetail ?? operation.error}</p></details>{/if}
+		{#if operation.error || exports.error}<p role="alert" class="mt-2 break-words text-[12px] leading-5 text-destructive">{exports.error ?? runtimeErrorMessage(operation.errorCode, localeState.current, localeState.messages.instance.detail.exportFailed)}</p>{/if}
 	{/if}
 	<div class="mt-2 flex flex-wrap items-center justify-end gap-1.5">
 		{#if exports.active}
@@ -47,5 +47,5 @@
 		{/if}
 		{#if exports.error || exports.uncertain}<button type="button" class={button} disabled={exports.syncing || exports.starting} onclick={() => void exports.sync()}>{exports.syncing ? localeState.messages.instance.detail.querying : localeState.messages.instance.detail.refreshStatus}</button>{/if}
 	</div>
-	{#if operation?.state === 'completed'}<p class="mt-1 flex items-center gap-1 text-[10px] text-muted-foreground"><Download size={11} aria-hidden="true" />{localeState.messages.instance.detail.sharePack}</p>{/if}
+	{#if operation?.state === 'completed'}<p class="mt-1 flex items-center gap-1 text-[12px] text-muted-foreground"><Download size={11} aria-hidden="true" />{localeState.messages.instance.detail.sharePack}</p>{/if}
 </section>

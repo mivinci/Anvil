@@ -135,13 +135,13 @@
 				<p class="text-xs leading-5 text-chrome-muted">{localeState.messages.account.flow.loginIntro}</p>
 			{:else if phase === 'code' && authorization}
 				<div class="rounded-xl bg-chrome-hover px-3 py-3 text-center">
-					<p class="mb-2 text-[11px] text-chrome-muted">{localeState.messages.account.flow.enterCode}</p>
+					<p class="mb-2 text-[12px] text-chrome-muted">{localeState.messages.account.flow.enterCode}</p>
 					<code class="block select-all font-mono text-2xl leading-8 font-semibold tracking-[0.15em] break-all" aria-label={localeState.messages.account.flow.code}>{authorization.userCode}</code>
-					<button type="button" class={`${secondaryClass} mt-1 h-7 px-2 text-[11px]`} disabled={copying} onclick={() => void copyCode()}>
+					<button type="button" class={`${secondaryClass} mt-1 h-7 px-2 text-[12px]`} disabled={copying} onclick={() => void copyCode()}>
 						{#if copied}<Check size={12} aria-hidden="true" />{localeState.messages.account.flow.copied}{:else}<Copy size={12} aria-hidden="true" />{localeState.messages.account.flow.copyCode}{/if}
 					</button>
 				</div>
-				<div class="mt-2 flex items-center justify-between gap-2 text-[11px] text-chrome-muted">
+				<div class="mt-2 flex items-center justify-between gap-2 text-[12px] text-chrome-muted">
 					<span role="status">{localeState.messages.account.flow.waitingAuthorization}</span><span>{localeState.messages.account.expiresIn(remainingTime(authorization.expiresAt, now))}</span>
 				</div>
 			{:else if phase === 'success'}
@@ -160,7 +160,7 @@
 			{/if}
 			{#if error}<p class="mt-3 rounded-lg bg-destructive/8 px-2.5 py-2 text-xs leading-5 text-destructive" role="alert">{error}</p>{/if}
 			{#if error && accounts.loginErrorDetail}
-				<details class="mt-2 text-[11px] leading-4 text-chrome-muted">
+				<details class="mt-2 text-[12px] leading-4 text-chrome-muted">
 					<summary class="cursor-default rounded py-1 focus-visible:outline-2 focus-visible:outline-ring">{localeState.messages.account.flow.errorDetails}</summary>
 					<p class="mt-1 max-h-28 overflow-y-auto rounded-lg bg-chrome-hover px-2.5 py-2 select-text whitespace-pre-wrap wrap-break-word">{accounts.loginErrorDetail}</p>
 				</details>

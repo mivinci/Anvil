@@ -105,12 +105,12 @@
 			</div>
 			<div class="min-w-0">
 				<p class="truncate text-[13px] leading-4 font-medium">{currentAccount?.username ?? localeState.messages.account.flow.localPlayer}</p>
-				<p class="mt-0.5 text-[11px] leading-4 text-chrome-muted">{accountState.loginRunning || accountState.loginStarting ? localeState.messages.account.flow.loggingIn : loading ? localeState.messages.account.flow.loadingAccounts : accountState.verifying ? localeState.messages.account.flow.verifyingLogin : currentAccount ? (currentExpired ? localeState.messages.account.flow.loginExpiredHint : localeState.messages.account.flow.minecraftJava) : loaded ? localeState.messages.account.flow.notSignedIn : localeState.messages.account.flow.microsoft}</p>
+				<p class="mt-0.5 text-[12px] leading-4 text-chrome-muted">{accountState.loginRunning || accountState.loginStarting ? localeState.messages.account.flow.loggingIn : loading ? localeState.messages.account.flow.loadingAccounts : accountState.verifying ? localeState.messages.account.flow.verifyingLogin : currentAccount ? (currentExpired ? localeState.messages.account.flow.loginExpiredHint : localeState.messages.account.flow.minecraftJava) : loaded ? localeState.messages.account.flow.notSignedIn : localeState.messages.account.flow.microsoft}</p>
 			</div>
 		</div>
 		<DropdownMenu.Separator class="mx-1.5 my-1 h-px bg-border/60" />
 		{#if error}
-			<div class="flex items-center justify-between gap-2 px-2 py-1.5 text-[11px] leading-4 text-chrome-muted" role="alert">
+			<div class="flex items-center justify-between gap-2 px-2 py-1.5 text-[12px] leading-4 text-chrome-muted" role="alert">
 				<span class="truncate">{loaded ? localeState.messages.account.flow.actionIncomplete : localeState.messages.account.flow.unavailable}</span>
 				<button
 					type="button"
@@ -119,7 +119,7 @@
 					onclick={() => void refreshAccounts()}
 				>{localeState.messages.account.flow.retry}</button>
 			</div>
-			<details class="px-2 pb-2 text-[11px] text-chrome-muted"><summary>{localeState.messages.account.flow.errorDetails}</summary><p class="mt-1 break-words">{menuError ?? accountState.error?.detail}</p></details>
+			<details class="px-2 pb-2 text-[12px] text-chrome-muted"><summary>{localeState.messages.account.flow.errorDetails}</summary><p class="mt-1 break-words">{menuError ?? accountState.error?.detail}</p></details>
 		{/if}
 		<DropdownMenu.Item class={itemClass} disabled={loading || accountState.pendingAction !== null} onSelect={() => void openLogin()}>
 			<LogIn size={14} strokeWidth={1.75} aria-hidden="true" />{accountState.loginRunning || accountState.loginStarting ? localeState.messages.account.flow.viewLogin : currentAccount ? (currentExpired ? localeState.messages.account.flow.reauthenticate : localeState.messages.account.flow.addAccount) : localeState.messages.account.flow.microsoftSignIn}
@@ -144,7 +144,7 @@
 			</DropdownMenu.SubTrigger>
 			<DropdownMenu.SubContent sideOffset={4} collisionPadding={8} class={subContentClass}>
 				<DropdownMenu.Group>
-					<DropdownMenu.GroupHeading class="px-2 py-1 text-[10px] font-medium text-chrome-muted">{localeState.messages.account.flow.appearance}</DropdownMenu.GroupHeading>
+					<DropdownMenu.GroupHeading class="px-2 py-1 text-[12px] font-medium text-chrome-muted">{localeState.messages.account.flow.appearance}</DropdownMenu.GroupHeading>
 					{#each appearanceOptions as option (option.value)}
 						{@const Icon = option.icon}
 						<DropdownMenu.Item class={itemClass} onSelect={() => onAppearanceChange(option.value)}>

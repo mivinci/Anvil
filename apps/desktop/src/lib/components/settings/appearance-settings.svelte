@@ -74,9 +74,9 @@
 			<div class="flex min-h-10 items-center justify-between gap-4 py-2"><div><span class="text-[13px]">{localeState.messages.settings.flow.windowMaterial}</span></div><span class="shrink-0 text-xs text-muted-foreground">{localeState.messages.settings.flow.frostedGlass}</span></div>
 		</div>
 		<div class="flex flex-wrap items-center justify-between gap-3 pt-2">
-			<p class="text-[11px] text-muted-foreground">{appearance.colors.theme === 'custom' ? localeState.messages.settings.flow.customHint : localeState.messages.settings.flow.presetHint}</p>
+			<p class="text-[12px] text-muted-foreground">{appearance.colors.theme === 'custom' ? localeState.messages.settings.flow.customHint : localeState.messages.settings.flow.presetHint}</p>
 			<button type="button" onclick={() => appearance.colors.theme === 'custom' ? appearance.resetColors() : appearance.customizeTheme()} class="shrink-0 rounded px-1.5 py-1 text-xs text-muted-foreground hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring">{appearance.colors.theme === 'custom' ? localeState.messages.settings.flow.resetColors : localeState.messages.settings.flow.customize}</button>
 		</div>
-		{#if appearance.saveError}<p role="alert" class="text-[11px] text-destructive">{appearance.saveError}</p>{/if}
+		{#if appearance.saveError}<p role="alert" class="text-[12px] text-destructive">{appearance.saveError}</p>{/if}
 	</section>
 </div>

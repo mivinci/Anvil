@@ -63,7 +63,7 @@
 	<h3 id="client-loader-title" class="shrink-0 text-[13px] font-medium">{localeState.messages.clients.flow.loader}</h3>
 	<div role="group" aria-label={localeState.messages.clients.flow.chooseModLoader} class="mt-2 grid shrink-0 grid-cols-4 gap-2">
 		{#each options as option (option.value)}
-			<button type="button" aria-pressed={value === option.value} onclick={() => value = option.value} class={`min-w-0 rounded-lg border px-2 py-2 text-left transition-colors focus-visible:outline-2 focus-visible:outline-ring ${value === option.value ? 'border-primary/40 bg-chrome-selected' : 'border-border bg-card hover:bg-chrome-hover'}`}><span class={`block truncate text-xs font-medium ${value === option.value ? 'text-accent-foreground' : 'text-foreground'}`}>{option.label}</span><span class="mt-1 block truncate text-[10px] text-muted-foreground">{option.hint}</span></button>
+			<button type="button" aria-pressed={value === option.value} onclick={() => value = option.value} class={`min-w-0 rounded-lg border px-2 py-2 text-left transition-colors focus-visible:outline-2 focus-visible:outline-ring ${value === option.value ? 'border-primary/40 bg-chrome-selected' : 'border-border bg-card hover:bg-chrome-hover'}`}><span class={`block truncate text-xs font-medium ${value === option.value ? 'text-accent-foreground' : 'text-foreground'}`}>{option.label}</span><span class="mt-1 block truncate text-[12px] text-muted-foreground">{option.hint}</span></button>
 		{/each}
 	</div>
 	{#if value === 'fabric'}
@@ -86,11 +86,11 @@
 				</SelectableList>
 			{/if}
 		</div>
-		{#if error && versions.length > 0}<p role="status" class="mt-1 text-[11px] text-muted-foreground">{localeState.messages.clients.catalogKept}</p>{/if}
-		{#if error}<details class="mt-1 text-[11px] text-muted-foreground"><summary>{localeState.messages.errors.technicalDetails}</summary><p class="whitespace-pre-wrap break-words">{error}</p></details>{/if}
+		{#if error && versions.length > 0}<p role="status" class="mt-1 text-[12px] text-muted-foreground">{localeState.messages.clients.catalogKept}</p>{/if}
+		{#if error}<details class="mt-1 text-[12px] text-muted-foreground"><summary>{localeState.messages.errors.technicalDetails}</summary><p class="whitespace-pre-wrap break-words">{error}</p></details>{/if}
 	{:else if value !== 'vanilla'}
-		<div class="mt-2 flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2"><span class="text-xs">{localeState.messages.clients.loaderVersion(selected.label)}</span><span aria-disabled="true" class="text-[11px] text-muted-foreground">{localeState.messages.clients.flow.loaderUnavailable}</span></div>
+		<div class="mt-2 flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2"><span class="text-xs">{localeState.messages.clients.loaderVersion(selected.label)}</span><span aria-disabled="true" class="text-[12px] text-muted-foreground">{localeState.messages.clients.flow.loaderUnavailable}</span></div>
 	{:else}
-		<p class="mt-2 text-[11px] leading-4 text-muted-foreground">{localeState.messages.clients.flow.vanillaDescription}</p>
+		<p class="mt-2 text-[12px] leading-4 text-muted-foreground">{localeState.messages.clients.flow.vanillaDescription}</p>
 	{/if}
 </section>

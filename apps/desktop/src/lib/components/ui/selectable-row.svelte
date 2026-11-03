@@ -25,6 +25,6 @@
 	{...rest}
 >
 	<span class="flex min-w-0 flex-1 items-center gap-2">{@render children()}</span>
-	{#if trailing}<span class="shrink-0 text-[11px] text-muted-foreground">{@render trailing()}</span>{/if}
+	{#if trailing}<span class="shrink-0 text-[12px] text-muted-foreground">{@render trailing()}</span>{/if}
 	{#if showCheck}<span class="grid size-[13px] shrink-0 place-items-center" aria-hidden="true">{#if selected}<Check size={13} class="text-primary" />{/if}</span>{/if}
 </button>

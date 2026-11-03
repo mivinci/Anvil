@@ -83,12 +83,12 @@
 					{#if pickerOpen}<Popover.Portal to=".app-window">
 					<Popover.Content side="bottom" align="start" sideOffset={8} collisionPadding={12} class="z-30 w-80 max-w-[calc(100vw-32px)] rounded-xl border border-border bg-popover p-2 text-popover-foreground shadow-lg outline-none" aria-label={localeState.messages.mods.discovery.chooseModTarget}>
 						<label class="mb-2 flex h-8 items-center gap-2 rounded-lg bg-chrome-hover px-2.5"><Search size={13} class="shrink-0 text-muted-foreground" aria-hidden="true" /><input type="search" bind:value={instanceSearch} placeholder={localeState.messages.mods.discovery.searchInstanceHint} aria-label={localeState.messages.mods.discovery.searchTarget} class="min-w-0 flex-1 bg-transparent text-xs outline-none" /></label>
-						{#if library.error}<p role="alert" class="mb-2 px-2 text-[11px] text-destructive">{library.loaded ? localeState.messages.mods.discovery.instancesRefreshFailed : localeState.messages.mods.discovery.instancesReadFailed}</p>{/if}
+						{#if library.error}<p role="alert" class="mb-2 px-2 text-[12px] text-destructive">{library.loaded ? localeState.messages.mods.discovery.instancesRefreshFailed : localeState.messages.mods.discovery.instancesReadFailed}</p>{/if}
 						<SelectableList class="max-h-64 overflow-y-auto overscroll-contain" aria-label={localeState.messages.mods.discovery.targetList} aria-busy={library.loading}>
 							<SelectableRow selected={!context.hasInstance} onclick={() => void changeContext({ instance: null })} class="h-9"><span class="text-xs">{localeState.messages.mods.discovery.noInstance}</span>{#snippet trailing()}{localeState.messages.mods.discovery.browseOnly}{/snippet}</SelectableRow>
 							{#each filtered as item (item.id)}
 								<SelectableRow selected={targetName === item.name.toLowerCase()} disabled={!fabric(item) || navigating} onclick={() => void changeContext({ instance: item.name })} class="h-12" aria-label={localeState.messages.mods.instanceLabel(item.name, item.versionId, fabric(item) ? 'Fabric' : localeState.messages.mods.discovery.unsupportedMods)}>
-									<span class="min-w-0"><span class="block truncate text-xs">{item.name}</span><span class="mt-1 block truncate text-[11px] text-muted-foreground">Minecraft {item.versionId}{fabric(item) ? ` · Fabric ${item.loader?.version}` : localeState.messages.mods.discovery.noFabricSuffix}</span></span>
+									<span class="min-w-0"><span class="block truncate text-xs">{item.name}</span><span class="mt-1 block truncate text-[12px] text-muted-foreground">Minecraft {item.versionId}{fabric(item) ? ` · Fabric ${item.loader?.version}` : localeState.messages.mods.discovery.noFabricSuffix}</span></span>
 								</SelectableRow>
 							{/each}
 						</SelectableList>

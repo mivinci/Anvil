@@ -45,7 +45,7 @@
 			<input type="search" aria-label={text.searchLabel} placeholder={text.searchPlaceholder} value={query} oninput={(event) => search(event.currentTarget.value)} class="min-w-0 flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground" />
 		</label>
 		<nav class="mt-4 min-h-0 flex-1 space-y-0.5 overflow-y-auto overscroll-contain" aria-label={text.title}>
-			<p class="mb-2 px-2 text-[11px] font-medium text-muted-foreground">{text.applicationSettings}</p>
+			<p class="mb-2 px-2 text-[12px] font-medium text-muted-foreground">{text.applicationSettings}</p>
 			{#each matches as item}
 				{@const Icon = item.icon}
 				<SelectableRow selected={selected === item.id} density="comfortable" showCheck={false} aria-current={selected === item.id ? 'page' : undefined} onclick={() => selected = item.id} class={selected === item.id ? 'font-medium' : 'text-muted-foreground hover:text-foreground'}><Icon size={14} strokeWidth={1.7} aria-hidden="true" />{item.label}</SelectableRow>
@@ -61,7 +61,7 @@
 			{:else if selected === 'about'}<AboutSettings />
 			{:else if selected === 'accounts'}<AccountSettings />
 			{:else}
-				<div class="rounded-xl bg-card p-4"><p class="text-[13px] font-medium">{text.unavailable}</p><p class="mt-2 text-[11px] leading-5 text-muted-foreground">{pending[selected as keyof typeof pending]}</p></div>
+				<div class="rounded-xl bg-card p-4"><p class="text-[13px] font-medium">{text.unavailable}</p><p class="mt-2 text-[12px] leading-5 text-muted-foreground">{pending[selected as keyof typeof pending]}</p></div>
 			{/if}
 		</div>
 	</section>

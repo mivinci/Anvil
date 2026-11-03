@@ -39,7 +39,7 @@
 	><Settings2 size={19} /></NavButton>
 	{#if appearanceMenuOpen}
 		<div class="absolute bottom-0 left-[calc(100%+8px)] z-20 w-44 rounded-md-xl border border-chrome-control-border bg-popover p-1.5 text-popover-foreground shadow-xl" role="menu" aria-label={localeState.messages.common.appearanceMode}>
-			<div class="px-2.25 pt-1.75 pb-1.25 text-[11px] font-semibold text-chrome-subtle">{localeState.messages.settings.appearance}</div>
+			<div class="px-2.25 pt-1.75 pb-1.25 text-[12px] font-semibold text-chrome-subtle">{localeState.messages.settings.appearance}</div>
 			{#each appearanceOptions as option (option.value)}
 				{@const Icon = option.icon}
 				<button
