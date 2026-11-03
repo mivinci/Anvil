@@ -9,6 +9,7 @@
 	import ClientScreenPreview from '#lib/components/clients/client-screen-preview.svelte';
 	import ClientLaunchControls from '#lib/components/clients/client-launch-controls.svelte';
 	import ClientModpackExport from '#lib/components/clients/client-modpack-export.svelte';
+	import ClientAvatarEditor from '#lib/components/clients/client-avatar-editor.svelte';
 	import { getClientLaunchState, launchActive, launchLabel } from '#lib/client-launch-state.svelte.js';
 	import { Boxes, Image, Sparkles, ArrowUpRight, ChevronDown, Check, Copy } from '@lucide/svelte';
 	import { getClientDetailState } from '#lib/client-detail-state.svelte.js';
@@ -73,11 +74,14 @@
 <section aria-labelledby="client-overview-title" class="@container min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 lg:px-6">
 	{#if detail.client}
 		<div class="relative isolate flex items-center overflow-hidden rounded-xl bg-primary/5 p-4">
-			<div class="relative z-10 min-w-0 flex-1">
-				<p class="mb-1 flex items-center gap-1.5 text-[11px] text-muted-foreground"><span class={`size-1.5 rounded-full ${operation && launchActive(operation) ? 'bg-primary' : 'bg-muted-foreground/50'}`}></span>{status}</p>
-				<h1 id="client-overview-title" class="max-w-full break-all text-lg font-semibold tracking-tight">{detail.client.name}</h1>
-				<div class="mt-1.5 flex flex-wrap gap-1.5 text-[11px] text-muted-foreground"><span class="rounded-md bg-card/70 px-2 py-1">Minecraft {detail.client.versionId}</span><span class="rounded-md bg-card/70 px-2 py-1">{detail.client.loader ? `Fabric ${detail.client.loader.version}` : localeState.messages.instance.detail.vanilla}</span></div>
-				<div class="mt-3"><ClientLaunchControls client={detail.client}>{#snippet trailing()}<ClientModpackExport client={detail.client!} />{/snippet}</ClientLaunchControls></div>
+			<div class="relative z-10 flex min-w-0 flex-1 items-start gap-3">
+				<ClientAvatarEditor id={detail.client.id} name={detail.client.name} class="size-16 shrink-0" />
+				<div class="min-w-0 flex-1">
+					<p class="mb-1 flex items-center gap-1.5 text-[11px] text-muted-foreground"><span class={`size-1.5 rounded-full ${operation && launchActive(operation) ? 'bg-primary' : 'bg-muted-foreground/50'}`}></span>{status}</p>
+					<h1 id="client-overview-title" class="max-w-full break-all text-lg font-semibold tracking-tight">{detail.client.name}</h1>
+					<div class="mt-1.5 flex flex-wrap gap-1.5 text-[11px] text-muted-foreground"><span class="rounded-md bg-card/70 px-2 py-1">Minecraft {detail.client.versionId}</span><span class="rounded-md bg-card/70 px-2 py-1">{detail.client.loader ? `Fabric ${detail.client.loader.version}` : localeState.messages.instance.detail.vanilla}</span></div>
+					<div class="mt-3"><ClientLaunchControls client={detail.client}>{#snippet trailing()}<ClientModpackExport client={detail.client!} />{/snippet}</ClientLaunchControls></div>
+				</div>
 			</div>
 			<div class="ml-4 w-[38%] max-w-80 shrink-0"><ClientScreenPreview /></div>
 		</div>

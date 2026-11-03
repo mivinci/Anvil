@@ -1,6 +1,6 @@
 # 实例自定义头像
 
-状态：第 1–4 项展示基础、Core 存储、Runtime 鉴权 API 与通用裁剪组件已本地实现，尚未接入实例页面和文件选择入口；已提交至 codex/instance-avatars 分支交接，尚未创建 PR。
+状态：第 1–5 项展示基础、Core 存储、Runtime 鉴权 API、通用裁剪组件与实例页面接入已本地实现，尚未完成浏览器/原生验收；已提交至 codex/instance-avatars 分支交接，尚未创建 PR。
 
 ## 产品与数据边界
 
@@ -57,9 +57,18 @@
 - 文案已加入中英文 `common.imageCrop`，通过 i18n guard；未接入实例卡片、详情或设置。
 - 验证：6 项裁剪几何/文件校验测试通过；Svelte 检查 0 错误/0 警告；桌面生产构建通过。
 
+## 第 5 项实现与验证
+
+- `ClientAvatarState` 为窗口级共享状态，卡片、详情、设置读取同一头像；对象 URL 在替换、删除、实例移除和销毁时回收。
+- 首页卡片改为左侧正方形头像、右侧名称/版本/加载器和紧凑启动按钮；详情标题旁使用可点击头像；设置新增头像区，支持更换和恢复默认。
+- `ClientAvatarEditor` 接文件选择、裁剪对话框、`PUT` 上传和 `DELETE` 恢复；上传/清除失败保留旧图并显示双语错误，409/429 提示实例忙碌，400 提示图片不可用。
+- `runtime.ts` 新增鉴权 blob GET、PUT 和 204 DELETE；请求测试覆盖 ETag、认证头、上传 method/Content-Type、204 与 404。
+- 验证：runtime-request 3 项、裁剪 6 项通过；i18n guard、`svelte-check` 0 错误/0 警告、桌面生产构建通过；Runtime 头像回环测试继续通过。
+- 尚未在真实 WebView 中检查头像加载、裁剪交互、错误回退和窄窗布局；也未启动真实游戏验证忙碌锁。
+
 ## 接续入口
 
-第 4 项已完成。下一步从第 5 项 UI 接入开始，按项推进，做完一项先说明下一项内容并请维护者确认。当前授权仅提交/推送交接分支，没有创建 PR、合并或发布授权。
+第 5 项已完成。下一步是第 6 项离线服务/API/浏览器、失败保留、键盘与窄窗验收；当前授权仅提交/推送交接分支，没有创建 PR、合并或发布授权。
 
 - Core 实现：crates/anvil-core/src/client/avatar.rs；公开导出见 client.rs；对应测试 client_avatar.rs。头像上传与清除目前遵守实例忙锁，读取只取设置锁。
 - 展示组件：components/ui/avatar.svelte 为通用 fallback 容器；components/clients/instance-avatar.svelte 组合稳定图案；instance-avatar.ts 为纯图案函数。尚未在任何业务页面挂载，没有现成的选图/裁剪 UI。

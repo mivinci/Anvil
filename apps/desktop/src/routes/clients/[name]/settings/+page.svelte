@@ -4,6 +4,7 @@
 	import { untrack } from 'svelte';
 	import { RefreshCw } from '@lucide/svelte';
 	import ClientDelete from '#lib/components/clients/client-delete.svelte';
+	import ClientAvatarEditor from '#lib/components/clients/client-avatar-editor.svelte';
 	import { getClientDetailState } from '#lib/client-detail-state.svelte.js';
 	import { getClientLaunchSettings, saveClientLaunchSettings, getDeviceMemory, RuntimeRequestError, type ClientLaunchSettings } from '#lib/runtime.js';
 	const detail = getClientDetailState();
@@ -84,6 +85,15 @@
 	{#if error}<p role="alert" class="mt-3 text-[12px] text-destructive">{error}<button type="button" disabled={loading || saving} onclick={() => { if (detail.client) void load(detail.client.name); }} class="ml-2 text-primary disabled:opacity-50">{localeState.messages.instance.detail.reload}</button></p>{/if}
 	{#if error && errorDetail}<details class="mt-2 text-xs text-muted-foreground"><summary>{localeState.messages.errors.technicalDetails}</summary><p class="whitespace-pre-wrap break-words">{errorDetail}</p></details>{/if}
 	{#if loading && !saved}<p role="status" class="mt-4 text-[13px] text-muted-foreground">{localeState.messages.instance.detail.loadingSettings}</p>{/if}
+	{#if detail.client}
+		<div class="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-card px-3.5 py-3">
+			<div class="min-w-0">
+				<p class="text-[13px] font-medium">{localeState.messages.instance.detail.avatar}</p>
+				<p class="mt-1 max-w-64 text-[11px] leading-5 text-muted-foreground">{localeState.messages.instance.detail.avatarHint}</p>
+			</div>
+			<ClientAvatarEditor id={detail.client.id} name={detail.client.name} class="size-16" showRestore />
+		</div>
+	{/if}
 	<form onsubmit={(event) => { event.preventDefault(); void save(); }} class="mt-5 space-y-5">
 		<fieldset disabled={disabled} class="min-w-0">
 			<legend class="mb-2 text-[13px] font-medium">{localeState.messages.instance.detail.memory}</legend>
