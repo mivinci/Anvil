@@ -155,7 +155,7 @@
 				</DropdownMenu.Group>
 			</DropdownMenu.SubContent>
 		</DropdownMenu.Sub>
-		<DropdownMenu.Item class={itemClass} onSelect={() => goto(resolve('/settings'))}>
+		<DropdownMenu.Item class={itemClass} onSelect={() => goto(resolve('/settings/general'))}>
 			<Settings2 size={14} strokeWidth={1.75} aria-hidden="true" />{localeState.messages.account.flow.settings}
 		</DropdownMenu.Item>
 		<DropdownMenu.Sub>

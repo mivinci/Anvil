@@ -61,7 +61,7 @@ try {
 	const page = await context.newPage();
 	page.setDefaultTimeout(10000);
 	const errors = []; page.on('pageerror', error => errors.push(error.message));
-	await page.goto(`${origin}/settings`);
+	await page.goto(`${origin}/settings/general`);
 	await page.getByRole('heading', { name: '欢迎使用 Anvil', exact: true }).waitFor();
 	assert.equal(await page.getByRole('navigation').count(), 0);
 	assert.equal(await page.locator('[data-download-tasks-trigger]').count(), 0);
