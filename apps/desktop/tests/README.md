@@ -47,7 +47,7 @@ ANVIL_PLAYWRIGHT_MODULE=/path/to/playwright-core node apps/desktop/tests/instanc
 
 ## 字号与排版
 
-`ui-scale.test.ts` 覆盖三档字号校验与根节点应用；浏览器验收可用 `ANVIL_TEST_UI_SCALE=larger` 运行头像脚本，检查 620×420 窄窗无溢出。字号 token 与首帧脚本位于 `app.css`、`ui-scale-bootstrap.js`，不启动 Runtime 或读取账户。
+`class-merge.test.ts` 额外验证自定义字号 token 与文字颜色类合并时不会被 tailwind-merge 丢弃。`ui-scale.test.ts` 覆盖三档字号校验与根节点应用；浏览器验收可用 `ANVIL_TEST_UI_SCALE=larger` 运行头像脚本，检查 620×420 窄窗无溢出。字号 token 与首帧脚本位于 `app.css`、`ui-scale-bootstrap.js`，不启动 Runtime 或读取账户。
 
 ## 国际化基础层
 
