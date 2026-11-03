@@ -235,6 +235,13 @@ pub(super) async fn serve(
       "/clients/{name}/launch-settings",
       get(super::client_settings::get).put(super::client_settings::save),
     )
+    .route(
+      "/clients/{name}/avatar",
+      get(super::client_avatar::get)
+        .put(super::client_avatar::save)
+        .delete(super::client_avatar::clear)
+        .layer(DefaultBodyLimit::max(super::client_avatar::MAX_BODY_BYTES)),
+    )
     .route("/system/memory", get(super::client_settings::memory))
     .route("/clients/{name}/logs/latest", get(client_game_log))
     .route("/clients/{name}/crash-reports", get(client_crash_reports))
@@ -362,7 +369,7 @@ async fn authorize_request(
       .headers()
       .get(ACCESS_CONTROL_REQUEST_METHOD)
       .and_then(|value| value.to_str().ok())
-      .is_some_and(|method| matches!(method, "GET" | "POST" | "DELETE"));
+      .is_some_and(|method| matches!(method, "GET" | "POST" | "PUT" | "DELETE"));
     let valid_headers = request
       .headers()
       .get(ACCESS_CONTROL_REQUEST_HEADERS)
@@ -428,7 +435,7 @@ fn with_cors(mut response: Response, origin: &str) -> Response {
   headers.insert(VARY, HeaderValue::from_static("Origin"));
   headers.insert(
     ACCESS_CONTROL_ALLOW_METHODS,
-    HeaderValue::from_static("GET, POST, DELETE, OPTIONS"),
+    HeaderValue::from_static("GET, POST, PUT, DELETE, OPTIONS"),
   );
   headers.insert(
     ACCESS_CONTROL_ALLOW_HEADERS,

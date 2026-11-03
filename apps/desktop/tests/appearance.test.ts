@@ -53,6 +53,19 @@ function contrast(a: string, b: string) {
 	return (Math.max(...values) + 0.05) / (Math.min(...values) + 0.05);
 }
 
+
+test('presets differ only in accent while surfaces stay neutral', () => {
+	const base = themePresets[0];
+	for (const preset of themePresets.slice(1)) {
+		for (const mode of ['light', 'dark'] as const) {
+			assert.equal(preset[mode].background, base[mode].background, `${preset.id} ${mode} background`);
+			assert.equal(preset[mode].card, base[mode].card, `${preset.id} ${mode} card`);
+			assert.equal(preset[mode].foreground, base[mode].foreground, `${preset.id} ${mode} foreground`);
+			assert.notEqual(preset[mode].accent, base[mode].accent, `${preset.id} ${mode} accent`);
+		}
+	}
+});
+
 test('all preset body and button text meet 4.5:1 contrast in both modes', () => {
 	for (const preset of themePresets) {
 		for (const mode of ['light', 'dark'] as const) {

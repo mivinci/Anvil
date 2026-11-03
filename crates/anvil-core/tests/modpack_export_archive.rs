@@ -37,6 +37,15 @@ fn add(game: &Path, path: &str, bytes: &[u8]) {
   fs::create_dir_all(file.parent().unwrap()).unwrap();
   fs::write(file, bytes).unwrap();
 }
+
+fn write_avatar(directory: &Path) {
+  let image = image::RgbaImage::from_pixel(256, 256, image::Rgba([20, 80, 140, 255]));
+  let mut bytes = Vec::new();
+  image
+    .write_to(&mut Cursor::new(&mut bytes), image::ImageFormat::Png)
+    .unwrap();
+  fs::write(directory.join("avatar.png"), bytes).unwrap();
+}
 fn jar() -> Vec<u8> {
   let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
   writer
@@ -215,6 +224,47 @@ async fn instance_and_settings_locks_exclude_export_and_source_output_is_rejecte
   );
   assert!(!output.exists());
 }
+
+#[tokio::test]
+async fn exports_optional_avatar_as_a_reserved_override() {
+  let (root, context, name) = fixture();
+  let directory = context
+    .paths
+    .data
+    .join("instances")
+    .join(crate::client::client_instance_id(&name).unwrap());
+  write_avatar(&directory);
+  add(&game(&context, &name), "config/a", b"before");
+  let mut with_avatar = options();
+  with_avatar.selection.avatar = true;
+  let output = root.path().join("with-avatar.mrpack");
+  ModpackExporter::new(context.clone())
+    .export(
+      &name,
+      with_avatar,
+      output.clone(),
+      &CancellationToken::new(),
+      &progress(),
+    )
+    .await
+    .unwrap();
+  let files = entries(&output);
+  assert!(files.contains_key("overrides/.anvil/avatar.png"));
+  assert!(!files.contains_key("overrides/avatar.png"));
+  let without = root.path().join("without-avatar.mrpack");
+  ModpackExporter::new(context)
+    .export(
+      &name,
+      options(),
+      without.clone(),
+      &CancellationToken::new(),
+      &progress(),
+    )
+    .await
+    .unwrap();
+  assert!(!entries(&without).contains_key("overrides/.anvil/avatar.png"));
+}
+
 #[tokio::test]
 async fn source_changes_and_incomplete_resource_transactions_are_not_exported() {
   let (root, context, name) = fixture();
@@ -224,7 +274,18 @@ async fn source_changes_and_incomplete_resource_transactions_are_not_exported() 
   let snapshot = collect(&game, &options().selection, &cancel).unwrap();
   add(&game, "config/a", b"after!");
   let mut temp = tempfile::tempfile().unwrap();
-  assert!(pack(&mut temp, b"{}", &game, &snapshot, &cancel, &progress()).is_err());
+  assert!(
+    pack(
+      &mut temp,
+      b"{}",
+      &game,
+      &snapshot,
+      None,
+      &cancel,
+      &progress()
+    )
+    .is_err()
+  );
   add(&game, "config/new", b"new");
   assert_ne!(
     collect(&game, &options().selection, &cancel).unwrap(),

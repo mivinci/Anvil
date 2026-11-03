@@ -51,10 +51,10 @@
 		<div class="flex shrink-0 items-center justify-between gap-2 px-3 pt-3 pb-1">
 			<div class="flex min-w-0 items-center gap-2">
 				<Newspaper size={15} class="shrink-0 text-primary" aria-hidden="true" />
-				<h2 id="news-title" class="truncate text-[13px] font-semibold">{usingGeneralNews ? localeState.messages.home.flow.minecraftNews : localeState.messages.home.flow.javaNews}</h2>
+				<h2 id="news-title" class="truncate text-body font-semibold">{usingGeneralNews ? localeState.messages.home.flow.minecraftNews : localeState.messages.home.flow.javaNews}</h2>
 			</div>
 			<div class="flex shrink-0 items-center gap-1">
-				{#if stale}<span class="px-1 text-[10px] text-muted-foreground">{localeState.messages.home.flow.cached}</span>{/if}
+				{#if stale}<span class="px-1 text-xs text-muted-foreground">{localeState.messages.home.flow.cached}</span>{/if}
 				<button type="button" class="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-chrome-hover hover:text-foreground disabled:opacity-50" aria-label={localeState.messages.home.flow.refreshNews} title={localeState.messages.home.flow.refreshNews} disabled={loading || refreshing} onclick={() => void loadNews(true)}>
 					{#if refreshing}<LoaderCircle size={14} class="animate-spin" aria-hidden="true" />{:else}<RefreshCw size={14} aria-hidden="true" />{/if}
 				</button>
@@ -70,7 +70,7 @@
 					<li>
 						<button type="button" class="group block w-full py-2.5 text-left" onclick={() => void openArticle(item)}>
 							<span class="line-clamp-2 text-xs font-medium leading-5 text-foreground transition-colors group-hover:text-primary">{item.title}</span>
-							<span class="mt-1 flex items-center justify-between gap-2 text-[10px] text-muted-foreground"><span>{dateLabel(item.publishedAt)}</span><ArrowUpRight size={12} class="shrink-0 transition-colors group-hover:text-primary" aria-hidden="true" /></span>
+							<span class="mt-1 flex items-center justify-between gap-2 text-xs text-muted-foreground"><span>{dateLabel(item.publishedAt)}</span><ArrowUpRight size={12} class="shrink-0 transition-colors group-hover:text-primary" aria-hidden="true" /></span>
 						</button>
 					</li>
 				{/each}
@@ -82,6 +82,6 @@
 		{/if}
 		</div>
 
-		{#if error && visibleNews.length > 0}<p class="shrink-0 truncate px-3 pt-2 pb-3 text-[10px] text-muted-foreground" role="status">{localeState.messages.home.flow.refreshFailed}</p>{/if}
+		{#if error && visibleNews.length > 0}<p class="shrink-0 truncate px-3 pt-2 pb-3 text-xs text-muted-foreground" role="status">{localeState.messages.home.flow.refreshFailed}</p>{/if}
 	</section>
 </aside>

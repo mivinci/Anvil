@@ -31,11 +31,11 @@
 			<span class="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-primary/10 text-primary"><Check size={12} strokeWidth={2.5} aria-hidden="true" /></span>
 			<div class="min-w-0 flex-1">
 				<p class="text-xs font-medium">{localeState.messages.instance.detail.exportCompleted}</p>
-				<p class="mt-1 break-all text-[11px] leading-4 text-muted-foreground">{operation.result.path}</p>
-				<p class="mt-1 text-[10px] text-muted-foreground">{formatBytes(operation.result.size)} · {localeState.messages.instance.count(operation.result.files, 'files')}</p>
+				<p class="mt-1 break-all text-xs leading-4 text-muted-foreground">{operation.result.path}</p>
+				<p class="mt-1 text-xs text-muted-foreground">{formatBytes(operation.result.size)} · {localeState.messages.instance.count(operation.result.files, 'files')}</p>
 				<div class="mt-2 flex items-center gap-1.5">
-					<button type="button" onclick={() => void copyPath()} class="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[11px] text-muted-foreground hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring"><Copy size={11} aria-hidden="true" />{copied ? localeState.messages.instance.detail.pathCopied : copyError ? localeState.messages.instance.detail.copyFailed : localeState.messages.instance.detail.copyPath}</button>
-					<button type="button" onclick={() => { if (operation) dismissed = operation.id; }} class="inline-flex h-7 items-center rounded-md px-2 text-[11px] text-muted-foreground hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring">{localeState.messages.instance.detail.close}</button>
+					<button type="button" onclick={() => void copyPath()} class="inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs text-muted-foreground hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring"><Copy size={11} aria-hidden="true" />{copied ? localeState.messages.instance.detail.pathCopied : copyError ? localeState.messages.instance.detail.copyFailed : localeState.messages.instance.detail.copyPath}</button>
+					<button type="button" onclick={() => { if (operation) dismissed = operation.id; }} class="inline-flex h-7 items-center rounded-md px-2 text-xs text-muted-foreground hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring">{localeState.messages.instance.detail.close}</button>
 				</div>
 			</div>
 			<button type="button" aria-label={localeState.messages.instance.detail.closeExportToast} title={localeState.messages.instance.detail.close} onclick={() => { if (operation) dismissed = operation.id; }} class="grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring"><X size={13} aria-hidden="true" /></button>

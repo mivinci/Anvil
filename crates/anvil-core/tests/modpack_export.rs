@@ -24,6 +24,7 @@ fn default_selection_excludes_worlds_and_rejects_unknown_fields() {
   let selected = options().selection;
   assert!(selected.mods && selected.resource_packs && selected.shader_packs && selected.config);
   assert!(!selected.worlds);
+  assert!(!selected.avatar);
   assert!(
     serde_json::from_value::<ExportOptions>(
       json!({"name":"Pack","versionId":"1","destination":"/arbitrary"})
@@ -69,6 +70,7 @@ fn rejects_bad_identity_empty_selection_and_invalid_install_snapshot() {
     shader_packs: false,
     config: false,
     worlds: false,
+    avatar: false,
   };
   assert!(value.validate().is_err());
   let mut invalid = record(false);

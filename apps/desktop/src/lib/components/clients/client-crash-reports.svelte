@@ -62,7 +62,7 @@
 	}
 </script>
 <div class="flex min-h-0 flex-1 flex-col gap-2">
-	<div class="flex min-h-7 items-center justify-between gap-2 text-[11px] text-muted-foreground">
+	<div class="flex min-h-7 items-center justify-between gap-2 text-xs text-muted-foreground">
 		<span>{catalog ? localeState.messages.instance.reportsCount(catalog.reports.length, catalog.truncated) : 'game/crash-reports'}</span>
 		<div class="flex items-center gap-1">
 			<button type="button" disabled={!report?.text} onclick={() => void copy()} aria-label={localeState.messages.instance.detail.copyCrash} title={localeState.messages.instance.detail.copyReport} class="grid size-7 place-items-center rounded-md hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40"><Copy size={14} aria-hidden="true" /></button>
@@ -70,25 +70,25 @@
 		</div>
 	</div>
 	{#if (listError || readError) && technicalError}<details class="text-xs text-muted-foreground"><summary>{localeState.messages.errors.technicalDetails}</summary><p class="whitespace-pre-wrap break-words">{technicalError}</p></details>{/if}
-	{#if listError}<p role="alert" class="text-[11px] text-destructive">{listError}{catalog ? localeState.messages.instance.keepList : ''}</p>{/if}
+	{#if listError}<p role="alert" class="text-xs text-destructive">{listError}{catalog ? localeState.messages.instance.keepList : ''}</p>{/if}
 	<div class="flex min-h-0 flex-1 overflow-hidden rounded-lg bg-card">
 		{#if catalog?.reports.length}
 			<nav aria-label={localeState.messages.instance.detail.crashList} class="w-40 shrink-0 space-y-1 overflow-y-auto overscroll-contain p-1.5 lg:w-48">
 				{#each catalog.reports as entry (entry.name)}
 					<button type="button" disabled={listing} aria-pressed={selected === entry.name} onclick={() => { if (detail.client) void select(detail.client.name, entry); }} title={entry.name} class={`block w-full rounded-md px-2 py-2 text-left focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50 ${selected === entry.name ? 'bg-chrome-selected text-accent-foreground' : 'hover:bg-chrome-hover'}`}>
-						<span class="block truncate text-[12px] leading-4">{entry.name}</span>
-						<span class="mt-1 block truncate text-[11px] leading-4 text-muted-foreground">{entry.modifiedAt !== null ? new Date(entry.modifiedAt).toLocaleString(localeState.current, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : localeState.messages.instance.detail.unknownTime} · {size(entry.size)}</span>
+						<span class="block truncate text-xs leading-4">{entry.name}</span>
+						<span class="mt-1 block truncate text-xs leading-4 text-muted-foreground">{entry.modifiedAt !== null ? new Date(entry.modifiedAt).toLocaleString(localeState.current, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : localeState.messages.instance.detail.unknownTime} · {size(entry.size)}</span>
 					</button>
 				{/each}
 			</nav>
 			<div class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-				<p class="shrink-0 truncate border-b border-border px-3 py-2 text-[11px] text-muted-foreground" title={selected ?? undefined}>{selected}</p>
+				<p class="shrink-0 truncate border-b border-border px-3 py-2 text-xs text-muted-foreground" title={selected ?? undefined}>{selected}</p>
 				<div class="min-h-0 flex-1 overflow-auto overscroll-contain">
-					{#if report?.text}<pre class="w-max min-w-full select-text p-3 font-mono text-[12px] leading-5"><code>{report.text}</code></pre>
-					{:else}<div role={readError ? 'alert' : 'status'} class={`flex h-full min-h-32 items-center justify-center px-4 text-[13px] ${readError ? 'text-destructive' : 'text-muted-foreground'}`}><span>{reading ? localeState.messages.instance.detail.loadingReport : readError ?? (report ? localeState.messages.instance.detail.reportEmpty : localeState.messages.instance.detail.chooseReport)}{#if readError && detail.client}<button type="button" class="ml-2 text-primary" onclick={() => { const entry = catalog?.reports.find(item => item.name === selected); if (entry && detail.client) void select(detail.client.name, entry); }}>{localeState.messages.instance.detail.retry}</button>{/if}</span></div>{/if}
+					{#if report?.text}<pre class="w-max min-w-full select-text p-3 font-mono text-xs leading-5"><code>{report.text}</code></pre>
+					{:else}<div role={readError ? 'alert' : 'status'} class={`flex h-full min-h-32 items-center justify-center px-4 text-body ${readError ? 'text-destructive' : 'text-muted-foreground'}`}><span>{reading ? localeState.messages.instance.detail.loadingReport : readError ?? (report ? localeState.messages.instance.detail.reportEmpty : localeState.messages.instance.detail.chooseReport)}{#if readError && detail.client}<button type="button" class="ml-2 text-primary" onclick={() => { const entry = catalog?.reports.find(item => item.name === selected); if (entry && detail.client) void select(detail.client.name, entry); }}>{localeState.messages.instance.detail.retry}</button>{/if}</span></div>{/if}
 				</div>
 			</div>
-		{:else}<div role="status" class="flex min-h-32 flex-1 items-center justify-center px-4 text-[13px] text-muted-foreground">{listing ? localeState.messages.instance.detail.loadingReports : catalog ? localeState.messages.instance.detail.noCrashes : localeState.messages.instance.detail.noReportList}</div>{/if}
+		{:else}<div role="status" class="flex min-h-32 flex-1 items-center justify-center px-4 text-body text-muted-foreground">{listing ? localeState.messages.instance.detail.loadingReports : catalog ? localeState.messages.instance.detail.noCrashes : localeState.messages.instance.detail.noReportList}</div>{/if}
 	</div>
-	<p role="status" class="text-[11px] text-muted-foreground">{copied ?? localeState.messages.instance.detail.reportLimit}</p>
+	<p role="status" class="text-xs text-muted-foreground">{copied ?? localeState.messages.instance.detail.reportLimit}</p>
 </div>

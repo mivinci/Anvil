@@ -316,6 +316,7 @@ fn metadata_snapshot(directory: &Path) -> Result<BTreeMap<String, Option<Fingerp
     "resource-transaction.json",
     "launch-settings.json",
     "modpack.json",
+    "avatar.png",
   ]
   .into_iter()
   .map(|name| {
@@ -366,6 +367,7 @@ fn pack(
   index: &[u8],
   game: &Path,
   snapshot: &BTreeMap<String, Source>,
+  avatar: Option<&[u8]>,
   cancel: &CancellationToken,
   progress: &watch::Sender<ExportProgress>,
 ) -> Result<()> {
@@ -414,6 +416,20 @@ fn pack(
       return Err(conflict());
     }
     progress.send_modify(|p| p.completed_files += 1);
+  }
+  if let Some(avatar) = avatar {
+    check(cancel)?;
+    writer
+      .start_file(
+        format!("overrides/{}", crate::modpack::AVATAR_OVERRIDE_PATH),
+        options,
+      )
+      .map_err(zip_error)?;
+    writer.write_all(avatar)?;
+    progress.send_modify(|p| {
+      p.completed_files += 1;
+      p.processed_bytes += avatar.len() as u64;
+    });
   }
   writer.finish().map_err(zip_error)?;
   Ok(())
@@ -500,6 +516,17 @@ fn export_locked(
     Err(e) => return Err(e.into()),
   }
   let snapshot = collect(&game, &options.selection, cancel)?;
+  let avatar = if options.selection.avatar {
+    let avatar = crate::client::read_instance_avatar(&directory)?.map(|avatar| avatar.png);
+    if avatar.is_some() && snapshot.contains_key(crate::modpack::AVATAR_OVERRIDE_PATH) {
+      return Err(Error::Conflict(
+        "实例头像与游戏文件路径冲突，无法导出".into(),
+      ));
+    }
+    avatar
+  } else {
+    None
+  };
   for (path, (hash, size)) in expected {
     let Some(source) = snapshot.get(&path) else {
       return Err(Error::Conflict("受管资源文件缺失，请先同步资源".into()));
@@ -514,14 +541,16 @@ fn export_locked(
     .values()
     .filter(|s| !s.fingerprint.directory)
     .map(|s| s.fingerprint.size)
-    .sum::<u64>();
+    .sum::<u64>()
+    + avatar.as_ref().map_or(0, |bytes| bytes.len() as u64);
   if total.saturating_add(index.len() as u64) > archive::MAX_UNPACKED_BYTES {
     return Err(Error::Invalid("导出总量超出导入限制".into()));
   }
   let files = snapshot
     .values()
     .filter(|s| !s.fingerprint.directory)
-    .count();
+    .count()
+    + usize::from(avatar.is_some());
   progress.send_replace(ExportProgress {
     stage: ExportStage::Packing,
     total_files: Some(files),
@@ -536,6 +565,7 @@ fn export_locked(
     &index,
     &game,
     &snapshot,
+    avatar.as_deref(),
     cancel,
     progress,
   )?;
@@ -546,6 +576,8 @@ fn export_locked(
   if validated.overrides.len() != files
     || collect(&game, &options.selection, cancel)? != snapshot
     || metadata_snapshot(&directory)? != metadata
+    || (options.selection.avatar
+      && crate::client::read_instance_avatar(&directory)?.map(|avatar| avatar.png) != avatar)
   {
     return Err(conflict());
   }

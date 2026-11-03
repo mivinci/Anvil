@@ -83,6 +83,17 @@ fn sidecar_binds_loopback_and_requires_token_and_allowed_origin() {
       .to_ascii_lowercase()
       .contains("access-control-allow-headers: authorization")
   );
+  let put_preflight = request_preflight(ready.port, "/clients/example/avatar", ORIGIN, "PUT");
+  assert!(
+    put_preflight.starts_with("HTTP/1.1 204 No Content"),
+    "{put_preflight}"
+  );
+  assert!(
+    put_preflight
+      .to_ascii_lowercase()
+      .contains("access-control-allow-methods: get, post, put, delete, options"),
+    "{put_preflight}"
+  );
 
   stdin.write_all(b"shutdown\n").unwrap();
   stdin.flush().unwrap();
@@ -114,6 +125,20 @@ fn request(
     );
   }
   request.push_str("Connection: close\r\n\r\n");
+  stream.write_all(request.as_bytes()).unwrap();
+  let mut response = String::new();
+  stream.read_to_string(&mut response).unwrap();
+  response
+}
+
+fn request_preflight(port: u16, path: &str, origin: &str, method: &str) -> String {
+  let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
+  stream
+    .set_read_timeout(Some(Duration::from_secs(3)))
+    .unwrap();
+  let request = format!(
+    "OPTIONS {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nOrigin: {origin}\r\nAccess-Control-Request-Method: {method}\r\nAccess-Control-Request-Headers: authorization, content-type\r\nConnection: close\r\n\r\n"
+  );
   stream.write_all(request.as_bytes()).unwrap();
   let mut response = String::new();
   stream.read_to_string(&mut response).unwrap();

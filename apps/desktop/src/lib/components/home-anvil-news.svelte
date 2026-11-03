@@ -43,17 +43,17 @@
 	onfocusin={() => focused = true} onfocusout={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) focused = false; }}>
 	<div class="pointer-events-none absolute inset-0 bg-primary/5" aria-hidden="true"></div>
 	<div class="relative z-10 flex items-center justify-between px-4 pt-4">
-		<h2 id="anvil-news-title" class="text-[11px] font-medium tracking-wide text-muted-foreground">{localeState.messages.clients.newsTitle}</h2>
-		<span class="text-[10px] tabular-nums text-muted-foreground/70" aria-hidden="true">{String(index + 1).padStart(2, '0')} / {String(anvilNews.length).padStart(2, '0')}</span>
+		<h2 id="anvil-news-title" class="text-xs font-medium tracking-wide text-muted-foreground">{localeState.messages.clients.newsTitle}</h2>
+		<span class="text-xs tabular-nums text-muted-foreground/70" aria-hidden="true">{String(index + 1).padStart(2, '0')} / {String(anvilNews.length).padStart(2, '0')}</span>
 	</div>
 	{#each anvilNews as item, position (item.id)}
 		<div class={`absolute inset-0 transition-opacity duration-500 motion-reduce:transition-none ${position === index ? 'opacity-100' : 'pointer-events-none opacity-0'}`} inert={position !== index} aria-hidden={position !== index}>
 			<div class="pointer-events-none absolute -top-3 -right-9 h-full w-[125%] text-primary min-[1200px]:-right-3 min-[1200px]:w-full"><AnvilNewsArtwork variant={item.artwork} /></div>
 			<div class="relative flex h-full flex-col items-start justify-end px-4 pt-12 pb-13">
-				<span class="mb-2 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">{item.category}</span>
+				<span class="mb-2 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">{item.category}</span>
 				<h3 class="text-xl leading-[1.45] font-semibold tracking-tight whitespace-pre-line">{item.title}</h3>
-				<p class="mt-2 max-w-66 text-[11px] leading-5 text-muted-foreground">{item.description}</p>
-				<a href={resolve(item.href)} class="mt-3 inline-flex items-center gap-1 rounded-md text-[11px] font-medium text-primary hover:underline focus-visible:outline-2 focus-visible:outline-ring">{item.action}<ArrowUpRight size={13} aria-hidden="true" /></a>
+				<p class="mt-2 max-w-66 text-xs leading-5 text-muted-foreground">{item.description}</p>
+				<a href={resolve(item.href)} class="mt-3 inline-flex items-center gap-1 rounded-md text-xs font-medium text-primary hover:underline focus-visible:outline-2 focus-visible:outline-ring">{item.action}<ArrowUpRight size={13} aria-hidden="true" /></a>
 			</div>
 		</div>
 	{/each}

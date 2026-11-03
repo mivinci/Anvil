@@ -8,7 +8,7 @@
 
 <section class="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-6 py-10 text-center">
 	<h1 class="text-lg font-semibold">{localeState.messages.errors.pageUnavailable}</h1>
-	<p class="text-[13px] text-muted-foreground">{page.status === 404 ? localeState.messages.errors.notFound : localeState.messages.errors.pageFailed}</p>
+	<p class="text-body text-muted-foreground">{page.status === 404 ? localeState.messages.errors.notFound : localeState.messages.errors.pageFailed}</p>
 	<div class="flex flex-wrap justify-center gap-2">
 		<button type="button" onclick={() => location.reload()} class="rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground focus-visible:outline-2 focus-visible:outline-ring">{localeState.messages.common.retry}</button>
 		<a href={resolve('/')} class="rounded-md px-3 py-1.5 text-xs hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring">{localeState.messages.common.returnHome}</a>

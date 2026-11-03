@@ -12,6 +12,7 @@ use tokio::{io::BufReader, sync::oneshot};
 mod accounts;
 mod api;
 mod catalog;
+mod client_avatar;
 mod client_resources;
 mod client_settings;
 mod curseforge;

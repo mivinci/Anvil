@@ -1,7 +1,7 @@
 /** Existing Runtime data must be confirmed before treating an installation as new. */
 export type ExistingWelcomeData = 'present' | 'empty' | 'unknown';
 export const welcomeStorageKey = 'anvil.welcome';
-const preferenceKeys = ['anvil.locale', 'anvil.appearance', 'anvil.theme', 'anvil.recent-plays'] as const;
+const preferenceKeys = ['anvil.locale', 'anvil.appearance', 'anvil.theme', 'anvil.ui-scale', 'anvil.recent-plays'] as const;
 export type WelcomeStorage = Pick<Storage, 'getItem' | 'setItem'>;
 
 export class WelcomeState {

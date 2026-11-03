@@ -136,7 +136,7 @@ try {
 	const normal = await context();
 	const page = await normal.newPage();
 	page.setDefaultTimeout(10000);
-	await page.goto(`${origin}/settings`);
+	await page.goto(`${origin}/settings/general`);
 	await chooseLanguage(page, 'en');
 	await page.getByRole('heading', { name: 'General', exact: true }).waitFor();
 	assert.equal(await page.locator('html').getAttribute('lang'), 'en');
@@ -163,7 +163,7 @@ try {
 	await chooseLanguage(page, 'system');
 	assert.equal(await page.evaluate(() => localStorage.getItem('anvil.locale')), null);
 	assert.equal(await page.locator('html').getAttribute('lang'), 'zh-CN');
-	await page.goto(`${origin}/settings?section=appearance`);
+	await page.goto(`${origin}/settings/appearance`);
 	await page.getByRole('heading', { name: '外观', exact: true }).waitFor();
 	await page.getByRole('button', { name: '通用', exact: true }).click();
 	await chooseLanguage(page, 'en');
@@ -174,7 +174,7 @@ try {
 	await page.getByText('Coming soon', { exact: true }).waitFor();
 	assert.equal(await page.title(), 'Servers · Anvil');
 	await page.getByRole('button', { name: 'Back', exact: true }).click();
-	await page.getByRole('heading', { name: 'Appearance', exact: true }).waitFor();
+	await page.getByRole('heading', { name: 'General', exact: true }).waitFor();
 	await page.goto(`${origin}/missing-fixture-page`);
 	await page.getByRole('heading', { name: 'Could not open this page', exact: true }).waitFor();
 	await page.getByRole('link', { name: 'Back to home', exact: true }).waitFor();
@@ -277,7 +277,7 @@ try {
 	await page.getByRole('button', { name: 'Confirm installation', exact: true }).waitFor();
 	assert.equal(submissions, 0);
 	await page.screenshot({ path: path.join(output, 'iris-plan-en.png') });
-	await page.goto(`${origin}/settings?section=appearance`);
+	await page.goto(`${origin}/settings/appearance`);
 	await page.getByRole('heading', { name: 'Visual style', exact: true }).waitFor();
 	assert.equal(await page.locator('#theme-preset option[value="default"]').innerText(), 'Shulker Purple');
 	await page.locator('#theme-preset').selectOption('custom');
@@ -310,7 +310,7 @@ try {
 	await page.screenshot({ path: path.join(output, 'login-failed-en.png') });
 	await page.getByRole('button', { name: 'Close sign-in window', exact: true }).click();
 	fixtureAccounts = [fixtureAccount];
-	await page.goto(`${origin}/settings?section=accounts`);
+	await page.goto(`${origin}/settings/accounts`);
 	await page.getByText('测试玩家 · 4 launches · 1.0 hour', { exact: true }).waitFor();
 	await page.getByRole('button', { name: 'Clear history', exact: true }).click();
 	await page.getByRole('dialog', { name: 'Clear play history for 测试玩家?', exact: true }).waitFor();
@@ -328,7 +328,7 @@ try {
 	await page.getByRole('menuitem', { name: 'Sign out', exact: true }).waitFor();
 	await page.screenshot({ path: path.join(output, 'account-menu-en.png') });
 	await page.keyboard.press('Escape');
-	await page.goto(`${origin}/settings?section=about`);
+	await page.goto(`${origin}/settings/about`);
 	await page.getByRole('heading', { name: 'Version information', exact: true }).waitFor();
 	await page.getByText('/fixture/logs', { exact: true }).waitFor();
 	await page.evaluate(() => { window.__fixtureUpdate = { app: { state: 'failed', failure: 'shell_upgrade_required', availableVersion: '26.1.0', currentVersion: 'fixture', downloadedBytes: 0, totalBytes: null }, shell: { state: 'up_to_date', availableVersion: null, releaseUrl: null } }; });
@@ -340,7 +340,7 @@ try {
 	await normal.close();
 	const blocked = await context(true);
 	const blockedPage = await blocked.newPage();
-	await blockedPage.goto(`${origin}/settings`);
+	await blockedPage.goto(`${origin}/settings/general`);
 	await blockedPage.getByRole('status').filter({ hasText: '无法读取已保存的语言' }).waitFor();
 	await chooseLanguage(blockedPage, 'en');
 	await blockedPage.getByRole('status').filter({ hasText: 'only to this window' }).waitFor();
@@ -349,7 +349,7 @@ try {
 	await blocked.close();
 	const failed = await context(false, 'failed', 'en');
 	const failedPage = await failed.newPage();
-	await failedPage.goto(`${origin}/settings`);
+	await failedPage.goto(`${origin}/settings/general`);
 	await failedPage.getByRole('alert').filter({ hasText: 'Could not connect to Runtime' }).waitFor();
 	await failedPage.getByRole('button', { name: 'Retry', exact: true }).waitFor();
 	await failedPage.getByRole('button', { name: 'View logs', exact: true }).waitFor();
@@ -369,8 +369,8 @@ try {
 			check.setDefaultTimeout(10000);
 			await check.setViewportSize({ width, height: width === 620 ? 420 : 800 });
 			for (const [name, route] of [
-				['home', '/'], ['clients', '/clients'], ['general', '/settings'], ['appearance', '/settings?section=appearance'],
-				['accounts', '/settings?section=accounts'], ['about', '/settings?section=about'],
+				['home', '/'], ['clients', '/clients'], ['general', '/settings/general'], ['appearance', '/settings/appearance'],
+				['accounts', '/settings/accounts'], ['about', '/settings/about'],
 				['overview', `/clients/${encodeURIComponent(longName)}`], ['mods', `/clients/${encodeURIComponent(longName)}/mods`],
 				['localResources', `/clients/${encodeURIComponent(longName)}/resource-packs`], ['localShaders', `/clients/${encodeURIComponent(longName)}/shader-packs`],
 				['instanceSettings', `/clients/${encodeURIComponent(longName)}/settings`], ['logs', `/clients/${encodeURIComponent(longName)}/logs`],

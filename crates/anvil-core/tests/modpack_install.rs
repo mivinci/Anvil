@@ -2,18 +2,31 @@ use super::*;
 use crate::client::{ClientInstallRecord, ClientInstalledFile};
 use std::io::Cursor;
 
-fn packed(name: &str) -> Vec<u8> {
+const AVATAR_PNG: &[u8] = &[
+  137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0, 1, 8, 4, 0, 0,
+  0, 181, 28, 12, 2, 0, 0, 0, 11, 73, 68, 65, 84, 120, 218, 99, 100, 248, 15, 0, 1, 5, 1, 1, 39,
+  24, 227, 102, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130,
+];
+fn packed_with_avatar(name: &str, avatar: Option<&[u8]>) -> Vec<u8> {
   let index = serde_json::json!({"formatVersion":1,"game":"minecraft","versionId":"1.0","name":name,"files":[],"dependencies":{"minecraft":"1.21.1","fabric-loader":"0.16.0"}});
+  let index = serde_json::to_vec(&index).unwrap();
   let jar = super::super::tests::archive(&[(
     "fabric.mod.json",
     br#"{"schemaVersion":1,"id":"example","version":"1.0"}"#,
   )]);
-  super::super::tests::archive(&[
-    ("modrinth.index.json", &serde_json::to_vec(&index).unwrap()),
+  let mut entries: Vec<(&str, &[u8])> = vec![
+    ("modrinth.index.json", &index),
     ("overrides/config/example.json", b"common"),
     ("client-overrides/config/example.json", b"client"),
     ("overrides/mods/example.jar", &jar),
-  ])
+  ];
+  if let Some(avatar) = avatar {
+    entries.push(("overrides/.anvil/avatar.png", avatar));
+  }
+  super::super::tests::archive(&entries)
+}
+fn packed(name: &str) -> Vec<u8> {
+  packed_with_avatar(name, None)
 }
 fn fixture() -> (tempfile::TempDir, Context) {
   let root = tempfile::tempdir().unwrap();
@@ -115,6 +128,65 @@ async fn publishes_complete_unicode_instance_and_managed_resources_atomically() 
   fs::write(original, b"modified instance copy").unwrap();
   assert_eq!(fs::read(shared).unwrap(), content);
 }
+
+#[tokio::test]
+async fn imports_avatar_from_reserved_override_only_to_instance_root() {
+  let (root, context) = fixture();
+  let (staging, plan) = staged(
+    root.path(),
+    &packed_with_avatar("Avatar-pack", Some(AVATAR_PNG)),
+  );
+  let id = staging.instance.id.clone();
+  let (progress, _) = watch::channel(ImportProgress::default());
+  publish_staged(
+    staging,
+    root.path(),
+    &plan.archive_sha256,
+    &record(),
+    &CancellationToken::new(),
+    &progress,
+  )
+  .unwrap();
+  let directory = root.path().join("instances").join(id);
+  assert!(directory.join("avatar.png").is_file());
+  assert!(!directory.join("game/.anvil/avatar.png").exists());
+  let avatar = ClientInstaller::new(context)
+    .avatar("Avatar-pack")
+    .await
+    .unwrap()
+    .unwrap();
+  assert_eq!(avatar.png[..8], [137, 80, 78, 71, 13, 10, 26, 10]);
+}
+
+#[tokio::test]
+async fn malformed_optional_avatar_does_not_fail_import() {
+  let (root, context) = fixture();
+  let (staging, plan) = staged(
+    root.path(),
+    &packed_with_avatar("Bad avatar", Some(b"not an image")),
+  );
+  let id = staging.instance.id.clone();
+  let (progress, _) = watch::channel(ImportProgress::default());
+  publish_staged(
+    staging,
+    root.path(),
+    &plan.archive_sha256,
+    &record(),
+    &CancellationToken::new(),
+    &progress,
+  )
+  .unwrap();
+  assert!(
+    !root
+      .path()
+      .join("instances")
+      .join(id)
+      .join("avatar.png")
+      .exists()
+  );
+  assert!(ClientInstaller::new(context).list().await.unwrap().len() == 1);
+}
+
 #[test]
 fn names_are_reserved_case_insensitively_and_ascii_ids_stay_stable() {
   let (root, _) = fixture();

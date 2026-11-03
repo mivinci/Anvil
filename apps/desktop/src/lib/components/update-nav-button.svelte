@@ -69,7 +69,7 @@
 
 {#if shellBlocked}
 	<div class="relative grid size-9 place-items-center">
-		<NavButton aria-label={localeState.messages.common.shellUpgradeLabel} title={localeState.messages.common.shellUpgradeTitle} onclick={() => void goto(`${resolve('/settings')}?section=about`)} class="bg-primary/10 text-primary hover:bg-primary/15"><ArrowUp size={17} strokeWidth={2} aria-hidden="true" /></NavButton>
+		<NavButton aria-label={localeState.messages.common.shellUpgradeLabel} title={localeState.messages.common.shellUpgradeTitle} onclick={() => void goto(resolve('/settings/about'))} class="bg-primary/10 text-primary hover:bg-primary/15"><ArrowUp size={17} strokeWidth={2} aria-hidden="true" /></NavButton>
 		<span class="pointer-events-none absolute -right-0.5 -top-0.5 size-2 rounded-full bg-primary ring-2 ring-background" aria-hidden="true"></span>
 	</div>
 {:else if updateReady}

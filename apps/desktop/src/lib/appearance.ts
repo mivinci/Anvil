@@ -1,6 +1,7 @@
 import { defaultLocale, messages, type Locale } from './i18n/index.ts';
 import { createContext } from 'svelte';
 import type { AppearanceMode } from './components/appearance-menu.svelte';
+import type { UiScale } from './ui-scale.ts';
 
 export type ColorMode = 'light' | 'dark';
 export type Palette = { background: string; card: string; foreground: string; accent: string };
@@ -11,14 +12,14 @@ export const themePresets = [
 		light: { background: '#ffffff', card: '#f7f7f7', foreground: '#2d2e30', accent: '#827099' },
 		dark: { background: '#222223', card: '#2b2b2d', foreground: '#e9e9e7', accent: '#b5a0ce' } },
 	{ id: 'enderman',
-		light: { background: '#f7f7f7', card: '#eeeeef', foreground: '#252628', accent: '#44464b' },
-		dark: { background: '#1e1f21', card: '#292a2d', foreground: '#ececee', accent: '#bfc2c8' } },
+		light: { background: '#ffffff', card: '#f7f7f7', foreground: '#2d2e30', accent: '#44464b' },
+		dark: { background: '#222223', card: '#2b2b2d', foreground: '#e9e9e7', accent: '#bfc2c8' } },
 	{ id: 'creeper',
-		light: { background: '#f6f8f3', card: '#f0f4ec', foreground: '#2c332b', accent: '#5c7c50' },
-		dark: { background: '#222720', card: '#2b3228', foreground: '#e5ece0', accent: '#a3be8c' } },
+		light: { background: '#ffffff', card: '#f7f7f7', foreground: '#2d2e30', accent: '#5c7c50' },
+		dark: { background: '#222223', card: '#2b2b2d', foreground: '#e9e9e7', accent: '#a3be8c' } },
 	{ id: 'allay',
-		light: { background: '#f4f8fa', card: '#e8f0f4', foreground: '#2b333b', accent: '#4e7b9b' },
-		dark: { background: '#20262c', card: '#29323a', foreground: '#e1eaf0', accent: '#91bdd6' } },
+		light: { background: '#ffffff', card: '#f7f7f7', foreground: '#2d2e30', accent: '#4e7b9b' },
+		dark: { background: '#222223', card: '#2b2b2d', foreground: '#e9e9e7', accent: '#91bdd6' } },
 
 ] as const;
 export const themePresetName = (id: PresetThemeId, locale: Locale = defaultLocale) => messages[locale].settings.themeNames[id];
@@ -104,8 +105,10 @@ export interface AppearanceSettings {
 	readonly mode: AppearanceMode;
 	readonly colors: ThemePreferences;
 	readonly resolvedMode: ColorMode;
+	readonly uiScale: UiScale;
 	setMode: (mode: AppearanceMode) => void;
 	setTheme: (theme: ThemePreferences['theme']) => void;
+	setUiScale: (scale: UiScale) => void;
 	customizeTheme: () => void;
 	setColor: (mode: ColorMode, key: keyof Palette, value: string) => void;
 	resetColors: () => void;

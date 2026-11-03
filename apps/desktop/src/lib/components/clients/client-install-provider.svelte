@@ -8,17 +8,19 @@
 	import { ClientLaunchState, setClientLaunchState } from '../../client-launch-state.svelte.js';
 	import { ClientRemovalState, setClientRemovalState } from '../../client-removal-state.svelte.js';
 	import { ModpackExportState, setModpackExportState } from '../../modpack-export-state.svelte.js';
+	import { ClientAvatarState, setClientAvatarState } from '../../client-avatar-state.svelte.js';
 	const launches = setClientLaunchState(new ClientLaunchState());
 	const resources = setResourceInstallState(new ResourceInstallState());
 	const exports = setModpackExportState(new ModpackExportState());
+	const avatars = setClientAvatarState(new ClientAvatarState());
 	const versions = setClientVersionState(new ClientVersionState());
 	import ClientInstallProgressDialog from './client-install-progress-dialog.svelte';
 	import ModpackExportToast from './modpack-export-toast.svelte';
 	let { children }: { children: Snippet } = $props();
 	const library = setClientLibraryState(new ClientLibraryState());
-	const removal = setClientRemovalState(new ClientRemovalState((name, cleanupPending) => { library.acceptRemoved(name, cleanupPending); launches.forgetClient(name); }));
+	const removal = setClientRemovalState(new ClientRemovalState((name, cleanupPending) => { library.acceptRemoved(name, cleanupPending); launches.forgetClient(name); avatars.forget(name); }));
 	const installs = setClientInstallState(new ClientInstallState((receipt) => library.acceptCompleted(receipt)));
-	onMount(() => { void launches.sync(); void installs.sync(); void resources.sync(); void exports.sync(); return () => { removal.dispose(); launches.dispose(); resources.dispose(); exports.dispose(); installs.dispose(); library.dispose(); versions.dispose(); }; });
+	onMount(() => { void launches.sync(); void installs.sync(); void resources.sync(); void exports.sync(); return () => { removal.dispose(); launches.dispose(); resources.dispose(); exports.dispose(); avatars.dispose(); installs.dispose(); library.dispose(); versions.dispose(); }; });
 </script>
 {@render children()}
 <ClientInstallProgressDialog />

@@ -203,9 +203,9 @@
 		<button type="submit" disabled={searching} class="grid size-9 shrink-0 place-items-center rounded-lg bg-chrome-hover text-muted-foreground hover:bg-chrome-selected disabled:opacity-40" aria-label={localeState.messages.mods.discovery.search} title={localeState.messages.mods.discovery.search}>{#if searching}<LoaderCircle size={15} class="animate-spin motion-reduce:animate-none" aria-hidden="true" />{:else}<Search size={15} aria-hidden="true" />{/if}</button>
 	</form>
 	{#if error}<p role="alert" class="mt-2 shrink-0 text-xs text-destructive">{error}</p>{/if}
-	{#if errorDetail}<details class="mt-2 text-[11px] text-muted-foreground"><summary>{localeState.messages.mods.discovery.technicalDetails}</summary><p class="break-words">{errorDetail}</p></details>{/if}
+	{#if errorDetail}<details class="mt-2 text-xs text-muted-foreground"><summary>{localeState.messages.mods.discovery.technicalDetails}</summary><p class="break-words">{errorDetail}</p></details>{/if}
 	{#if message}<p role="status" class="mt-2 shrink-0 text-xs text-emerald-600 dark:text-emerald-400">{message}</p>{/if}
-	{#if loadingRevision}<p role="status" class="mt-2 shrink-0 text-[11px] text-muted-foreground">{localeState.messages.mods.discovery.loadingShaderList}</p>{:else if revision === null}<p class="mt-2 shrink-0 text-[11px] text-muted-foreground">{localeState.messages.mods.discovery.revisionUnknown}</p>{/if}
+	{#if loadingRevision}<p role="status" class="mt-2 shrink-0 text-xs text-muted-foreground">{localeState.messages.mods.discovery.loadingShaderList}</p>{:else if revision === null}<p class="mt-2 shrink-0 text-xs text-muted-foreground">{localeState.messages.mods.discovery.revisionUnknown}</p>{/if}
 	<div class="mt-3 min-h-0 flex-1 overflow-y-auto overscroll-contain">
 		{#if !selected}
 			{#if searching && projects.length === 0}
@@ -215,7 +215,7 @@
 			{:else}
 				<ul class="resource-list resource-list-icons" aria-label={localeState.messages.mods.discovery.shaderProjects}>
 					{#each projects as project (project.id)}
-						<li class="resource-row"><button type="button" onclick={() => void openProject(project)} class="flex w-full items-center gap-3 rounded-md px-2.5 py-2.5 text-left transition-colors hover:bg-chrome-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"><ModProjectIcon {project} source="modrinth" /><span class="min-w-0 flex-1"><span class="block truncate text-[13px] font-medium" title={project.name}>{project.name}</span><span class="mt-0.5 line-clamp-1 text-[11px] text-muted-foreground" title={project.summary}>{project.summary}</span></span><span class="shrink-0 text-right text-[10px] leading-4 text-muted-foreground">{formatModDownloads(project.downloadCount, localeState.current) ?? ''}<br />{formatModUpdated(project.updatedAt ?? project.dateModified, localeState.current) ?? ''}</span></button></li>
+						<li class="resource-row"><button type="button" onclick={() => void openProject(project)} class="flex w-full items-center gap-3 rounded-md px-2.5 py-2.5 text-left transition-colors hover:bg-chrome-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"><ModProjectIcon {project} source="modrinth" /><span class="min-w-0 flex-1"><span class="block truncate text-body font-medium" title={project.name}>{project.name}</span><span class="mt-0.5 line-clamp-1 text-xs text-muted-foreground" title={project.summary}>{project.summary}</span></span><span class="shrink-0 text-right text-xs leading-4 text-muted-foreground">{formatModDownloads(project.downloadCount, localeState.current) ?? ''}<br />{formatModUpdated(project.updatedAt ?? project.dateModified, localeState.current) ?? ''}</span></button></li>
 					{/each}
 				</ul>
 				{#if nextIndex !== null}<button type="button" disabled={searching} class="mt-2 flex w-full items-center justify-center gap-1 rounded-lg py-2 text-xs text-muted-foreground hover:bg-chrome-hover disabled:opacity-40" onclick={() => void search(nextIndex!)}>{#if searching}<LoaderCircle size={13} class="animate-spin motion-reduce:animate-none" aria-hidden="true" />{localeState.messages.mods.discovery.loading}{:else}{localeState.messages.mods.discovery.loadMore}{/if}</button>{/if}
@@ -223,18 +223,18 @@
 		{:else}
 			<div class="mt-2 flex items-start gap-3 px-2.5 pt-1 pb-3">
 				<ModProjectIcon project={selected} source="modrinth" large />
-				<div class="min-w-0 flex-1"><h2 class="break-words text-[13px] font-medium">{selected.name}</h2><p class="mt-1 line-clamp-2 text-[11px] leading-4 text-muted-foreground">{selected.summary}</p></div>
+				<div class="min-w-0 flex-1"><h2 class="break-words text-body font-medium">{selected.name}</h2><p class="mt-1 line-clamp-2 text-xs leading-4 text-muted-foreground">{selected.summary}</p></div>
 			</div>
 			{#if loadingVersions}
 				<p role="status" class="flex items-center justify-center gap-2 py-16 text-xs text-muted-foreground"><LoaderCircle size={14} class="animate-spin motion-reduce:animate-none" aria-hidden="true" />{localeState.messages.mods.discovery.loadingVersions}</p>
 			{:else if versions.length === 0}
 				<p class="py-16 text-center text-xs text-muted-foreground">{localeState.messages.mods.noShaderVersions(gameVersion)}</p>
 			{:else}
-				<div class="mx-2.5 mt-3 flex items-center justify-between gap-3 border-b border-border/60 pb-2"><h3 class="text-[13px] font-medium">{localeState.messages.mods.discovery.compatibleVersions}</h3><span class="text-[11px] text-muted-foreground">Minecraft {gameVersion} · Iris</span></div>
+				<div class="mx-2.5 mt-3 flex items-center justify-between gap-3 border-b border-border/60 pb-2"><h3 class="text-body font-medium">{localeState.messages.mods.discovery.compatibleVersions}</h3><span class="text-xs text-muted-foreground">Minecraft {gameVersion} · Iris</span></div>
 				<div class="resource-list mt-1" aria-label={localeState.messages.mods.discovery.chooseVersion}>
 					{#each versions as file (file.id)}
 						<button type="button" aria-pressed={pending?.id === file.id} disabled={planning || resources.starting || resources.active} onclick={() => void choose(file)} class={`resource-row flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring disabled:opacity-40 ${pending?.id === file.id ? 'bg-chrome-selected' : 'hover:bg-chrome-hover'}`}>
-							<span class="min-w-0 flex-1"><span class="block truncate text-xs font-medium" title={file.displayName}>{file.displayName}</span><span class="mt-1 block truncate text-[11px] text-muted-foreground" title={file.fileName}>{formatModUpdated(file.fileDate, localeState.current) ?? file.fileDate} · {releaseLabel(file.releaseType)} · {formatBytes(file.fileLength)}</span></span>
+							<span class="min-w-0 flex-1"><span class="block truncate text-xs font-medium" title={file.displayName}>{file.displayName}</span><span class="mt-1 block truncate text-xs text-muted-foreground" title={file.fileName}>{formatModUpdated(file.fileDate, localeState.current) ?? file.fileDate} · {releaseLabel(file.releaseType)} · {formatBytes(file.fileLength)}</span></span>
 							{#if pending?.id === file.id}<Check size={14} class="shrink-0 text-primary" aria-hidden="true" />{/if}
 						</button>
 					{/each}
@@ -256,13 +256,13 @@
 						<p role="alert" class="break-words text-destructive">{error}</p>
 					{:else if plan}
 						<p class="truncate" title={`${plan.projectName} · ${plan.versionName} · ${formatBytes(plan.fileSize)}`}><span class="text-muted-foreground">{localeState.messages.mods.discovery.installTo}</span> {name} <span class="text-muted-foreground">· {plan.projectName} · {plan.versionName} · {formatBytes(plan.fileSize)}</span></p>
-						{#if resources.active || resources.starting}<p class="mt-0.5 text-[10px] text-muted-foreground">{localeState.messages.mods.discovery.waitOtherTask}</p>{/if}
+						{#if resources.active || resources.starting}<p class="mt-0.5 text-xs text-muted-foreground">{localeState.messages.mods.discovery.waitOtherTask}</p>{/if}
 					{:else}
 						<p class="truncate text-muted-foreground">{localeState.messages.mods.selectedShader(pending.displayName)}</p>
 					{/if}
 				</div>
 				{#if planning}
-					<span class="text-[10px] text-muted-foreground">{localeState.messages.mods.discovery.pleaseWait}</span>
+					<span class="text-xs text-muted-foreground">{localeState.messages.mods.discovery.pleaseWait}</span>
 				{:else if operation?.state === 'running'}
 					<button type="button" class={button} onclick={downloads}>{localeState.messages.mods.discovery.viewTasks}</button>
 					<button type="button" class={button} disabled={resources.cancelling || operation.cancelRequested} onclick={() => void cancelOperation()}>{resources.cancelling || operation.cancelRequested ? localeState.messages.mods.discovery.cancelling : localeState.messages.mods.discovery.cancel}</button>

@@ -32,6 +32,11 @@ export default {
 	"accountsKeywords": "登录 Microsoft 微软 切换 移除 游玩 记录 统计 清除 accounts login sign in switch remove history statistics clear",
 	"aboutKeywords": "Anvil 版本 Runtime 项目 about version project",
 	flow: {
+		textSize: "界面字号",
+		textSizeHint: "影响整个界面的文字与控件尺寸。",
+		textSizeDefault: "标准",
+		textSizeLarge: "较大",
+		textSizeLarger: "更大",
 		visualStyle: "视觉风格",
 		displayMode: "显示模式",
 		themeColors: "主题配色",

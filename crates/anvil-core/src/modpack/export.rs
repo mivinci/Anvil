@@ -11,6 +11,7 @@ pub struct ExportSelection {
   pub shader_packs: bool,
   pub config: bool,
   pub worlds: bool,
+  pub avatar: bool,
 }
 impl Default for ExportSelection {
   fn default() -> Self {
@@ -20,6 +21,7 @@ impl Default for ExportSelection {
       shader_packs: true,
       config: true,
       worlds: false,
+      avatar: false,
     }
   }
 }
@@ -51,7 +53,8 @@ impl ExportOptions {
       || selected.resource_packs
       || selected.shader_packs
       || selected.config
-      || selected.worlds)
+      || selected.worlds
+      || selected.avatar)
     {
       return Err(Error::Invalid("请至少选择一种导出内容".into()));
     }

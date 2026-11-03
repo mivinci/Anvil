@@ -186,6 +186,19 @@ fn apply_archive(
     .collect::<BTreeSet<_>>();
   for entry in &plan.overrides {
     check(cancel)?;
+    if entry.path == crate::modpack::AVATAR_OVERRIDE_PATH {
+      let limit = crate::client::MAX_AVATAR_INPUT_BYTES as u64;
+      if entry.size <= limit
+        && let Ok(source) = archive.by_index(entry.entry_index)
+      {
+        let mut bytes = Vec::new();
+        if source.take(limit + 1).read_to_end(&mut bytes).is_ok() && bytes.len() as u64 <= limit {
+          // A malformed optional avatar must never fail a modpack import.
+          let _ = crate::client::write_instance_avatar(staging, &bytes);
+        }
+      }
+      continue;
+    }
     let target = game.join(&entry.path);
     fs::create_dir_all(target.parent().unwrap())?;
     // Every path is validated and this game directory belongs only to this operation.

@@ -62,7 +62,7 @@
 
 <div class="flex min-h-0 min-w-0 flex-1 overflow-hidden">
 	<PageSidebar open={sidebar.shaders} id="shader-discovery-sidebar" label={localeState.messages.mods.discovery.shaderSidebar}>
-		<h1 class="px-2 pb-4 text-[13px] font-semibold">{localeState.messages.mods.discovery.shaders}</h1>
+		<h1 class="px-2 pb-4 text-body font-semibold">{localeState.messages.mods.discovery.shaders}</h1>
 		<div class="flex flex-col gap-4">
 			<Popover.Root bind:open={pickerOpen}>
 				<Popover.Trigger aria-label={targetName ? localeState.messages.mods.targetLabel(targetName) : localeState.messages.mods.discovery.noTargetLabel} class="inline-flex h-8 min-w-0 items-center gap-2 rounded-lg border border-input px-2.5 text-left text-xs focus-visible:outline-2 focus-visible:outline-ring">
@@ -71,11 +71,11 @@
 				{#if pickerOpen}<Popover.Portal to=".app-window">
 					<Popover.Content side="bottom" align="start" sideOffset={8} collisionPadding={12} class="z-30 w-80 max-w-[calc(100vw-32px)] rounded-xl border border-border bg-popover p-2 text-popover-foreground shadow-lg outline-none" aria-label={localeState.messages.mods.discovery.chooseShaderTarget}>
 						<label class="mb-2 flex h-8 items-center gap-2 rounded-lg bg-chrome-hover px-2.5"><Search size={13} class="shrink-0 text-muted-foreground" aria-hidden="true" /><input type="search" bind:value={instanceSearch} placeholder={localeState.messages.mods.discovery.searchInstanceHint} aria-label={localeState.messages.mods.discovery.searchTarget} class="min-w-0 flex-1 bg-transparent text-xs outline-none" /></label>
-						{#if library.error}<p role="alert" class="mb-2 px-2 text-[11px] text-destructive">{library.loaded ? localeState.messages.mods.discovery.instancesRefreshFailed : localeState.messages.mods.discovery.instancesReadFailed}</p>{/if}
+						{#if library.error}<p role="alert" class="mb-2 px-2 text-xs text-destructive">{library.loaded ? localeState.messages.mods.discovery.instancesRefreshFailed : localeState.messages.mods.discovery.instancesReadFailed}</p>{/if}
 						<SelectableList class="max-h-64 overflow-y-auto overscroll-contain" aria-label={localeState.messages.mods.discovery.targetList} aria-busy={library.loading}>
 							{#each filtered as item (item.id)}
 								<SelectableRow selected={targetName === item.name.toLowerCase()} onclick={() => void changeInstance(item.name)} class="h-12" aria-label={localeState.messages.mods.instanceVersion(item.name, item.versionId)}>
-									<span class="min-w-0"><span class="block truncate text-xs">{item.name}</span><span class="mt-1 block truncate text-[11px] text-muted-foreground">Minecraft {item.versionId}</span></span>
+									<span class="min-w-0"><span class="block truncate text-xs">{item.name}</span><span class="mt-1 block truncate text-xs text-muted-foreground">Minecraft {item.versionId}</span></span>
 								</SelectableRow>
 							{/each}
 						</SelectableList>
@@ -89,12 +89,12 @@
 			<div class="flex flex-col gap-1" role="group" aria-label={localeState.messages.mods.discovery.shaderSource}>
 				<button type="button" aria-pressed="true" class={pageSidebarItemClass(true)}><Sparkles size={15} strokeWidth={1.7} aria-hidden="true" />Modrinth</button>
 			</div>
-			<p class="px-2 text-[10px] leading-4 text-muted-foreground">{localeState.messages.mods.discovery.shaderScope}</p>
+			<p class="px-2 text-xs leading-4 text-muted-foreground">{localeState.messages.mods.discovery.shaderScope}</p>
 		</div>
 	</PageSidebar>
 	<section class="flex min-h-0 min-w-0 flex-1 flex-col" aria-label={localeState.messages.mods.discovery.shaderBrowsing}>
 		<div class="flex min-h-0 flex-1 flex-col p-3 lg:p-4">
-			<header class="mb-3 shrink-0"><h2 class="text-[13px] font-semibold">{localeState.messages.mods.discovery.shaders}</h2><p class="mt-1 text-[11px] leading-4 text-muted-foreground">{localeState.messages.mods.discovery.shaderIntro}</p></header>
+			<header class="mb-3 shrink-0"><h2 class="text-body font-semibold">{localeState.messages.mods.discovery.shaders}</h2><p class="mt-1 text-xs leading-4 text-muted-foreground">{localeState.messages.mods.discovery.shaderIntro}</p></header>
 			{#if targetIssue}<div role="alert" class="mb-3 flex items-start gap-2 rounded-lg border border-destructive/15 bg-destructive/5 px-3 py-2.5 text-xs"><div class="min-w-0 flex-1"><p class="text-destructive">{targetIssue}</p><div class="mt-2 flex flex-wrap gap-1"><button type="button" class={button} onclick={() => void chooseInstance()}>{localeState.messages.mods.discovery.selectAgain}</button>{#if targetName}<button type="button" class={button} disabled={detail.loading} onclick={() => targetName && void detail.load(targetName)}>{localeState.messages.mods.discovery.reread}</button>{/if}</div></div></div>{/if}
 			{#if navigationError}<p role="alert" class="mb-3 text-xs text-destructive">{navigationError}</p>{/if}
 			{#if confirmed}
@@ -104,8 +104,8 @@
 			{:else}
 				<div class="flex flex-1 flex-col items-center justify-center gap-2 text-center">
 					<Sparkles size={26} strokeWidth={1.4} class="text-primary/60" aria-hidden="true" />
-					<p class="text-[13px]">{localeState.messages.mods.discovery.chooseOne}</p>
-					<p class="max-w-80 text-[11px] leading-4 text-muted-foreground">{localeState.messages.mods.discovery.shaderTargetHint}</p>
+					<p class="text-body">{localeState.messages.mods.discovery.chooseOne}</p>
+					<p class="max-w-80 text-xs leading-4 text-muted-foreground">{localeState.messages.mods.discovery.shaderTargetHint}</p>
 					<button type="button" onclick={() => void chooseInstance()} class="mt-1 inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground focus-visible:outline-2 focus-visible:outline-ring">{localeState.messages.mods.discovery.chooseInstance}</button>
 				</div>
 			{/if}

@@ -42,6 +42,34 @@ export class RuntimeRequestError extends Error {
 	}
 }
 
+export interface ClientAvatarImage {
+	blob: Blob;
+	revision: string | null;
+}
+export interface ClientAvatarChange {
+	revision: string;
+}
+
+async function runtimeFetch(path: string, init: RequestInit = {}): Promise<Response> {
+	const { connection, baseUrl } = await getRuntimeConnection();
+	const headers = new Headers(init.headers);
+	headers.set('Authorization', `Bearer ${connection.token}`);
+	init.signal?.throwIfAborted();
+	return fetch(new URL(path, baseUrl), { ...init, headers });
+}
+
+async function runtimeResponseError(response: Response): Promise<RuntimeRequestError> {
+	const payload: unknown = await response.json().catch(() => null);
+	const message =
+		typeof payload === 'object' && payload !== null && 'error' in payload &&
+		typeof payload.error === 'string'
+			? payload.error
+			: `Runtime request failed (${response.status})`;
+	const code = typeof payload === 'object' && payload !== null && 'code' in payload
+		&& typeof payload.code === 'string' && /^[a-z][a-z0-9_]{0,63}$/.test(payload.code) ? payload.code : null;
+	return new RuntimeRequestError(message, response.status, code);
+}
+
 export type AccountLoginOperation = {
 	id: number;
 	state: 'running' | 'completed' | 'failed' | 'cancelled';
@@ -123,6 +151,7 @@ async function runtimeRequest<T>(path: string, init: RequestInit = {}): Promise<
 
 	init.signal?.throwIfAborted();
 	const response = await fetch(new URL(path, baseUrl), { ...init, headers });
+	if (response.status === 204) return undefined as T;
 	const payload: unknown = await response.json().catch(() => null);
 	if (!response.ok) {
 		const message =
@@ -267,6 +296,29 @@ export const getClientDetails = (name: string, signal: AbortSignal) =>
 export interface ClientRemoval { id: string; removed: boolean; cleanupPending: boolean }
 export const deleteClient = (name: string, signal: AbortSignal) =>
 	runtimeRequest<ClientRemoval>(`/clients/${encodeURIComponent(name)}`, { method: 'DELETE', body: JSON.stringify({ confirmation: name }), signal });
+
+export async function getClientAvatar(name: string, signal: AbortSignal): Promise<ClientAvatarImage | null> {
+	const response = await runtimeFetch(`/clients/${encodeURIComponent(name)}/avatar`, { signal, cache: 'no-store' });
+	if (response.status === 404) return null;
+	if (!response.ok) throw await runtimeResponseError(response);
+	const blob = await response.blob();
+	if (!blob.size) throw new Error('Runtime returned an empty avatar');
+	const revision = response.headers.get('ETag')?.replace(/^"|"$/g, '') ?? null;
+	return { blob, revision };
+}
+
+export async function saveClientAvatar(name: string, blob: Blob, signal: AbortSignal): Promise<ClientAvatarChange> {
+	return runtimeRequest<ClientAvatarChange>(`/clients/${encodeURIComponent(name)}/avatar`, {
+		method: 'PUT',
+		headers: { 'Content-Type': blob.type || 'image/png' },
+		body: blob,
+		signal,
+	});
+}
+
+export async function clearClientAvatar(name: string, signal: AbortSignal): Promise<void> {
+	await runtimeRequest<void>(`/clients/${encodeURIComponent(name)}/avatar`, { method: 'DELETE', signal });
+}
 
 export interface ClientResourceEntry {
 	sha256: string;
@@ -507,7 +559,7 @@ export interface ModpackExportOperation {
 	errorCode?: string | null;
 }
 export interface ModpackExportSelection {
-	mods: boolean; resourcePacks: boolean; shaderPacks: boolean; config: boolean; worlds: boolean;
+	mods: boolean; resourcePacks: boolean; shaderPacks: boolean; config: boolean; worlds: boolean; avatar: boolean;
 }
 export interface ModpackExportOptions {
 	name: string; versionId: string; selection: ModpackExportSelection;
