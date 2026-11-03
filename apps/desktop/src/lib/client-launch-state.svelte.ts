@@ -1,3 +1,5 @@
+import { runtimeErrorMessage } from './runtime-errors.ts';
+import { localeState } from './locale.svelte.ts';
 import { createContext } from 'svelte';
 import { readRecentPlays, recordRecentPlay, forgetRecentPlay, clearRecentPlays } from './recent-plays';
 import { listClientLaunches, startClientLaunch, stopClientLaunch, type ClientLaunch } from './runtime';
@@ -6,27 +8,19 @@ export const launchNeedsLogin = (value: ClientLaunch | undefined) =>
 	value?.phase === 'failed' && !value.offlineTest &&
 	(value.errorCode === 'account_required' || value.errorCode === 'authentication_failed');
 export function launchLabel(value: ClientLaunch): string {
-	if (value.cancelRequested) return '正在取消启动…';
+	if (value.cancelRequested) return localeState.messages.clients.flow.cancellingLaunch;
 	const java = `Java${value.javaMajor ? ` ${value.javaMajor}` : ''}`;
 	switch (value.phase) {
-		case 'preparing': return '正在准备启动…';
-		case 'authenticating': return '正在验证账户…';
-		case 'planning': return '正在读取 Minecraft 启动信息…';
+		case 'preparing': return localeState.messages.clients.flow.preparingLaunch;
+		case 'authenticating': return localeState.messages.clients.flow.authenticating;
+		case 'planning': return localeState.messages.clients.flow.planningLaunch;
 		case 'java':
-			switch (value.javaStage) {
-				case 'resolving': return `正在准备 ${java}…`;
-				case 'downloading': return `正在下载 ${java}…`;
-				case 'extracting': return `正在解压 ${java}…`;
-				case 'validating': return `正在检查 ${java}…`;
-				case 'publishing': return `正在安装 ${java}…`;
-				case 'completed': return '正在启动游戏…';
-				default: return '正在检查 Minecraft 文件…';
-			}
-		case 'running': return value.offlineTest ? '离线测试运行中' : '运行中';
-		case 'stopping': return '正在结束游戏…';
-		case 'failed': return value.error ?? '启动失败';
-		case 'cancelled': return '启动已取消';
-		case 'exited': return '游戏已退出';
+			return value.javaStage === 'completed' ? localeState.messages.clients.flow.startingGame : localeState.messages.clients.javaStage(value.javaStage, java);
+		case 'running': return value.offlineTest ? localeState.messages.clients.flow.offlineRunning : localeState.messages.clients.flow.running;
+		case 'stopping': return localeState.messages.clients.flow.stoppingGame;
+		case 'failed': return runtimeErrorMessage(value.errorCode, localeState.current, localeState.messages.clients.flow.launchFailed);
+		case 'cancelled': return localeState.messages.clients.flow.launchCancelled;
+		case 'exited': return localeState.messages.clients.flow.exited;
 	}
 }
 export class ClientLaunchState {
@@ -41,7 +35,9 @@ export class ClientLaunchState {
 	operations = $state<ClientLaunch[]>([]);
 	pending = $state<string[]>([]);
 	uncertain = $state(true);
-	error = $state<string | null>(null);
+	private errorValue = $state<string | (() => string) | null>(null);
+	get error(): string | null { const value = this.errorValue; return typeof value === 'function' ? value() : value; }
+	set error(value: string | (() => string) | null) { this.errorValue = value; }
 	private timer: ReturnType<typeof setTimeout> | null = null;
 	private disposed = false;
 	private generation = 0;
@@ -74,7 +70,7 @@ export class ClientLaunchState {
 			if (this.disposed || sequence !== this.readSequence || generation !== this.generation) return;
 			this.operations = values; this.uncertain = false; this.error = null;
 			for (const value of values) this.recordPlay(value);
-		} catch { if (!this.disposed && sequence === this.readSequence && generation === this.generation) { this.uncertain = true; this.error = '无法确认游戏运行状态，请刷新后重试。'; } }
+		} catch { if (!this.disposed && sequence === this.readSequence && generation === this.generation) { this.uncertain = true; this.error = () => (localeState.messages.clients.flow.runningUnknown); } }
 		finally {
 			this.controllers.delete(controller);
 			if (!this.disposed && sequence === this.readSequence && (this.operations.some(launchActive) || generation !== this.generation)) this.timer = setTimeout(() => void this.sync(), 1500);
@@ -86,7 +82,7 @@ export class ClientLaunchState {
 		this.awaitingRecent.add(name.toLowerCase());
 		const controller = this.controller();
 		try { const value = await startClientLaunch(name, accountId, installJava, controller.signal, offlineTest); if (!this.disposed) this.accept(value); }
-		catch { if (!this.disposed) { this.uncertain = true; this.error = '启动请求未确认，请刷新状态后重试。'; } }
+		catch { if (!this.disposed) { this.uncertain = true; this.error = () => (localeState.messages.clients.flow.launchUnknown); } }
 		finally { this.controllers.delete(controller); this.pending = this.pending.filter(v => v !== name); ++this.generation; if (!this.disposed) void this.sync(); }
 	}
 	async cancel(value: ClientLaunch) {

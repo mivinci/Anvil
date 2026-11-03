@@ -1,3 +1,5 @@
+import { requestErrorMessage } from './runtime-errors.ts';
+import { localeState } from './locale.svelte.ts';
 import { createContext } from 'svelte';
 import {
 	cancelModpackExport, createModpackExport, listModpackExports, RuntimeRequestError,
@@ -11,7 +13,13 @@ export class ModpackExportState {
 	syncing = $state(false);
 	cancelling = $state(false);
 	uncertain = $state(true);
-	error = $state<string | null>(null);
+	errorDetail = $state<string | null>(null);
+	private errorValue = $state<string | (() => string | null) | null>(null);
+	get error(): string | null { const value = this.errorValue; return typeof value === 'function' ? value() : value; }
+	set error(value: string | (() => string | null) | null) {
+		this.errorValue = value;
+		if (value === null) this.errorDetail = null;
+	}
 	last = $state<{ name: string; options: ModpackExportOptions } | null>(null);
 	intent = $state<{ name: string; requestId: string; options: ModpackExportOptions } | null>(null);
 	private timer: ReturnType<typeof setTimeout> | null = null;
@@ -20,16 +28,16 @@ export class ModpackExportState {
 	get active() { return this.operation?.state === 'running'; }
 	get canStart() { return !this.starting && !this.syncing && !this.active && !this.uncertain; }
 	get label() {
-		if (this.starting) return '正在创建导出任务…';
-		if (this.cancelling || this.operation?.cancelRequested) return '正在取消导出…';
-		if (this.operation?.state === 'completed') return '整合包导出完成';
-		if (this.operation?.state === 'cancelled') return '整合包导出已取消';
-		if (this.operation?.state === 'failed') return '整合包导出失败';
-		if (this.operation?.progress.stage === 'collecting') return '正在收集实例文件…';
-		if (this.operation?.progress.stage === 'packing') return '正在打包整合包…';
-		if (this.operation?.progress.stage === 'verifying') return '正在校验整合包…';
-		if (this.operation?.progress.stage === 'publishing') return '正在保存整合包…';
-		return this.operation ? '正在准备导出…' : '整合包导出';
+		if (this.starting) return localeState.messages.instance.detail.creatingExport;
+		if (this.cancelling || this.operation?.cancelRequested) return localeState.messages.instance.detail.cancellingExport;
+		if (this.operation?.state === 'completed') return localeState.messages.instance.detail.exportCompleted;
+		if (this.operation?.state === 'cancelled') return localeState.messages.instance.detail.exportCancelled;
+		if (this.operation?.state === 'failed') return localeState.messages.instance.detail.exportFailed;
+		if (this.operation?.progress.stage === 'collecting') return localeState.messages.instance.detail.collecting;
+		if (this.operation?.progress.stage === 'packing') return localeState.messages.instance.detail.packing;
+		if (this.operation?.progress.stage === 'verifying') return localeState.messages.instance.detail.verifyingPack;
+		if (this.operation?.progress.stage === 'publishing') return localeState.messages.instance.detail.savingPack;
+		return this.operation ? localeState.messages.instance.detail.preparingExport : localeState.messages.instance.detail.exportTask;
 	}
 	private async request<T>(action: (signal: AbortSignal) => Promise<T>) {
 		const controller = new AbortController(); this.controllers.add(controller);
@@ -55,16 +63,17 @@ export class ModpackExportState {
 			if (intent) {
 				const accepted = values.find(value => value.requestId === intent.requestId);
 				if (accepted) { this.apply(accepted); this.intent = null; this.uncertain = false; this.error = null; }
-				else if (this.uncertain) this.error = '尚未确认导出提交结果，可重试同一请求。';
+				else if (this.uncertain) this.error = () => (localeState.messages.instance.detail.exportSubmitUnknown);
 			} else {
 				this.apply(values.find(value => value.state === 'running') ?? values.at(-1) ?? null);
 				this.uncertain = false;
 				this.error = null;
 			}
 		} catch (error) {
+			this.errorDetail = error instanceof Error ? error.message : String(error);
 			if (!this.disposed) {
 				this.uncertain = true;
-				this.error = error instanceof Error ? error.message : '无法读取导出任务。';
+				this.error = () => requestErrorMessage(error, localeState.current, (localeState.messages.instance.detail.exportReadFailed));
 			}
 		} finally {
 			this.syncing = false;
@@ -83,11 +92,12 @@ export class ModpackExportState {
 			this.apply(value); this.intent = null; this.uncertain = false;
 			return true;
 		} catch (error) {
+			this.errorDetail = error instanceof Error ? error.message : String(error);
 			if (this.disposed) return false;
 			const rejected = error instanceof RuntimeRequestError && [400, 404, 409, 503].includes(error.status);
 			this.uncertain = !rejected;
 			if (rejected) this.intent = null;
-			this.error = `${rejected ? '' : '提交结果未确认：'}${error instanceof Error ? error.message : '请刷新任务。'}`;
+			this.error = () => (rejected ? requestErrorMessage(error, localeState.current, localeState.messages.instance.exportSubmitFailed) : localeState.messages.instance.exportSubmitUnknown);
 			return false;
 		} finally {
 			this.starting = false;
@@ -115,7 +125,8 @@ export class ModpackExportState {
 			const value = await this.request((signal) => cancelModpackExport(id, signal));
 			if (!this.disposed && this.operation?.id === id) { this.apply(value); this.uncertain = false; this.error = null; }
 		} catch (error) {
-			if (!this.disposed) this.error = error instanceof Error ? error.message : '取消结果未确认，请刷新任务。';
+			this.errorDetail = error instanceof Error ? error.message : String(error);
+			if (!this.disposed) this.error = () => (localeState.messages.instance.detail.cancelUnknown);
 		} finally {
 			this.cancelling = false;
 			this.schedule();

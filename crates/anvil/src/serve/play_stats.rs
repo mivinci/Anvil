@@ -34,6 +34,7 @@ async fn clear_target(
     .map_err(|error| {
       ApiError::new(
         StatusCode::INTERNAL_SERVER_ERROR,
+        "runtime_error",
         format!("无法清除游玩统计：{error}"),
       )
     })?

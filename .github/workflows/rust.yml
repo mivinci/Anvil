@@ -74,9 +74,11 @@ jobs:
           cargo test --locked -p anvil-shell -- --test-threads=1
           cargo clippy --locked -p anvil-shell --all-targets -- -D warnings
       - run: npm ci
+      - run: node --test apps/shell/tests/recovery.test.mjs
+      - run: npm run desktop:i18n-check
       - run: npm run desktop:check
-      - run: node --test apps/desktop/tests/modpack-import.test.mjs apps/desktop/tests/modpack-export.test.mjs
-      - run: node --experimental-strip-types --test apps/desktop/tests/client-name.test.ts apps/desktop/tests/mod-discovery-context.test.ts
+      - run: node --test apps/desktop/tests/runtime-request.test.mjs apps/desktop/tests/modpack-import.test.mjs apps/desktop/tests/modpack-export.test.mjs apps/desktop/tests/client-flow-state.test.mjs
+      - run: node --experimental-strip-types --test apps/desktop/tests/*.test.ts apps/desktop/tests/locale-state.test.mjs apps/desktop/tests/i18n-guard.test.mjs
       - name: Build Desktop bundle
         shell: bash
         run: |

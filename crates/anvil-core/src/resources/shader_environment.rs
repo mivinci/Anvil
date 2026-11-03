@@ -30,6 +30,8 @@ pub struct ShaderEnvironment {
   pub sodium: Option<ShaderMod>,
   pub managed_only: bool,
   pub reason: String,
+  pub reason_code: &'static str,
+  pub reason_params: BTreeMap<String, String>,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -346,18 +348,26 @@ pub(super) fn inspect_environment(
     sodium: None,
     managed_only: true,
     reason: String::new(),
+    reason_code: "shader_unconfirmed",
+    reason_params: BTreeMap::new(),
   };
   let Some(crate::fabric::ClientLoader::Fabric { version: loader }) = &record.loader else {
     result.status = RequiresFabric;
+    result.reason_code = "shader_requires_fabric";
+    result.reason_params = BTreeMap::new();
     result.reason = "当前为原版实例，请新建 Fabric 实例以安装光影支持。".into();
     return result;
   };
   if manifest.mods.iter().map(|entry| entry.size).sum::<u64>() > MAX_SCAN_BYTES {
+    result.reason_code = "shader_scan_budget";
+    result.reason_params = BTreeMap::new();
     result.reason = "受管模组总大小超出本次 128 MiB 识别预算，环境尚未确认。".into();
     return result;
   }
   let mut candidates = Vec::new();
   let mut issue = None;
+  let mut issue_code = "shader_unconfirmed";
+  let mut issue_params = BTreeMap::new();
   let mut budget = ScanBudget {
     bytes: manifest.mods.iter().map(|entry| entry.size).sum(),
     expanded: 0,
@@ -374,11 +384,15 @@ pub(super) fn inspect_environment(
         )
         .is_err())
     {
+      issue_code = "shader_mod_copy_changed";
+      issue_params = BTreeMap::from([("file".into(), entry.filename.to_string())]);
       issue = Some(format!("受管模组副本缺失或已被修改：{}。", entry.filename));
     }
     let result = object_bytes(data, entry)
       .and_then(|bytes| scan_jar(&bytes, entry.enabled, 0, &mut budget, &mut candidates));
     if let Err(error) = result {
+      issue_code = "shader_metadata_unconfirmed";
+      issue_params = BTreeMap::from([("file".into(), entry.filename.to_string())]);
       issue = Some(format!(
         "无法确认受管 JAR 的元数据或完整性：{}：{error}",
         entry.filename
@@ -411,6 +425,8 @@ pub(super) fn inspect_environment(
       if identical {
         continue;
       }
+      issue_code = "shader_mod_id_conflict";
+      issue_params = BTreeMap::from([("mod".into(), meta.id.to_string())]);
       issue = Some(format!("发现重复或版本冲突的受管模组 ID：{}。", meta.id));
     } else {
       ids.insert(
@@ -425,6 +441,8 @@ pub(super) fn inspect_environment(
       );
     }
     if matches!(meta.id.as_str(), "minecraft" | "fabricloader" | "java") {
+      issue_code = "shader_runtime_id_conflict";
+      issue_params = BTreeMap::new();
       issue = Some("受管模组 ID 与运行环境标识冲突。".into());
     }
     let summary = ShaderMod {
@@ -443,16 +461,22 @@ pub(super) fn inspect_environment(
     scanned.push((meta, enabled));
   }
   if let Some(reason) = issue {
+    result.reason_code = issue_code;
+    result.reason_params = issue_params;
     result.reason = reason;
     return result;
   }
   let Some(iris) = &result.iris else {
     result.status = MissingIris;
+    result.reason_code = "shader_missing_iris";
+    result.reason_params = BTreeMap::new();
     result.reason = "未发现受管 Iris；识别范围仅限 Anvil 管理的模组。".into();
     return result;
   };
   if !iris.enabled {
     result.status = IrisDisabled;
+    result.reason_code = "shader_iris_disabled";
+    result.reason_params = BTreeMap::new();
     result.reason = "受管 Iris 尚未启用，请在模组管理中检查。".into();
     return result;
   }
@@ -471,6 +495,8 @@ pub(super) fn inspect_environment(
         || ids.contains_key(alias)
         || active.insert(alias.as_str(), meta).is_some()
       {
+        result.reason_code = "shader_alias_conflict";
+        result.reason_params = BTreeMap::from([("mod".into(), alias.to_string())]);
         result.reason = format!("模组别名与已有 ID 或其他别名冲突：{alias}。");
         return result;
       }
@@ -493,12 +519,19 @@ pub(super) fn inspect_environment(
     }
     let Some(meta) = active.get(id) else {
       result.status = MissingDependencies;
+      result.reason_code = "shader_missing_dependency";
+      result.reason_params = BTreeMap::from([("dependency".into(), id.to_string())]);
       result.reason = format!("缺少已启用的必需依赖：{id}。");
       return result;
     };
     for (dependency, requirement) in &meta.depends {
       let Some(version) = versions.get(dependency.as_str()) else {
         result.status = MissingDependencies;
+        result.reason_code = "shader_missing_dependency";
+        result.reason_params = BTreeMap::from([
+          ("mod".into(), id.to_string()),
+          ("dependency".into(), dependency.to_string()),
+        ]);
         result.reason = format!("{id} 缺少已启用的必需依赖：{dependency}。");
         return result;
       };
@@ -506,10 +539,20 @@ pub(super) fn inspect_environment(
         Some(true) => {}
         Some(false) => {
           result.status = MissingDependencies;
+          result.reason_code = "shader_dependency_version_mismatch";
+          result.reason_params = BTreeMap::from([
+            ("mod".into(), id.to_string()),
+            ("dependency".into(), dependency.to_string()),
+          ]);
           result.reason = format!("{id} 的依赖版本不匹配：{dependency}。");
           return result;
         }
         None => {
+          result.reason_code = "shader_dependency_constraint_unknown";
+          result.reason_params = BTreeMap::from([
+            ("mod".into(), id.to_string()),
+            ("dependency".into(), dependency.to_string()),
+          ]);
           result.reason = format!("无法确认 {id} 对 {dependency} 的版本约束。");
           return result;
         }
@@ -523,10 +566,20 @@ pub(super) fn inspect_environment(
         match matches_requirement(version, requirement) {
           Some(false) => {}
           Some(true) => {
+            result.reason_code = "shader_incompatible_mod";
+            result.reason_params = BTreeMap::from([
+              ("mod".into(), id.to_string()),
+              ("other".into(), other.to_string()),
+            ]);
             result.reason = format!("{id} 声明与当前 {other} 不兼容。");
             return result;
           }
           None => {
+            result.reason_code = "shader_incompatibility_unknown";
+            result.reason_params = BTreeMap::from([
+              ("mod".into(), id.to_string()),
+              ("other".into(), other.to_string()),
+            ]);
             result.reason = format!("无法确认 {id} 与 {other} 的不兼容约束。");
             return result;
           }
@@ -550,10 +603,20 @@ pub(super) fn inspect_environment(
         match matches_requirement(versions[id.as_str()], requirement) {
           Some(false) => {}
           Some(true) => {
+            result.reason_code = "shader_incompatible_mod";
+            result.reason_params = BTreeMap::from([
+              ("mod".into(), meta.id.to_string()),
+              ("other".into(), id.to_string()),
+            ]);
             result.reason = format!("{} 声明与当前 {id} 不兼容。", meta.id);
             return result;
           }
           None => {
+            result.reason_code = "shader_incompatibility_unknown";
+            result.reason_params = BTreeMap::from([
+              ("mod".into(), meta.id.to_string()),
+              ("other".into(), id.to_string()),
+            ]);
             result.reason = format!("无法确认 {} 与 {id} 的不兼容约束。", meta.id);
             return result;
           }
@@ -562,6 +625,8 @@ pub(super) fn inspect_environment(
     }
   }
   result.status = Ready;
+  result.reason_code = "shader_ready";
+  result.reason_params = BTreeMap::new();
   result.reason =
     "已识别启用的受管 Iris，声明的必需依赖检查通过；实际光影和显卡兼容性仍由游戏验证。".into();
   result

@@ -1,3 +1,4 @@
+import { runtimeErrorCode } from './runtime-errors.ts';
 import type { CatalogOptions, CatalogStatus, CurseForgePage, ModProjectSummary } from './runtime';
 
 /** Publish an expired snapshot immediately, then join its single background refresh. */
@@ -21,6 +22,7 @@ export interface ModProjectFeedSnapshot {
 	nextIndex: number | null;
 	busy: boolean;
 	error: string | null;
+	errorCode?: string | null; warningCode?: string | null;
 	warning: string | null;
 	loaded: boolean;
 }
@@ -33,7 +35,7 @@ export class ModProjectFeed {
 	private read: ProjectReader | null = null;
 	private start = 0;
 	private failedIndex: number | null = null;
-	private snapshot: ModProjectFeedSnapshot = { items: [], nextIndex: null, busy: false, error: null, warning: null, loaded: false };
+	private snapshot: ModProjectFeedSnapshot = { items: [], nextIndex: null, busy: false, error: null, warning: null, errorCode: null, warningCode: null, loaded: false };
 	private publish: (value: ModProjectFeedSnapshot) => void;
 	constructor(publish: (value: ModProjectFeedSnapshot) => void) { this.publish = publish; }
 	private emit(change: Partial<ModProjectFeedSnapshot>) {
@@ -43,7 +45,7 @@ export class ModProjectFeed {
 	cancel() { this.controller?.abort(); this.controller = null; }
 	reset(read: ProjectReader | null, start = 0) {
 		this.cancel(); this.read = read; this.start = start; this.failedIndex = null; this.pages.clear();
-		this.emit({ items: [], nextIndex: null, busy: false, error: null, warning: null, loaded: false });
+		this.emit({ items: [], nextIndex: null, busy: false, error: null, warning: null, errorCode: null, warningCode: null, loaded: false });
 		if (read) void this.load(start);
 	}
 	refresh() { if (!this.snapshot.busy) return this.load(this.start, true); }
@@ -58,11 +60,11 @@ export class ModProjectFeed {
 		this.controller = controller;
 		const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(55_000)]);
 		this.failedIndex = index;
-		this.emit({ busy: true, error: null, warning: null });
+		this.emit({ busy: true, error: null, warning: null, errorCode: null, warningCode: null });
 		try {
 			await readModCatalog(options => read(index, signal, options), value => {
 				if (force && value.refreshError && this.snapshot.loaded) {
-					this.emit({ warning: value.refreshError });
+					this.emit({ warningCode: value.refreshErrorCode ?? null, warning: value.refreshError });
 					return;
 				}
 				if (force && index === this.start) this.pages.clear();
@@ -78,11 +80,11 @@ export class ModProjectFeed {
 				}
 				const last = [...this.pages].sort(([a], [b]) => b - a)[0]!;
 				const next = last[1].nextIndex;
-				this.emit({ items: [...items.values()], nextIndex: next !== null && next > last[0] && next <= 9980 ? next : null, warning: value.refreshError, loaded: true });
+				this.emit({ items: [...items.values()], nextIndex: next !== null && next > last[0] && next <= 9980 ? next : null, warningCode: value.refreshErrorCode ?? null, warning: value.refreshError, loaded: true });
 			}, signal, force);
 			this.failedIndex = null;
 		} catch (error) {
-			if (!controller.signal.aborted) this.emit({ error: error instanceof Error ? error.message : '目录读取失败，请重试。' });
+			if (!controller.signal.aborted) this.emit({ error: error instanceof Error ? error.message : 'Could not load catalog.', errorCode: runtimeErrorCode(error) });
 		} finally {
 			if (this.controller === controller) { this.controller = null; this.emit({ busy: false }); }
 		}

@@ -46,6 +46,7 @@ pub(super) struct Response {
   fresh_for_ms: u64,
   revision: u64,
   refresh_error: Option<String>,
+  refresh_error_code: Option<&'static str>,
 }
 impl FabricCatalog {
   pub async fn get(
@@ -88,6 +89,7 @@ impl FabricCatalog {
       fresh_for_ms: value.fresh_for_ms,
       revision: value.revision,
       refresh_error: value.refresh_error,
+      refresh_error_code: value.refresh_error_code,
     })
   }
 }

@@ -11,7 +11,8 @@
     "desktop:dev": "node scripts/desktop-dev.mjs",
     "desktop:build": "cd apps/shell && tauri build",
     "desktop:package": "node scripts/package-desktop-app.mjs",
-    "desktop:check": "npm run check --workspace @anvil/desktop"
+    "desktop:check": "npm run check --workspace @anvil/desktop",
+    "desktop:i18n-check": "node --experimental-strip-types scripts/check-desktop-i18n.mjs"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.0.0"

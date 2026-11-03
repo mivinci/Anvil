@@ -123,6 +123,7 @@ impl Launches {
     {
       return Err(ApiError::new(
         StatusCode::CONFLICT,
+        "conflict",
         "请先结束正在启动或运行的游戏，再清除游玩记录。",
       ));
     }
@@ -177,6 +178,7 @@ impl Launches {
     if !valid {
       return Err(ApiError::new(
         StatusCode::BAD_REQUEST,
+        "invalid_argument",
         "choose a saved account or explicit offline test mode",
       ));
     }
@@ -188,6 +190,7 @@ impl Launches {
     if inner.stopping {
       return Err(ApiError::new(
         StatusCode::SERVICE_UNAVAILABLE,
+        "runtime_stopping",
         "Runtime 正在停止。",
       ));
     }
@@ -207,6 +210,7 @@ impl Launches {
     {
       return Err(ApiError::new(
         StatusCode::CONFLICT,
+        "conflict",
         "最多同时启动四个游戏实例。",
       ));
     }
@@ -574,6 +578,7 @@ pub(super) async fn start(
   if state.exports.busy_for_client(&name) {
     return Err(ApiError::new(
       StatusCode::CONFLICT,
+      "conflict",
       "实例正在导出整合包，请等待完成或取消后再启动。",
     ));
   }
@@ -599,7 +604,7 @@ pub(super) async fn stop(
   let op = inner
     .operations
     .get(&id)
-    .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "启动任务不存在。"))?;
+    .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "not_found", "启动任务不存在。"))?;
   if op.updates.borrow().phase.active() {
     op.cancel.cancel();
   }

@@ -8,6 +8,7 @@ use axum::{
 };
 use serde::Serialize;
 fn error(error: anvil_core::Error) -> ApiError {
+  let code = error.code();
   tracing::warn!(
     error_code = error.code(),
     "Client launch settings operation failed"
@@ -21,7 +22,7 @@ fn error(error: anvil_core::Error) -> ApiError {
       "无法读取或保存实例设置，请重试。".into(),
     ),
   };
-  ApiError::new(status, message)
+  ApiError::new(status, code, message)
 }
 pub(super) async fn get(
   State(state): State<AppState>,

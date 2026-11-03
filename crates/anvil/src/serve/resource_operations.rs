@@ -101,6 +101,7 @@ pub(super) struct Snapshot {
   pub progress: ResourceInstallProgress,
   pub revision: Option<u64>,
   pub error: Option<String>,
+  pub error_code: Option<String>,
 }
 struct Inner {
   plans: VecDeque<SavedPlan>,
@@ -159,13 +160,18 @@ impl ResourceOperations {
     if inner.stopping {
       return Err(ApiError::new(
         StatusCode::SERVICE_UNAVAILABLE,
+        "runtime_stopping",
         "Runtime 正在停止。",
       ));
     }
     if let Some(operation) = inner.operations.get(&id) {
       let snapshot = snapshot(operation);
       if snapshot.name != name.to_ascii_lowercase() {
-        return Err(ApiError::new(StatusCode::NOT_FOUND, "安装计划不存在。"));
+        return Err(ApiError::new(
+          StatusCode::NOT_FOUND,
+          "plan_not_found",
+          "安装计划不存在。",
+        ));
       }
       return Ok(snapshot);
     }
@@ -176,6 +182,7 @@ impl ResourceOperations {
     {
       return Err(ApiError::new(
         StatusCode::CONFLICT,
+        "conflict",
         "已有资源安装任务，请先等待完成或取消。",
       ));
     }
@@ -183,7 +190,13 @@ impl ResourceOperations {
       .plans
       .iter()
       .find(|p| p.id == id && p.plan.name() == name.to_ascii_lowercase() && p.at.elapsed() < TTL)
-      .ok_or_else(|| ApiError::new(StatusCode::CONFLICT, "安装计划已过期，请重新预览。"))?;
+      .ok_or_else(|| {
+        ApiError::new(
+          StatusCode::CONFLICT,
+          "plan_expired",
+          "安装计划已过期，请重新预览。",
+        )
+      })?;
     let plan = saved.plan.clone();
     let progress = plan.progress();
     let initial = Snapshot {
@@ -195,6 +208,7 @@ impl ResourceOperations {
       progress: progress.clone(),
       revision: None,
       error: None,
+      error_code: None,
     };
     let (updates, receiver) = watch::channel(initial.clone());
     let (progress_tx, mut progress_rx) = watch::channel(progress);
@@ -237,9 +251,13 @@ impl ResourceOperations {
           s.progress.stage = ResourceInstallStage::Completed;
           s.revision = Some(manifest.revision);
         }
-        Err(error) if error.code() == "cancelled" => s.state = Status::Cancelled,
+        Err(error) if error.code() == "cancelled" => {
+          s.state = Status::Cancelled;
+          s.error_code = Some("cancelled".into());
+        }
         Err(error) => {
           s.state = Status::Failed;
+          s.error_code = Some(error.code().into());
           s.error = Some(format!(
             "安装未能完整结束，请刷新实例资源清单确认结果。{error}"
           ));
@@ -315,7 +333,7 @@ pub(super) async fn cancel(
   let op = inner
     .operations
     .get(&id)
-    .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "资源任务不存在。"))?;
+    .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "not_found", "资源任务不存在。"))?;
   if op.snapshot.borrow().state == Status::Running {
     op.cancel.cancel();
   }

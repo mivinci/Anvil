@@ -1,3 +1,7 @@
+import { runtimeErrorCode, runtimeErrorMessage, requestErrorMessage } from './runtime-errors.ts';
+import { localeState } from './locale.svelte.ts';
+import type { Messages } from './i18n/zh-CN.ts';
+type AccountMessageKey = keyof Messages['account']['flow'];
 import { createContext } from 'svelte';
 import {
 	cancelAccountLogin, getAccountLoginConfiguration, getAccountLoginOperation, getActiveAccountLogin,
@@ -19,16 +23,6 @@ function detail(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
 
-function loginFailure(message: string | null): string {
-	if (message?.includes('invalid app registration')) return '当前应用尚未获准访问 Minecraft 服务，需要完成应用注册审核。';
-	if (message?.includes('Minecraft Services login was rejected')) return 'Minecraft 服务拒绝了登录请求，请展开错误详情查看状态码。';
-	if (message?.includes('no Minecraft Java profile')) return '此账户尚无 Minecraft Java 版游戏资料。';
-	if (message?.includes('declined')) return '你已拒绝本次授权，可以重新登录。';
-	if (message?.includes('expired')) return '验证码已过期，请重新登录。';
-	if (message?.includes('credential vault')) return '无法访问系统凭证库，请检查系统权限后重试。';
-	return '登录未完成，请稍后重试。';
-}
-
 /** Window-owned public identities and transient login state. No credentials are stored here. */
 export class AccountState {
 	accounts = $state<AccountSummary[]>([]);
@@ -42,7 +36,13 @@ export class AccountState {
 	loginStarting = $state(false);
 	loginCancelling = $state(false);
 	loginPolling = $state(false);
-	loginError = $state<string | null>(null);
+	private loginErrorCode = $state<string | null>(null);
+	private loginErrorKey = $state<AccountMessageKey | null>(null);
+	get loginError() {
+		if (!this.loginErrorKey) return null;
+		const fallback = localeState.messages.account.flow[this.loginErrorKey];
+		return ['cancelUnconfirmed', 'loginProgressFailed'].includes(this.loginErrorKey) ? fallback : runtimeErrorMessage(this.loginErrorCode, localeState.current, fallback);
+	}
 	loginErrorDetail = $state<string | null>(null);
 	loginDialogOpen = $state(false);
 	offlineMode = $state(false);
@@ -138,7 +138,7 @@ export class AccountState {
 			return true;
 		} catch (error) {
 			if (!this.disposed) {
-				this.error = { message: '暂时无法读取账户，请稍后重试。', detail: detail(error), retry: { kind: 'load' } };
+				this.error = { get message() { return requestErrorMessage(error, localeState.current, localeState.messages.account.flow.accountsReadFailed); }, detail: detail(error), retry: { kind: 'load' } };
 			}
 			return false;
 		} finally {
@@ -170,7 +170,7 @@ export class AccountState {
 		} catch (error) {
 			if (!this.disposed) {
 				this.error = {
-					message: kind === 'switch' ? '切换账户未完成，请重试。' : '退出登录未确认，请重新读取账户状态。',
+					get message() { return kind === 'switch' ? requestErrorMessage(error, localeState.current, localeState.messages.account.flow.switchFailed) : localeState.messages.account.flow.logoutUnconfirmed; },
 					detail: detail(error), retry: { kind, id },
 				};
 			}
@@ -185,7 +185,7 @@ export class AccountState {
 		const action = this.error?.retry ?? { kind: 'load' };
 		// A failed response does not prove the mutation failed. Reconcile before repeating it.
 		if (!await this.refreshAccounts()) {
-			if (this.error) this.error = { ...this.error, retry: action };
+			if (this.error) this.error.retry = action;
 			return false;
 		}
 		if (action.kind === 'switch' && this.currentAccount?.id !== action.id) {
@@ -200,19 +200,19 @@ export class AccountState {
 	async loadLoginConfiguration(): Promise<boolean> {
 		if (this.disposed || this.configurationLoading) return false;
 		this.configurationLoading = true;
-		this.loginError = null;
+		this.loginErrorKey = null; this.loginErrorCode = null;
 		this.loginErrorDetail = null;
 		try {
 			const configuration = await this.request((signal) => getAccountLoginConfiguration({ signal }));
 			if (this.disposed) return false;
 			this.configuration = configuration;
-			if (!configuration.enabled) this.loginError = '当前应用的 Microsoft 登录配置不可用。';
+			if (!configuration.enabled) this.loginErrorKey = 'loginDisabled';
 			return configuration.enabled;
 		} catch (error) {
 			if (!this.disposed) {
 				this.configuration = null;
-				this.loginError = '暂时无法获取登录配置，请重试。';
-				this.loginErrorDetail = detail(error);
+				this.loginErrorKey = 'configurationFailed';
+				this.loginErrorDetail = detail(error); this.loginErrorCode = runtimeErrorCode(error);
 			}
 			return false;
 		} finally {
@@ -224,7 +224,7 @@ export class AccountState {
 		if (this.disposed || this.busy || this.configurationLoading) return false;
 		this.loginStarting = true;
 		this.cancelAfterStart = false;
-		this.loginError = null;
+		this.loginErrorKey = null; this.loginErrorCode = null;
 		this.loginErrorDetail = null;
 		this.login = null;
 		this.stopPolling();
@@ -260,8 +260,8 @@ export class AccountState {
 				}
 			}
 			if (!this.disposed) {
-				this.loginError = '暂时无法开始 Microsoft 登录，请重试。';
-				this.loginErrorDetail = detail(error);
+				this.loginErrorKey = 'loginStartFailed';
+				this.loginErrorDetail = detail(error); this.loginErrorCode = runtimeErrorCode(error);
 			}
 			return false;
 		} finally {
@@ -276,7 +276,7 @@ export class AccountState {
 		if (this.disposed || this.loginRunning || this.loginStarting || this.loginCancelling) return false;
 		this.stopPolling();
 		this.login = null;
-		this.loginError = null;
+		this.loginErrorKey = null; this.loginErrorCode = null;
 		this.loginErrorDetail = null;
 		this.cancelAfterStart = false;
 		return true;
@@ -312,7 +312,7 @@ export class AccountState {
 		if (this.disposed || !this.canCancelLogin) return false;
 		this.cancelAfterStart = true;
 		this.stopPolling();
-		this.loginError = null;
+		this.loginErrorKey = null; this.loginErrorCode = null;
 		this.loginErrorDetail = null;
 		const operation = this.login;
 		// An in-flight start must first return its operation ID; startLogin then cancels it.
@@ -328,8 +328,8 @@ export class AccountState {
 			return true;
 		} catch (error) {
 			if (!this.disposed) {
-				this.loginError = '取消尚未确认，请重试取消或重新查询进度。';
-				this.loginErrorDetail = detail(error);
+				this.loginErrorKey = 'cancelUnconfirmed';
+				this.loginErrorDetail = detail(error); this.loginErrorCode = runtimeErrorCode(error);
 			}
 			return false;
 		} finally {
@@ -345,13 +345,15 @@ export class AccountState {
 
 	private applyLogin(operation: AccountLoginOperation) {
 		this.login = operation;
-		this.loginError = null;
+		this.loginErrorKey = null; this.loginErrorCode = null;
 		this.loginErrorDetail = null;
 		if (operation.state === 'failed') {
-			this.loginError = loginFailure(operation.error);
+			this.loginErrorKey = 'loginIncomplete';
+			this.loginErrorCode = operation.errorCode ?? null;
 			this.loginErrorDetail = operation.error;
-		} else if (operation.state === 'cancelled' && operation.error?.includes('cleanup')) {
-			this.loginError = '登录已取消，但凭据清理未完成，请检查系统凭证库。';
+		} else if (operation.state === 'cancelled' && ((operation.errorCode && operation.errorCode !== 'cancelled') || (!operation.errorCode && operation.error))) {
+			this.loginErrorKey = operation.errorCode === 'account_cleanup_failed' ? 'cleanupIncomplete' : 'cancelledWithDetail';
+			this.loginErrorCode = operation.errorCode ?? null;
 			this.loginErrorDetail = operation.error;
 		}
 		if (operation.state !== 'running') this.stopPolling();
@@ -397,11 +399,11 @@ export class AccountState {
 				if (error instanceof RuntimeRequestError && error.status === 404) {
 					this.login = { ...operation, state: 'failed', authorization: null, error: detail(error) };
 					this.stopPolling();
-					this.loginError = '登录任务已失效，请重新登录。';
+					this.loginErrorKey = 'loginTaskExpired';
 				} else {
-					this.loginError = '暂时无法获取登录进度，请重新查询；授权尚未确认结束。';
+					this.loginErrorKey = 'loginProgressFailed';
 				}
-				this.loginErrorDetail = detail(error);
+				this.loginErrorDetail = detail(error); this.loginErrorCode = runtimeErrorCode(error);
 			}
 			return false;
 		} finally {

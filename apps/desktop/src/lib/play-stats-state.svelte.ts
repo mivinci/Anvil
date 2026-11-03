@@ -1,13 +1,21 @@
+import { requestErrorMessage } from './runtime-errors.ts';
+import { localeState } from './locale.svelte.ts';
 import { clearPlayStats, getPlayStats, RuntimeRequestError, type PlayStatsClearTarget, type PlayStatsSnapshot } from './runtime';
 
 /** On-demand reads; the Runtime records sessions, the UI never uploads timings. */
 export class PlayStatsState {
+	errorDetail = $state<string | null>(null);
+	clearErrorDetail = $state<string | null>(null);
 	snapshot = $state<PlayStatsSnapshot | null>(null);
 	loading = $state(false);
-	error = $state<string | null>(null);
+	private errorValue = $state<string | (() => string | null) | null>(null);
+	get error(): string | null { const value = this.errorValue; return typeof value === 'function' ? value() : value; }
+	set error(value: string | (() => string | null) | null) { this.errorValue = value; if (value === null) this.errorDetail = null; }
 	available = $state<boolean | null>(null);
 	clearing = $state(false);
-	clearError = $state<string | null>(null);
+	private clearErrorValue = $state<string | (() => string | null) | null>(null);
+	get clearError(): string | null { const value = this.clearErrorValue; return typeof value === 'function' ? value() : value; }
+	set clearError(value: string | (() => string | null) | null) { this.clearErrorValue = value; if (value === null) this.clearErrorDetail = null; }
 	clearUncertain = $state(false);
 	private request: AbortController | null = null;
 	private mutation: AbortController | null = null;
@@ -42,7 +50,8 @@ export class PlayStatsState {
 				this.available = false;
 				return false;
 			}
-			this.error = reason instanceof Error ? reason.message : '暂时无法读取游玩统计。';
+			this.errorDetail = reason instanceof Error ? reason.message : String(reason);
+			this.error = () => requestErrorMessage(reason, localeState.current, localeState.messages.account.flow.statsReadFailed);
 			return false;
 		} finally {
 			if (this.request === controller) {
@@ -76,9 +85,10 @@ export class PlayStatsState {
 		} catch (reason) {
 			if (this.disposed) return false;
 			this.clearUncertain = !(reason instanceof RuntimeRequestError && reason.status >= 400 && reason.status < 500);
-			this.clearError = this.clearUncertain ? '清除结果尚未确认，请先重新读取记录，不要重复清除。'
-				: reason instanceof RuntimeRequestError && reason.status === 404 ? '当前版本不支持此清除操作，请更新后重试。'
-				: reason instanceof Error ? reason.message : '清除未完成，请重试。';
+			this.clearErrorDetail = reason instanceof Error ? reason.message : String(reason);
+			const key = this.clearUncertain ? 'statsClearUnknown'
+				: reason instanceof RuntimeRequestError && reason.status === 404 ? 'statsClearUnsupported' : 'statsClearFailed';
+			this.clearError = () => key === 'statsClearUnknown' ? localeState.messages.account.flow[key] : requestErrorMessage(reason, localeState.current, localeState.messages.account.flow[key]);
 			return false;
 		} finally {
 			if (this.mutation === controller) { this.mutation = null; this.clearing = false; }

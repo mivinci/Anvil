@@ -110,6 +110,7 @@ pub struct DependencyPreview {
   pub total_bytes: u64,
   pub optional_projects: Vec<String>,
   pub warnings: Vec<String>,
+  pub warning_details: Vec<crate::resources::InstallWarning>,
 }
 #[derive(Deserialize)]
 struct SearchResponse {
@@ -795,11 +796,19 @@ impl Modrinth {
       );
     }
     let items: Vec<_> = selected.into_values().collect();
+    let warning_details: Vec<_> = [crate::resources::InstallWarningCode::FabricRequiredOnly]
+      .into_iter()
+      .map(|code| code.warning())
+      .collect();
     Ok(DependencyPreview {
       total_bytes: items.iter().map(|i| i.file.file_length).sum(),
       items,
       optional_projects: optional.into_iter().collect(),
-      warnings: vec!["仅安装兼容的 Fabric 主 JAR 和必需依赖；不自动升级或替换已有项目。".into()],
+      warnings: warning_details
+        .iter()
+        .map(|warning| warning.message.clone())
+        .collect(),
+      warning_details,
     })
   }
 }

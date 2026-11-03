@@ -26,7 +26,7 @@ export class ClientVersionState {
 			for (let attempt = 0; attempt < 2; attempt++) {
 				const result = await listClientVersionCatalog({ refresh, ...(after !== undefined ? { after } : {}), signal: AbortSignal.any([controller.signal, AbortSignal.timeout(35_000)]) });
 				if (this.disposed) return;
-				if (!Array.isArray(result.versions) || result.versions.some((item) => !item || typeof item.id !== 'string' || typeof item.type !== 'string' || typeof item.releaseTime !== 'string') || typeof result.stale !== 'boolean' || !Number.isFinite(result.freshForMs) || !Number.isSafeInteger(result.revision)) throw new Error('版本目录格式不正确。');
+				if (!Array.isArray(result.versions) || result.versions.some((item) => !item || typeof item.id !== 'string' || typeof item.type !== 'string' || typeof item.releaseTime !== 'string') || typeof result.stale !== 'boolean' || !Number.isFinite(result.freshForMs) || !Number.isSafeInteger(result.revision)) throw new Error('Invalid version catalog format.');
 				this.versions = result.versions.filter((item) => /^[a-zA-Z0-9][a-zA-Z0-9._+ -]{0,63}$/.test(item.id) && !/[ .]$/.test(item.id)).sort((a, b) => b.releaseTime.localeCompare(a.releaseTime));
 				this.loaded = true;
 				this.error = result.refreshError;

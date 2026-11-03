@@ -123,6 +123,15 @@ async fn shader_environment_refuses_disabled_or_wrong_dependency_versions() {
   let result = manager.shader_packs("test").await.unwrap().environment;
   assert_eq!(result.status, ShaderEnvironmentStatus::MissingDependencies);
   assert!(result.reason.contains("版本不匹配"));
+  assert_eq!(result.reason_code, "shader_dependency_version_mismatch");
+  assert_eq!(
+    result.reason_params.get("mod").map(String::as_str),
+    Some("iris")
+  );
+  assert_eq!(
+    result.reason_params.get("dependency").map(String::as_str),
+    Some("sodium")
+  );
 }
 
 #[tokio::test]

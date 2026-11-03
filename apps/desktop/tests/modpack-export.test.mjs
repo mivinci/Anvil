@@ -1,3 +1,4 @@
+import { compileLocale } from './compile-locale.mjs';
 import assert from 'node:assert/strict';
 import { test, after } from 'node:test';
 import { readFile, writeFile, mkdtemp, mkdir, rm } from 'node:fs/promises';
@@ -10,6 +11,7 @@ const root = fileURLToPath(new URL('../../../', import.meta.url));
 await mkdir(resolve(root, 'target'), { recursive: true });
 const directory = await mkdtemp(resolve(root, 'target/modpack-export-ui-test-'));
 after(() => rm(directory, { recursive: true, force: true }));
+const localeUrl = await compileLocale(root, directory);
 const adapter = resolve(directory, 'runtime.mjs');
 await writeFile(adapter, `
 export const api = { exports: [], calls: [], create: null };
@@ -22,6 +24,8 @@ const source = await readFile(resolve(root, 'apps/desktop/src/lib/modpack-export
 const javascript = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
 const compiled = compileModule(javascript, { filename: 'modpack-export-state.svelte.js', generate: 'client' }).js.code
   .replace(/import \{ createContext \} from ['"]svelte['"];?/, 'const createContext = () => [() => null, value => value];')
+  .replace(/from ['"]\.\/locale\.svelte\.ts['"]/g, `from ${JSON.stringify(localeUrl)}`)
+  .replace(/from ['"]\.\/runtime-errors\.ts['"]/g, "from './runtime-errors.mjs'")
   .replace(/from ['"]\.\/runtime['"]/g, `from ${JSON.stringify(pathToFileURL(adapter).href)}`);
 await writeFile(resolve(directory, 'state.mjs'), compiled);
 const { api } = await import(pathToFileURL(adapter).href);
@@ -72,4 +76,25 @@ test('completed export keeps the download path and can be cancelled while runnin
     assert.equal(state.label, '整合包导出完成');
     assert.equal(state.operation.result.path, '/tmp/Pack.mrpack');
   } finally { state.dispose(); }
+});
+
+test('export stages and retained rejection translate without resubmitting', async () => {
+	const { localeState } = await import(localeUrl);
+	const state = await ready();
+	try {
+		localeState.setLocale('en');
+		state.operation = operation('running', 'packing');
+		assert.equal(state.label, 'Packing modpack…');
+		state.operation = null;
+		api.create = async () => { const error = new Error('fixture export conflict'); Object.setPrototypeOf(error, RuntimeRequestError.prototype); error.status = 409; throw error; };
+		const { RuntimeRequestError } = await import(pathToFileURL(adapter).href);
+		assert.equal(await state.start('fixture', options), false);
+		assert.equal(state.uncertain, false);
+		assert.equal(state.errorDetail, 'fixture export conflict');
+		assert.match(state.error, /Could not create/);
+		const requests = api.calls.length;
+		localeState.setLocale('zh-CN');
+		assert.match(state.error, /无法创建/);
+		assert.equal(api.calls.length, requests);
+	} finally { localeState.setLocale('zh-CN'); state.dispose(); }
 });

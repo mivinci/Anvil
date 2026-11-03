@@ -24,9 +24,9 @@ test('relative play moments stay bounded and readable', () => {
 	const now = 1_700_000_000_000;
 	assert.equal(formatPlayMoment(null, now), '尚无记录');
 	assert.equal(formatPlayMoment(now - 30_000, now), '刚刚');
-	assert.equal(formatPlayMoment(now - 5 * 60_000, now), '5 分钟前');
-	assert.equal(formatPlayMoment(now - 2 * 3_600_000, now), '2 小时前');
-	assert.equal(formatPlayMoment(now - 2 * 86_400_000, now), '2 天前');
+	assert.equal(formatPlayMoment(now - 5 * 60_000, now), '5分钟前');
+	assert.equal(formatPlayMoment(now - 2 * 3_600_000, now), '2小时前');
+	assert.equal(formatPlayMoment(now - 2 * 86_400_000, now), '2天前');
 	assert.equal(formatPlayMoment(now + 60_000, now), '刚刚');
 });
 
@@ -61,4 +61,14 @@ test('account lookup filters by the current account id', () => {
 	assert.equal(playStatsAccount(value, 'missing'), null);
 	assert.equal(playStatsAccount(value, null), null);
 	assert.equal(playStatsAccount(null, 'one'), null);
+});
+
+
+test('English statistics use locale-aware units and plurals', () => {
+	assert.equal(formatPlayDuration(60_000, 'en'), '1 minute');
+	assert.equal(formatPlayDuration(120_000, 'en'), '2 minutes');
+	assert.equal(formatPlayDuration(3_600_000, 'en'), '1.0 hour');
+	assert.equal(formatPlayCount(1, 'en'), '1 launch');
+	assert.equal(formatPlayCount(2, 'en'), '2 launches');
+	assert.equal(formatPlayMoment(1_800_000, 2_100_000, 'en'), '5 minutes ago');
 });

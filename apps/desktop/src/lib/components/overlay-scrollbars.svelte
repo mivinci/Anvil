@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { localeState } from '#lib/locale.svelte.ts';
 	import { onMount } from 'svelte';
 	type Entry = { element: HTMLElement; expires: number; focused: boolean; changes: MutationObserver };
 	type Thumb = { entry: Entry; axis: 'vertical' | 'horizontal'; id: string; x: number; y: number; width: number; height: number; max: number; value: number; travel: number };
@@ -145,6 +146,6 @@
 
 <div class="pointer-events-none fixed inset-0 z-[60]" data-overlay-scrollbars>
 	{#each thumbs as thumb (`${thumb.id}-${thumb.axis}`)}
-		<div role="scrollbar" tabindex="0" aria-label={thumb.axis === 'vertical' ? '垂直滚动条' : '水平滚动条'} aria-orientation={thumb.axis} aria-controls={thumb.id} aria-valuemin={0} aria-valuemax={Math.round(thumb.max)} aria-valuenow={Math.round(thumb.value)} data-overlay-scrollbar-for={thumb.id} class="overlay-scrollbar pointer-events-auto absolute touch-none rounded-full bg-muted-foreground/30 hover:bg-muted-foreground/55 focus-visible:bg-muted-foreground/55 focus-visible:outline-1 focus-visible:outline-ring" style:left={`${thumb.x}px`} style:top={`${thumb.y}px`} style:width={`${thumb.width}px`} style:height={`${thumb.height}px`} onpointerdown={event => start(event, thumb)} onlostpointercapture={release} onkeydown={event => key(event, thumb)} onfocus={() => { thumb.entry.focused = true; schedule(); }} onblur={() => { thumb.entry.focused = false; reveal(thumb.entry.element); }}></div>
+		<div role="scrollbar" tabindex="0" aria-label={thumb.axis === 'vertical' ? localeState.messages.common.verticalScrollbar : localeState.messages.common.horizontalScrollbar} aria-orientation={thumb.axis} aria-controls={thumb.id} aria-valuemin={0} aria-valuemax={Math.round(thumb.max)} aria-valuenow={Math.round(thumb.value)} data-overlay-scrollbar-for={thumb.id} class="overlay-scrollbar pointer-events-auto absolute touch-none rounded-full bg-muted-foreground/30 hover:bg-muted-foreground/55 focus-visible:bg-muted-foreground/55 focus-visible:outline-1 focus-visible:outline-ring" style:left={`${thumb.x}px`} style:top={`${thumb.y}px`} style:width={`${thumb.width}px`} style:height={`${thumb.height}px`} onpointerdown={event => start(event, thumb)} onlostpointercapture={release} onkeydown={event => key(event, thumb)} onfocus={() => { thumb.entry.focused = true; schedule(); }} onblur={() => { thumb.entry.focused = false; reveal(thumb.entry.element); }}></div>
 	{/each}
 </div>

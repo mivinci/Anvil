@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { localeState } from '#lib/locale.svelte.ts';
 	import { onMount, type Snippet } from 'svelte';
 	import { ClientInstallState, setClientInstallState } from '../../client-install-state.svelte.js';
 	import { ClientLibraryState, setClientLibraryState } from '../../client-library-state.svelte.js';
@@ -24,5 +25,5 @@
 <ModpackExportToast />
 
 {#if installs.starting && installs.importing || installs.operation?.importRequestId && installs.active && installs.operation.progress.stage === 'parsing'}
-	<div role="status" class="fixed bottom-5 left-1/2 z-50 -translate-x-1/2 rounded-xl bg-card px-4 py-3 text-xs text-foreground shadow-lg">{installs.starting ? '正在读取并解析整合包…' : '正在解析整合包…'}<span class="ml-2 text-muted-foreground">可在下载任务中查看进度</span></div>
+	<div role="status" class="fixed bottom-5 left-1/2 z-50 -translate-x-1/2 rounded-xl bg-card px-4 py-3 text-xs text-foreground shadow-lg">{installs.starting ? localeState.messages.clients.flow.readingParsingPack : localeState.messages.clients.flow.parsingPack}<span class="ml-2 text-muted-foreground">{localeState.messages.clients.flow.taskHint}</span></div>
 {/if}

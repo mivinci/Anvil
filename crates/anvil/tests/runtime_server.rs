@@ -20,7 +20,10 @@ struct ReadyMessage {
 
 #[test]
 fn sidecar_binds_loopback_and_requires_token_and_allowed_origin() {
+  let root = tempfile::tempdir().unwrap();
   let mut child = Command::new(env!("CARGO_BIN_EXE_anvil"))
+    .arg("--data-dir")
+    .arg(root.path())
     .arg("serve")
     .env("ANVIL_HTTP_API_VERSION", "1.0.0")
     .stdin(Stdio::piped())
@@ -61,6 +64,8 @@ fn sidecar_binds_loopback_and_requires_token_and_allowed_origin() {
 
   let unauthorized = request(ready.port, "GET", "/health", Some(ORIGIN), Some("wrong"));
   assert!(unauthorized.starts_with("HTTP/1.1 401 Unauthorized"));
+  assert!(unauthorized.contains("\"code\":\"unauthorized\""));
+  assert!(unauthorized.contains("\"error\":\"unauthorized\""));
 
   let forbidden_origin = request(
     ready.port,

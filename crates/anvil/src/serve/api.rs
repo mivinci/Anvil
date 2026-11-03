@@ -104,6 +104,7 @@ struct VersionSummary {
 #[derive(Debug)]
 pub(super) struct ApiError {
   status: StatusCode,
+  code: String,
   message: String,
 }
 
@@ -387,7 +388,8 @@ async fn authorize_request(
     .and_then(|header| header.strip_prefix("Bearer "))
     .is_some_and(|provided| constant_time_eq(provided.as_bytes(), state.token.as_bytes()));
   if !authorized {
-    let response = ApiError::new(StatusCode::UNAUTHORIZED, "unauthorized").into_response();
+    let response =
+      ApiError::new(StatusCode::UNAUTHORIZED, "unauthorized", "unauthorized").into_response();
     return with_cors(response, &origin);
   }
 
@@ -401,7 +403,12 @@ async fn authorize_request(
   let started = std::time::Instant::now();
   let response = match tokio::time::timeout(REQUEST_TIMEOUT, next.run(request)).await {
     Ok(response) => response,
-    Err(_) => StatusCode::REQUEST_TIMEOUT.into_response(),
+    Err(_) => ApiError::new(
+      StatusCode::REQUEST_TIMEOUT,
+      "request_timeout",
+      "Runtime request timed out",
+    )
+    .into_response(),
   };
   if response.status().is_server_error() || response.status() == StatusCode::REQUEST_TIMEOUT {
     tracing::warn!(route = %route, method = %method, status = response.status().as_u16(),
@@ -453,7 +460,7 @@ async fn fabric_versions(
     )
     .await
     .map(Json)
-    .map_err(|error| ApiError::new(StatusCode::BAD_GATEWAY, error))
+    .map_err(|error| ApiError::new(StatusCode::BAD_GATEWAY, "upstream_unavailable", error))
 }
 
 async fn client_versions(
@@ -463,7 +470,7 @@ async fn client_versions(
     .versions
     .get(state.runtime.context.clone(), false, None)
     .await
-    .map_err(|error| ApiError::new(StatusCode::BAD_GATEWAY, error))?;
+    .map_err(|error| ApiError::new(StatusCode::BAD_GATEWAY, "upstream_unavailable", error))?;
   Ok(Json(
     catalog.value.into_iter().map(version_summary).collect(),
   ))
@@ -485,6 +492,7 @@ struct VersionCatalogResponse {
   fresh_for_ms: u64,
   revision: u64,
   refresh_error: Option<String>,
+  refresh_error_code: Option<&'static str>,
 }
 
 async fn client_version_catalog(
@@ -495,13 +503,14 @@ async fn client_version_catalog(
     .versions
     .get(state.runtime.context.clone(), query.refresh, query.after)
     .await
-    .map_err(|error| ApiError::new(StatusCode::BAD_GATEWAY, error))?;
+    .map_err(|error| ApiError::new(StatusCode::BAD_GATEWAY, "upstream_unavailable", error))?;
   Ok(Json(VersionCatalogResponse {
     versions: catalog.value.into_iter().map(version_summary).collect(),
     stale: catalog.stale,
     fresh_for_ms: catalog.fresh_for_ms,
     revision: catalog.revision,
     refresh_error: catalog.refresh_error,
+    refresh_error_code: catalog.refresh_error_code,
   }))
 }
 
@@ -513,6 +522,7 @@ struct NewsResponse {
   fresh_for_ms: u64,
   revision: u64,
   refresh_error: Option<String>,
+  refresh_error_code: Option<&'static str>,
 }
 
 async fn news_feed(
@@ -523,13 +533,14 @@ async fn news_feed(
     .news
     .get(state.runtime.context.clone(), query.refresh, query.after)
     .await
-    .map_err(|error| ApiError::new(StatusCode::BAD_GATEWAY, error))?;
+    .map_err(|error| ApiError::new(StatusCode::BAD_GATEWAY, "upstream_unavailable", error))?;
   Ok(Json(NewsResponse {
     items: catalog.value,
     stale: catalog.stale,
     fresh_for_ms: catalog.fresh_for_ms,
     revision: catalog.revision,
     refresh_error: catalog.refresh_error,
+    refresh_error_code: catalog.refresh_error_code,
   }))
 }
 
@@ -550,6 +561,7 @@ struct ClientDetails {
 
 static LOG_READS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(2);
 fn crash_error(error: anvil_core::Error) -> ApiError {
+  let code = error.code();
   tracing::warn!(error_code = error.code(), "Crash report read failed");
   let (status, message) = match error {
     anvil_core::Error::Invalid(message) => (StatusCode::BAD_REQUEST, message),
@@ -559,15 +571,19 @@ fn crash_error(error: anvil_core::Error) -> ApiError {
       "无法读取崩溃报告，请刷新后重试。".into(),
     ),
   };
-  ApiError::new(status, message)
+  ApiError::new(status, code, message)
 }
 async fn client_crash_reports(
   State(state): State<AppState>,
   RoutePath(name): RoutePath<String>,
 ) -> Result<Json<anvil_core::client::ClientCrashReports>, ApiError> {
-  let _permit = LOG_READS
-    .try_acquire()
-    .map_err(|_| ApiError::new(StatusCode::TOO_MANY_REQUESTS, "日志正在读取，请稍后重试。"))?;
+  let _permit = LOG_READS.try_acquire().map_err(|_| {
+    ApiError::new(
+      StatusCode::TOO_MANY_REQUESTS,
+      "busy",
+      "日志正在读取，请稍后重试。",
+    )
+  })?;
   ClientInstaller::new(state.runtime.context.clone())
     .list_crash_reports(&name)
     .await
@@ -578,9 +594,13 @@ async fn client_crash_report(
   State(state): State<AppState>,
   RoutePath((name, filename)): RoutePath<(String, String)>,
 ) -> Result<Json<anvil_core::client::ClientCrashReport>, ApiError> {
-  let _permit = LOG_READS
-    .try_acquire()
-    .map_err(|_| ApiError::new(StatusCode::TOO_MANY_REQUESTS, "日志正在读取，请稍后重试。"))?;
+  let _permit = LOG_READS.try_acquire().map_err(|_| {
+    ApiError::new(
+      StatusCode::TOO_MANY_REQUESTS,
+      "busy",
+      "日志正在读取，请稍后重试。",
+    )
+  })?;
   ClientInstaller::new(state.runtime.context.clone())
     .read_crash_report(&name, &filename)
     .await
@@ -592,16 +612,24 @@ async fn client_game_log(
   State(state): State<AppState>,
   RoutePath(name): RoutePath<String>,
 ) -> Result<Json<anvil_core::client::ClientGameLog>, ApiError> {
-  let _permit = LOG_READS
-    .try_acquire()
-    .map_err(|_| ApiError::new(StatusCode::TOO_MANY_REQUESTS, "日志正在读取，请稍后重试。"))?;
+  let _permit = LOG_READS.try_acquire().map_err(|_| {
+    ApiError::new(
+      StatusCode::TOO_MANY_REQUESTS,
+      "busy",
+      "日志正在读取，请稍后重试。",
+    )
+  })?;
   ClientInstaller::new(state.runtime.context.clone())
     .read_game_log(&name)
     .await
     .map(Json)
     .map_err(|error| {
       tracing::warn!(error_code = error.code(), "Game log read failed");
-      ApiError::new(StatusCode::BAD_REQUEST, "无法读取此实例的游戏日志。")
+      ApiError::new(
+        StatusCode::BAD_REQUEST,
+        "invalid_argument",
+        "无法读取此实例的游戏日志。",
+      )
     })
 }
 
@@ -619,7 +647,7 @@ async fn client_details(
         anvil_core::Error::Busy(_) | anvil_core::Error::Conflict(_) => StatusCode::CONFLICT,
         _ => StatusCode::INTERNAL_SERVER_ERROR,
       };
-      ApiError::new(status, error.to_string())
+      ApiError::new(status, error.code(), error.to_string())
     })?;
   Ok(Json(ClientDetails {
     loader: record.loader,
@@ -632,7 +660,7 @@ async fn client_details(
     architecture: record.architecture,
     file_count: record.files.len(),
     modpack_version_id: anvil_core::client::modpack_version(&state.runtime.context, &name)
-      .map_err(|error| ApiError::new(StatusCode::CONFLICT, error.to_string()))?,
+      .map_err(|error| ApiError::new(StatusCode::CONFLICT, error.code(), error.to_string()))?,
   }))
 }
 
@@ -642,7 +670,13 @@ async fn clients(State(state): State<AppState>) -> Result<Json<Vec<ClientSummary
     .await
     .map(|clients| clients.into_iter().map(client_summary).collect())
     .map(Json)
-    .map_err(|error| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))
+    .map_err(|error| {
+      ApiError::new(
+        StatusCode::INTERNAL_SERVER_ERROR,
+        error.code(),
+        error.to_string(),
+      )
+    })
 }
 
 fn client_summary(entry: ClientListEntry) -> ClientSummary {
@@ -671,8 +705,12 @@ async fn install_client(
     .start_install(request)
     .map(|operation| (StatusCode::ACCEPTED, Json(operation)))
     .map_err(|error| match error {
-      StartInstallError::Invalid(message) => ApiError::new(StatusCode::BAD_REQUEST, message),
-      StartInstallError::Conflict(message) => ApiError::new(StatusCode::CONFLICT, message),
+      StartInstallError::Invalid(message) => {
+        ApiError::new(StatusCode::BAD_REQUEST, "invalid_argument", message)
+      }
+      StartInstallError::Conflict(message) => {
+        ApiError::new(StatusCode::CONFLICT, "conflict", message)
+      }
     })
 }
 
@@ -688,7 +726,7 @@ async fn operation(
     .runtime
     .operation(id)
     .map(Json)
-    .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "operation not found"))
+    .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "not_found", "operation not found"))
 }
 
 async fn cancel_operation(
@@ -699,7 +737,7 @@ async fn cancel_operation(
     .runtime
     .cancel_operation(id)
     .map(|operation| (StatusCode::ACCEPTED, Json(operation)))
-    .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "operation not found"))
+    .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "not_found", "operation not found"))
 }
 
 async fn pause_operation(
@@ -709,9 +747,9 @@ async fn pause_operation(
   state
     .runtime
     .pause_operation(id)
-    .map_err(|error| ApiError::new(StatusCode::CONFLICT, error))?
+    .map_err(|error| ApiError::new(StatusCode::CONFLICT, "conflict", error))?
     .map(|snapshot| (StatusCode::ACCEPTED, Json(snapshot)))
-    .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "operation not found"))
+    .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "not_found", "operation not found"))
 }
 
 async fn resume_operation(
@@ -721,18 +759,19 @@ async fn resume_operation(
   state
     .runtime
     .resume_operation(id)
-    .map_err(|error| ApiError::new(StatusCode::CONFLICT, error))?
+    .map_err(|error| ApiError::new(StatusCode::CONFLICT, "conflict", error))?
     .map(|snapshot| (StatusCode::ACCEPTED, Json(snapshot)))
-    .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "operation not found"))
+    .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "not_found", "operation not found"))
 }
 
 async fn accounts(State(state): State<AppState>) -> Result<Json<Vec<AccountSummary>>, ApiError> {
-  state
-    .accounts
-    .list()
-    .await
-    .map(Json)
-    .map_err(|error| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, error))
+  state.accounts.list().await.map(Json).map_err(|error| {
+    ApiError::new(
+      StatusCode::INTERNAL_SERVER_ERROR,
+      "account_unavailable",
+      error,
+    )
+  })
 }
 
 #[derive(serde::Deserialize)]
@@ -750,18 +789,24 @@ async fn delete_client(
   if !request.confirmation.eq_ignore_ascii_case(&name) {
     return Err(ApiError::new(
       StatusCode::BAD_REQUEST,
+      "confirmation_mismatch",
       "删除确认与实例不匹配。",
     ));
   }
-  let _permit = CLIENT_DELETIONS
-    .try_acquire()
-    .map_err(|_| ApiError::new(StatusCode::CONFLICT, "已有实例正在删除，请稍后刷新。"))?;
+  let _permit = CLIENT_DELETIONS.try_acquire().map_err(|_| {
+    ApiError::new(
+      StatusCode::CONFLICT,
+      "busy",
+      "已有实例正在删除，请稍后刷新。",
+    )
+  })?;
   if state.runtime.busy_for_client(&name)
     || state.launches.busy_for_client(&name)
     || state.resources.busy_for_client(&name)
   {
     return Err(ApiError::new(
       StatusCode::CONFLICT,
+      "instance_busy",
       "实例正在运行、准备启动或安装，请等待完成后再删除。",
     ));
   }
@@ -782,17 +827,21 @@ async fn verify_account(
 ) -> Result<Json<serde_json::Value>, ApiError> {
   match state.accounts.verify(&id).await {
     Ok(()) => Ok(Json(serde_json::json!({ "valid": true }))),
-    Err(super::accounts::VerifyError::NotFound) => {
-      Err(ApiError::new(StatusCode::NOT_FOUND, "账户不存在。"))
-    }
+    Err(super::accounts::VerifyError::NotFound) => Err(ApiError::new(
+      StatusCode::NOT_FOUND,
+      "not_found",
+      "账户不存在。",
+    )),
     Err(super::accounts::VerifyError::Expired) => Err(ApiError::new(
       StatusCode::UNAUTHORIZED,
+      "account_expired",
       "登录已过期，请重新登录 Microsoft 账户。",
     )),
     Err(super::accounts::VerifyError::Unavailable(detail)) => {
       tracing::warn!(reason = %detail, "Account verification unavailable");
       Err(ApiError::new(
         StatusCode::BAD_GATEWAY,
+        "upstream_unavailable",
         "暂时无法确认登录状态，请稍后重试。",
       ))
     }
@@ -803,19 +852,27 @@ async fn account_skin(
   State(state): State<AppState>,
   RoutePath(id): RoutePath<String>,
 ) -> Result<Json<Option<anvil_core::account_skin::AccountSkin>>, ApiError> {
-  let accounts = state
-    .accounts
-    .list()
-    .await
-    .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "无法读取账户"))?;
+  let accounts = state.accounts.list().await.map_err(|_| {
+    ApiError::new(
+      StatusCode::INTERNAL_SERVER_ERROR,
+      "account_unavailable",
+      "无法读取账户",
+    )
+  })?;
   let account = accounts
     .iter()
     .find(|account| account.id == id)
-    .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "账户不存在"))?;
+    .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "not_found", "账户不存在"))?;
   anvil_core::account_skin::read(&state.runtime.context, &account.id)
     .await
     .map(Json)
-    .map_err(|_| ApiError::new(StatusCode::BAD_GATEWAY, "暂时无法读取角色皮肤"))
+    .map_err(|_| {
+      ApiError::new(
+        StatusCode::BAD_GATEWAY,
+        "skin_unavailable",
+        "暂时无法读取角色皮肤",
+      )
+    })
 }
 
 async fn login_configuration(State(state): State<AppState>) -> Json<LoginConfiguration> {
@@ -830,10 +887,14 @@ async fn login_account(
     .start_login()
     .map(|operation| (StatusCode::ACCEPTED, Json(operation)))
     .map_err(|error| match error {
-      StartLoginError::Invalid(message) => ApiError::new(StatusCode::BAD_REQUEST, message),
-      StartLoginError::Conflict(message) => ApiError::new(StatusCode::CONFLICT, message),
+      StartLoginError::Invalid(message) => {
+        ApiError::new(StatusCode::BAD_REQUEST, "login_not_configured", message)
+      }
+      StartLoginError::Conflict(message) => {
+        ApiError::new(StatusCode::CONFLICT, "conflict", message)
+      }
       StartLoginError::Internal(message) => {
-        ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, message)
+        ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "runtime_error", message)
       }
     })
 }
@@ -842,11 +903,13 @@ async fn account_operation(
   State(state): State<AppState>,
   RoutePath(id): RoutePath<u64>,
 ) -> Result<Json<LoginOperationSnapshot>, ApiError> {
-  state
-    .accounts
-    .operation(id)
-    .map(Json)
-    .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "account operation not found"))
+  state.accounts.operation(id).map(Json).ok_or_else(|| {
+    ApiError::new(
+      StatusCode::NOT_FOUND,
+      "not_found",
+      "account operation not found",
+    )
+  })
 }
 
 async fn active_account_operation(State(state): State<AppState>) -> Json<serde_json::Value> {
@@ -861,7 +924,13 @@ async fn cancel_account_operation(
     .accounts
     .cancel_operation(id)
     .map(|operation| (StatusCode::ACCEPTED, Json(operation)))
-    .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "account operation not found"))
+    .ok_or_else(|| {
+      ApiError::new(
+        StatusCode::NOT_FOUND,
+        "not_found",
+        "account operation not found",
+      )
+    })
 }
 
 async fn select_account(
@@ -873,7 +942,7 @@ async fn select_account(
     .select(id)
     .await
     .map(Json)
-    .map_err(|error| ApiError::new(StatusCode::BAD_REQUEST, error))
+    .map_err(|error| ApiError::new(StatusCode::BAD_REQUEST, "invalid_argument", error))
 }
 
 async fn logout_account(
@@ -885,13 +954,18 @@ async fn logout_account(
     .logout(id)
     .await
     .map(Json)
-    .map_err(|error| ApiError::new(StatusCode::BAD_REQUEST, error))
+    .map_err(|error| ApiError::new(StatusCode::BAD_REQUEST, "invalid_argument", error))
 }
 
 impl ApiError {
-  pub(super) fn new(status: StatusCode, message: impl Into<String>) -> Self {
+  pub(super) fn new(
+    status: StatusCode,
+    code: impl Into<String>,
+    message: impl Into<String>,
+  ) -> Self {
     Self {
       status,
+      code: code.into(),
       message: message.into(),
     }
   }
@@ -901,8 +975,12 @@ impl IntoResponse for ApiError {
   fn into_response(self) -> Response {
     (
       self.status,
-      Json(serde_json::json!({ "error": self.message })),
+      Json(serde_json::json!({ "error": self.message, "code": self.code })),
     )
       .into_response()
   }
 }
+
+#[cfg(test)]
+#[path = "../../tests/support/runtime_errors.rs"]
+mod structured_error_tests;

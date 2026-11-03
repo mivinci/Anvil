@@ -1,3 +1,5 @@
+import { requestErrorMessage } from './runtime-errors.ts';
+import { localeState } from './locale.svelte.ts';
 import {
 	listClientShaderPacks, importClientShaderPack, removeClientShaderPack, syncClientResources, RuntimeRequestError,
 	type ClientShaderPackChange, type ClientShaderPack, type ShaderEnvironment,
@@ -10,12 +12,20 @@ export class ClientShaderPackState {
 	collection = $state<ClientShaderPackChange | null>(null);
 	environment = $state<ShaderEnvironment | null>(null);
 	activity = $state<'loading' | 'importing' | 'removing' | 'syncing' | null>(null);
-	error = $state<string | null>(null);
+	errorDetail = $state<string | null>(null);
+	private errorValue = $state<string | (() => string | null) | null>(null);
+	get error(): string | null { const value = this.errorValue; return typeof value === 'function' ? value() : value; }
+	set error(value: string | (() => string | null) | null) {
+		this.errorValue = value;
+		if (value === null) this.errorDetail = null;
+	}
 	uncertain = $state(false);
 	needsRefresh = $state(false);
 	selected = $state<File | null>(null);
 	removing = $state<string | null>(null);
-	message = $state<string | null>(null);
+	private messageValue = $state<string | (() => string | null) | null>(null);
+	get message(): string | null { const value = this.messageValue; return typeof value === 'function' ? value() : value; }
+	set message(value: string | (() => string | null) | null) { this.messageValue = value; }
 	readonly busy = $derived(this.activity !== null);
 	readonly blocked = $derived(this.uncertain || this.needsRefresh);
 	private name = '';
@@ -37,7 +47,7 @@ export class ClientShaderPackState {
 	pick(file: File) {
 		if (this.busy || this.blocked || !this.collection) return;
 		this.selected = null; this.removing = null; this.message = null;
-		this.error = localPackFileError(file);
+		this.error = () => localPackFileError(file, localeState.current);
 		if (!this.error) this.selected = file;
 	}
 	async importSelected() {
@@ -79,24 +89,24 @@ export class ClientShaderPackState {
 				committed = true;
 				this.collection = change; this.environment = null;
 				this.selected = null; this.removing = null; this.uncertain = false; this.needsRefresh = false;
-				this.message = activity === 'importing' ? '已添加到实例，请在游戏内选择光影。' : activity === 'removing' ? '已从此实例移除，共享原件保留。' : '受管资源文件已同步。';
+				this.message = () => (activity === 'importing' ? localeState.messages.instance.detail.shaderAdded : activity === 'removing' ? localeState.messages.instance.detail.removed : localeState.messages.instance.detail.resourcesSynced);
 				const refreshed = await refreshAfterShaderChange(change, signal => listClientShaderPacks(name, signal), AbortSignal.any([controller.signal, AbortSignal.timeout(65_000)]));
 				if (!current()) return;
 				if (refreshed.snapshot) { this.collection = refreshed.snapshot; this.environment = refreshed.snapshot.environment; }
-				else this.error = `操作已完成，但光影环境刷新失败，请重新读取。${refreshed.error ?? ''}`;
+				else { this.errorDetail = refreshed.error; this.error = () => (localeState.messages.instance.shaderRefreshFailed); }
 			}
 		} catch (reason) {
 			if (!current()) return;
-			const detail = reason instanceof Error ? reason.message : '';
+			const detail = reason instanceof Error ? reason.message : ''; this.errorDetail = detail;
 			const rejected = reason instanceof RuntimeRequestError && reason.status >= 400 && reason.status < 500 && reason.status !== 408;
 			if (mutation && !committed) {
 				this.uncertain = !rejected;
 				this.needsRefresh = !rejected || (reason instanceof RuntimeRequestError && reason.status === 409);
 				this.environment = null;
-				this.error = rejected ? `操作未执行。${detail}` : `操作结果未确认，请刷新清单后再操作。${detail}`;
+				this.error = () => (rejected ? requestErrorMessage(reason, localeState.current, localeState.messages.instance.mutationRejected) : localeState.messages.instance.mutationUnknown);
 			} else {
 				this.environment = null;
-				this.error = committed ? `操作已完成，但环境刷新失败，请重新读取。${detail}` : `暂时无法读取光影清单与环境。${detail}`;
+				this.error = () => requestErrorMessage(reason, localeState.current, (committed ? localeState.messages.instance.shaderRefreshFailed : localeState.messages.instance.shadersReadFailed));
 			}
 		} finally {
 			if (this.request === controller) {

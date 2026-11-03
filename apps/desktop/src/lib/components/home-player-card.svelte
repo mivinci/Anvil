@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { localeState } from '#lib/locale.svelte.ts';
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { DropdownMenu } from 'bits-ui';
@@ -17,9 +18,9 @@
 	const stats = new PlayStatsState();
 	const current = $derived(accounts.currentAccount);
 	const currentExpired = $derived(current ? accounts.isExpired(current.id) : false);
-	const accountStatus = $derived(accounts.loginRunning || accounts.loginStarting ? '正在登录…'
-		: accounts.verifying === current?.id ? '正在确认登录状态…'
-		: currentExpired ? '登录已过期' : 'Microsoft 账户');
+	const accountStatus = $derived(accounts.loginRunning || accounts.loginStarting ? localeState.messages.home.flow.signingIn
+		: accounts.verifying === current?.id ? localeState.messages.home.flow.checkingSessionWorking
+		: currentExpired ? localeState.messages.home.flow.expired : localeState.messages.home.flow.microsoftAccount);
 	const accountStats = $derived(playStatsAccount(stats.snapshot, current?.id));
 	const quickPlayHistory = $derived(stats.snapshot?.accounts[accounts.offlineMode ? 'offline' : current?.id ?? 'offline'] ?? null);
 	let hadActive = false;
@@ -35,14 +36,14 @@
 		if (!id) return null;
 		const client = clientFor(id);
 		if (client) return client.name;
-		return library.loaded ? '已删除实例' : id;
+		return library.loaded ? localeState.messages.home.flow.deletedInstance : id;
 	}
 	const mostPlayedLabel = $derived(instanceName(mostPlayedInstance(accountStats)) ?? '—');
 	const totalLabel = $derived(accountStats && accountStats.totalMs > 0
-		? formatPlayDuration(accountStats.totalMs)
-		: accountStats && accountStats.launches > 0 ? '不到 1 分钟' : '—');
-	const weekLabel = $derived(accountStats && accountStats.last7dMs > 0 ? formatPlayDuration(accountStats.last7dMs) : '—');
-	const launchesLabel = $derived(formatPlayCount(accountStats?.launches ?? 0));
+		? formatPlayDuration(accountStats.totalMs, localeState.current)
+		: accountStats && accountStats.launches > 0 ? localeState.messages.home.flow.lessMinute : '—');
+	const weekLabel = $derived(accountStats && accountStats.last7dMs > 0 ? formatPlayDuration(accountStats.last7dMs, localeState.current) : '—');
+	const launchesLabel = $derived(formatPlayCount(accountStats?.launches ?? 0, localeState.current));
 	const loadingAccount = $derived(accounts.loading && !accounts.loaded);
 
 	onMount(() => {
@@ -69,11 +70,11 @@
 </script>
 
 <section class="flex h-full min-w-0 flex-col rounded-lg bg-card p-3" aria-labelledby="home-player-title">
-	<h2 id="home-player-title" class="sr-only">玩家</h2>
+	<h2 id="home-player-title" class="sr-only">{localeState.messages.home.flow.player}</h2>
 
 	{#if current}
 		<DropdownMenu.Root>
-			<DropdownMenu.Trigger aria-label={`账户：${current.username}，${accountStatus}`} class="group flex w-full min-w-0 items-center gap-3 rounded-lg p-1 text-left transition-colors hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring">
+			<DropdownMenu.Trigger aria-label={localeState.messages.clients.accountLabel(current.username, accountStatus)} class="group flex w-full min-w-0 items-center gap-3 rounded-lg p-1 text-left transition-colors hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring">
 				<AccountAvatar account={current} size={56} />
 				<span class="min-w-0 flex-1">
 					<span class="block truncate text-[15px] font-semibold leading-5" title={current.username}>{current.username}</span>
@@ -81,27 +82,27 @@
 				</span>
 				<ChevronDown size={14} class="shrink-0 text-muted-foreground" aria-hidden="true" />
 			</DropdownMenu.Trigger>
-			<DropdownMenu.Content side="bottom" align="start" sideOffset={6} collisionPadding={8} class="z-30 w-56 rounded-xl border border-chrome-control-border bg-popover/95 p-1 text-popover-foreground shadow-[0_4px_16px_rgb(0_0_0/0.08)] backdrop-blur-xl outline-none" aria-label="账户">
+			<DropdownMenu.Content side="bottom" align="start" sideOffset={6} collisionPadding={8} class="z-30 w-56 rounded-xl border border-chrome-control-border bg-popover/95 p-1 text-popover-foreground shadow-[0_4px_16px_rgb(0_0_0/0.08)] backdrop-blur-xl outline-none" aria-label={localeState.messages.home.flow.account}>
 				{#if currentExpired}
 					<DropdownMenu.Item class={itemClass} disabled={accounts.busy} onSelect={login}>
-						<LogIn size={14} aria-hidden="true" /><span class="flex-1">重新登录</span>
+						<LogIn size={14} aria-hidden="true" /><span class="flex-1">{localeState.messages.home.flow.signInAgain}</span>
 					</DropdownMenu.Item>
 					<DropdownMenu.Separator class="mx-1.5 my-1 h-px bg-border/60" />
 				{/if}
-				<p class="px-2 py-1.5 text-[10px] font-medium text-chrome-muted">账户</p>
+				<p class="px-2 py-1.5 text-[10px] font-medium text-chrome-muted">{localeState.messages.home.flow.account}</p>
 				{#each accounts.accounts as account (account.id)}
 					<DropdownMenu.Item class={itemClass} disabled={accounts.busy} onSelect={() => void switchAccount(account.id)}>
 						<AccountAvatar {account} size={22} />
 						<span class="min-w-0 flex-1 truncate">{account.username}</span>
-						{#if accounts.isExpired(account.id)}<TriangleAlert size={13} class="shrink-0 text-destructive" aria-label="登录已过期" />{:else if account.selected}<Check size={14} aria-label="当前账户" />{/if}
+						{#if accounts.isExpired(account.id)}<TriangleAlert size={13} class="shrink-0 text-destructive" aria-label={localeState.messages.home.flow.expired} />{:else if account.selected}<Check size={14} aria-label={localeState.messages.home.flow.currentAccount} />{/if}
 					</DropdownMenu.Item>
 				{/each}
 				<DropdownMenu.Separator class="mx-1.5 my-1 h-px bg-border/60" />
 				<DropdownMenu.Item class={itemClass} disabled={accounts.busy} onSelect={login}>
-					<LogIn size={14} strokeWidth={1.75} aria-hidden="true" /><span class="flex-1">添加账户</span>
+					<LogIn size={14} strokeWidth={1.75} aria-hidden="true" /><span class="flex-1">{localeState.messages.home.flow.addAccount}</span>
 				</DropdownMenu.Item>
 				<DropdownMenu.Item class={itemClass} disabled={accounts.busy} onSelect={() => void signOut()}>
-					<LogOut size={14} strokeWidth={1.75} aria-hidden="true" /><span class="flex-1">退出登录</span>
+					<LogOut size={14} strokeWidth={1.75} aria-hidden="true" /><span class="flex-1">{localeState.messages.home.flow.signOut}</span>
 				</DropdownMenu.Item>
 				{#if accounts.error}
 					<p class="px-2 py-1 text-[10px] leading-4 text-destructive" role="alert">{accounts.error.message}</p>
@@ -111,14 +112,14 @@
 	{:else if loadingAccount}
 		<div class="flex items-center gap-3 p-1" role="status">
 			<span class="grid size-14 shrink-0 place-items-center rounded-xl bg-chrome-hover text-muted-foreground"><UserRound size={22} aria-hidden="true" /></span>
-			<span class="text-[11px] text-muted-foreground">正在读取账户…</span>
+			<span class="text-[11px] text-muted-foreground">{localeState.messages.home.flow.loadingAccounts}</span>
 		</div>
 	{:else}
 		<button type="button" onclick={login} class="flex w-full items-center gap-3 rounded-lg p-1 text-left transition-colors hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring">
 			<span class="grid size-14 shrink-0 place-items-center rounded-xl bg-chrome-hover text-muted-foreground"><LogIn size={22} aria-hidden="true" /></span>
 			<span class="min-w-0">
-				<span class="block text-[13px] font-medium">登录 Microsoft 账户</span>
-				<span class="mt-1 block text-[10px] text-muted-foreground">登录后记录游玩统计。</span>
+				<span class="block text-[13px] font-medium">{localeState.messages.home.flow.signInMicrosoft}</span>
+				<span class="mt-1 block text-[10px] text-muted-foreground">{localeState.messages.home.flow.signInStats}</span>
 			</span>
 		</button>
 	{/if}
@@ -126,19 +127,19 @@
 	{#if current}
 		<div class="mt-3 grid grid-cols-2 gap-2 min-[600px]:grid-cols-4 min-[900px]:grid-cols-2" aria-busy={stats.loading}>
 			<div class="rounded-lg bg-chrome-hover px-2 py-1.5">
-				<p class="text-[10px] text-muted-foreground">总游玩</p>
+				<p class="text-[10px] text-muted-foreground">{localeState.messages.home.flow.totalPlay}</p>
 				<p class="mt-1 truncate text-[14px] font-semibold tabular-nums" title={totalLabel}>{totalLabel}</p>
 			</div>
 			<div class="rounded-lg bg-chrome-hover px-2 py-1.5">
-				<p class="text-[10px] text-muted-foreground">近 7 天</p>
+				<p class="text-[10px] text-muted-foreground">{localeState.messages.home.flow.last7Days}</p>
 				<p class="mt-1 truncate text-[14px] font-semibold tabular-nums" title={weekLabel}>{weekLabel}</p>
 			</div>
 			<div class="rounded-lg bg-chrome-hover px-2 py-1.5">
-				<p class="text-[10px] text-muted-foreground">启动次数</p>
+				<p class="text-[10px] text-muted-foreground">{localeState.messages.home.flow.launchCount}</p>
 				<p class="mt-1 truncate text-[14px] font-semibold tabular-nums" title={launchesLabel}>{launchesLabel}</p>
 			</div>
 			<div class="rounded-lg bg-chrome-hover px-2 py-1.5">
-				<p class="text-[10px] text-muted-foreground">最常玩</p>
+				<p class="text-[10px] text-muted-foreground">{localeState.messages.home.flow.mostPlayed}</p>
 				<p class="mt-1 truncate text-[14px] font-semibold" title={mostPlayedLabel}>{mostPlayedLabel}</p>
 			</div>
 		</div>
@@ -147,15 +148,15 @@
 	<HomeQuickPlay history={quickPlayHistory} historyLoading={stats.loading} useDeviceHistory={!current || accounts.offlineMode} />
 
 	<div class="mt-auto flex flex-wrap items-center gap-1.5 pt-3">
-		<a href={resolve('/clients')} class={actionClass}><Gamepad2 size={13} aria-hidden="true" />实例库</a>
+		<a href={resolve('/clients')} class={actionClass}><Gamepad2 size={13} aria-hidden="true" />{localeState.messages.home.flow.library}</a>
 		{#if current}
-			<button type="button" class={`${actionClass} w-7 justify-center px-0`} disabled={stats.loading} onclick={() => void stats.refresh()} aria-label="刷新游玩统计" title="刷新游玩统计">
+			<button type="button" class={`${actionClass} w-7 justify-center px-0`} disabled={stats.loading} onclick={() => void stats.refresh()} aria-label={localeState.messages.home.flow.refreshStats} title={localeState.messages.home.flow.refreshStats}>
 				<RefreshCw size={13} class={stats.loading ? 'animate-spin motion-reduce:animate-none' : ''} aria-hidden="true" />
 			</button>
 		{/if}
 	</div>
 
 	{#if current && stats.error}
-		<p role="status" class="mt-2 text-[10px] leading-4 text-muted-foreground">统计暂不可用 <button type="button" class="text-primary hover:underline" onclick={() => void stats.refresh()}>重试</button></p>
+		<p role="status" class="mt-2 text-[10px] leading-4 text-muted-foreground">{localeState.messages.home.flow.statsUnavailable} <button type="button" class="text-primary hover:underline" onclick={() => void stats.refresh()}>{localeState.messages.home.flow.retry}</button></p>
 	{/if}
 </section>

@@ -63,3 +63,27 @@ test('leaving a shader page aborts the post-write read instead of publishing an 
 		return snapshot(3);
 	}, controller.signal), { name: 'AbortError' });
 });
+
+test('shared ZIP validation exposes stable issues and locale-specific text without changing limits', async () => {
+	const { localPackFileIssue, localPackSize } = await import('../src/lib/local-pack.ts');
+	const { shaderEnvironmentLabels } = await import('../src/lib/shader-packs.ts');
+	const invalid = { name: 'empty.zip', size: 0 };
+	assert.equal(localPackFileIssue(invalid), 'invalidZip');
+	assert.match(localPackFileError(invalid, 'en')!, /non-empty ZIP/);
+	assert.match(localPackFileError(invalid, 'zh-CN')!, /非空/);
+	assert.equal(localPackFileIssue({ name: 'con.zip', size: 1 }), 'invalidZipName');
+	assert.equal(localPackSize(1024, 'en'), '1.0 KiB');
+	assert.equal(localPackSize(1024 ** 2, 'en'), '1.0 MiB');
+	assert.equal(shaderEnvironmentLabels('en').missing_iris, 'Iris is not installed');
+	assert.equal(shaderEnvironmentLabels('zh-CN').ready, '光影支持已就绪');
+});
+
+test('structured shader reasons translate parameters without parsing legacy descriptions', async () => {
+	const { shaderEnvironmentReason } = await import('../src/lib/shader-packs.ts');
+	const env = { status: 'missing_dependencies' as const, managedOnly: true, iris: { version: '1', enabled: true }, sodium: null, reason: 'arbitrary source wording', reasonCode: 'shader_missing_dependency', reasonParams: { mod: 'iris', dependency: 'sodium' } };
+	assert.equal(shaderEnvironmentReason(env, 'en'), 'iris: A required enabled dependency is missing: sodium.');
+	assert.match(shaderEnvironmentReason(env, 'zh-CN'), /iris.*必需依赖.*sodium/);
+	assert.match(shaderEnvironmentReason({ ...env, reasonCode: 'future_reason' }, 'en'), /unconfirmed/);
+	assert.match(shaderEnvironmentReason({ ...env, reasonCode: undefined, reasonParams: undefined }, 'en'), /required managed mods/);
+	assert.equal(env.reason, 'arbitrary source wording');
+});

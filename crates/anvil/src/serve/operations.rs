@@ -102,6 +102,7 @@ pub(super) struct InstallOperationSnapshot {
   pub progress: InstallProgress,
   pub result: Option<InstallReceipt>,
   pub error: Option<String>,
+  pub error_code: Option<String>,
 }
 
 pub(super) struct InstallOperation {
@@ -261,6 +262,7 @@ impl RuntimeState {
       .into(),
       result: None,
       error: None,
+      error_code: None,
     };
     let (snapshot_tx, snapshot_rx) = watch::channel(initial.clone());
     let (progress_tx, mut progress_rx) = watch::channel(ClientProgress {
@@ -440,12 +442,14 @@ impl RuntimeState {
         Err(error) if cancel.is_cancelled() => {
           tracing::info!(operation_id = id, elapsed_ms = started.elapsed().as_millis() as u64, "Client installation cancelled; cleanup complete");
           snapshot.state = OperationState::Cancelled;
+          snapshot.error_code = Some(error.code().into());
           snapshot.error = Some(error.to_string());
           snapshot.progress = progress_tx.borrow().clone().into();
         }
         Err(error) => {
           tracing::warn!(operation_id = id, error_code = error.code(), stage = ?progress_tx.borrow().stage, elapsed_ms = started.elapsed().as_millis() as u64, "Client installation failed");
           snapshot.state = OperationState::Failed;
+          snapshot.error_code = Some(error.code().into());
           snapshot.error = Some(error.to_string());
           snapshot.progress = progress_tx.borrow().clone().into();
         }

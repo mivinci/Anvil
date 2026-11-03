@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { localeState } from '#lib/locale.svelte.ts';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { shellUpgradeRequired } from '../shell-compatibility';
@@ -21,9 +22,9 @@
 	const updateReady = $derived(status?.state === 'staged' || runtimeVersion !== null || shellUpdateAvailable);
 	const targetVersion = $derived(shellUpdateAvailable ? shellUpdate?.availableVersion : status?.state === 'staged' ? status.availableVersion : runtimeVersion);
 	const buttonTitle = $derived(restartError
-		? shellUpdateAvailable ? '无法打开 Shell 更新页，请重试' : '更新已准备好，重启失败，请重试'
-		: shellUpdateAvailable ? `Shell ${targetVersion ?? ''} 可用，打开发布页重新安装`
-		: `重启以更新到 ${targetVersion ?? '新版本'}`);
+		? shellUpdateAvailable ? localeState.messages.common.updatePageFailed : localeState.messages.common.restartFailed
+		: shellUpdateAvailable ? localeState.messages.common.shellUpdate(targetVersion)
+		: localeState.messages.common.restartUpdate(targetVersion));
 	const progress = $derived(status?.totalBytes ? Math.min(100, status.downloadedBytes / status.totalBytes * 100) : 0);
 
 	async function refresh() {
@@ -68,7 +69,7 @@
 
 {#if shellBlocked}
 	<div class="relative grid size-9 place-items-center">
-		<NavButton aria-label="Desktop 更新需要新版启动器，查看更新说明" title="请先更新启动器，当前 Desktop 仍可继续使用" onclick={() => void goto(`${resolve('/settings')}?section=about`)} class="bg-primary/10 text-primary hover:bg-primary/15"><ArrowUp size={17} strokeWidth={2} aria-hidden="true" /></NavButton>
+		<NavButton aria-label={localeState.messages.common.shellUpgradeLabel} title={localeState.messages.common.shellUpgradeTitle} onclick={() => void goto(`${resolve('/settings')}?section=about`)} class="bg-primary/10 text-primary hover:bg-primary/15"><ArrowUp size={17} strokeWidth={2} aria-hidden="true" /></NavButton>
 		<span class="pointer-events-none absolute -right-0.5 -top-0.5 size-2 rounded-full bg-primary ring-2 ring-background" aria-hidden="true"></span>
 	</div>
 {:else if updateReady}
@@ -85,7 +86,7 @@
 		<span class="pointer-events-none absolute -right-0.5 -top-0.5 size-2 rounded-full bg-primary ring-2 ring-background" aria-hidden="true"></span>
 	</div>
 {:else if busy}
-	<div class="grid size-9 place-items-center text-primary" role="status" aria-label={`正在准备更新${status?.totalBytes ? ` ${Math.round(progress)}%` : ''}`} title={`正在准备更新${status?.totalBytes ? ` ${Math.round(progress)}%` : ''}`}>
+	<div class="grid size-9 place-items-center text-primary" role="status" aria-label={localeState.messages.common.updateProgress(status?.totalBytes ? Math.round(progress) : null)} title={localeState.messages.common.updateProgress(status?.totalBytes ? Math.round(progress) : null)}>
 		<LoaderCircle size={17} strokeWidth={1.8} class="animate-spin motion-reduce:animate-none" aria-hidden="true" />
 	</div>
 {/if}

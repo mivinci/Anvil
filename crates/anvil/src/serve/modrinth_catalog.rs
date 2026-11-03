@@ -114,6 +114,7 @@ impl DiscoveryCatalog {
     fields.insert("revision".into(), value.revision.into());
     fields.insert("freshForMs".into(), value.fresh_for_ms.into());
     fields.insert("refreshError".into(), value.refresh_error.into());
+    fields.insert("refreshErrorCode".into(), value.refresh_error_code.into());
     Ok(page)
   }
 }

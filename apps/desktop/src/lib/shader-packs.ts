@@ -1,10 +1,11 @@
+import { messages, defaultLocale, type Locale } from './i18n/index.ts';
 import type { ClientShaderPackChange, ClientShaderPacks, ShaderEnvironment, ShaderMod } from './runtime';
 import { validateLocalPacks } from './local-pack.ts';
 
-export const shaderEnvironmentLabels: Record<ShaderEnvironment['status'], string> = {
-	requires_fabric: '此实例需要光影支持', missing_iris: '尚未安装 Iris', iris_disabled: 'Iris 尚未启用',
-	missing_dependencies: '光影依赖尚未就绪', unconfirmed: '光影环境待确认', ready: '光影支持已就绪',
-};
+export const shaderEnvironmentLabels = (locale: Locale = defaultLocale): Record<ShaderEnvironment['status'], string> => ({
+	requires_fabric: messages[locale].instance.detail.requiresFabric, missing_iris: messages[locale].instance.detail.missingIris, iris_disabled: messages[locale].instance.detail.irisDisabled,
+	missing_dependencies: messages[locale].instance.detail.missingDependencies, unconfirmed: messages[locale].instance.detail.environmentUnconfirmed, ready: messages[locale].instance.detail.shadersReady,
+});
 export function validateShaderPackChange(value: ClientShaderPackChange): ClientShaderPackChange {
 	return validateLocalPacks(value);
 }
@@ -15,11 +16,13 @@ function validMod(mod: ShaderMod | null) {
 export function validateShaderPacks(value: ClientShaderPacks): ClientShaderPacks {
 	validateShaderPackChange(value);
 	const env = value.environment;
-	if (!env || !Object.hasOwn(shaderEnvironmentLabels, env.status) || env.managedOnly !== true
+	if (!env || !Object.hasOwn(shaderEnvironmentLabels(), env.status) || env.managedOnly !== true
+		|| (env.reasonCode !== undefined && (typeof env.reasonCode !== 'string' || !/^[a-z][a-z0-9_]{0,63}$/.test(env.reasonCode)))
+		|| (env.reasonParams !== undefined && (!env.reasonParams || typeof env.reasonParams !== 'object' || Array.isArray(env.reasonParams) || Object.keys(env.reasonParams).length > 8 || Object.entries(env.reasonParams).some(([key, value]) => key.length > 32 || typeof value !== 'string' || value.length > 256)))
 		|| typeof env.reason !== 'string' || env.reason.length > 4096 || !validMod(env.iris) || !validMod(env.sodium)
 		|| (env.status === 'ready' && !env.iris?.enabled)
 		|| (env.status === 'iris_disabled' && (!env.iris || env.iris.enabled))
-		|| (env.status === 'missing_iris' && env.iris !== null)) throw new Error('光影环境信息格式不正确。');
+		|| (env.status === 'missing_iris' && env.iris !== null)) throw new Error(messages[defaultLocale].instance.detail.invalidEnvironment);
 	return value;
 }
 
@@ -32,10 +35,19 @@ export async function refreshAfterShaderChange(
 	try {
 		const snapshot = validateShaderPacks(await read(signal));
 		signal.throwIfAborted();
-		if (snapshot.revision < change.revision) throw new Error('读取到旧的光影清单，请刷新。');
+		if (snapshot.revision < change.revision) throw new Error(messages[defaultLocale].instance.detail.staleShaders);
 		return { snapshot, error: null };
 	} catch (reason) {
 		signal.throwIfAborted();
-		return { snapshot: null, error: reason instanceof Error ? reason.message : '刷新失败。' };
+		return { snapshot: null, error: reason instanceof Error ? reason.message : messages[defaultLocale].instance.detail.refreshFailed };
 	}
+}
+
+/** Older Runtime statuses remain usable; unknown reason codes get a safe explanation. */
+export function shaderEnvironmentReason(env: ShaderEnvironment, locale: Locale = defaultLocale): string {
+	if (!env.reasonCode) return messages[locale].instance.environmentHelp[env.status];
+	const reasons = messages[locale].errors.shaderReasons;
+	return Object.hasOwn(reasons, env.reasonCode)
+		? reasons[env.reasonCode as keyof typeof reasons](env.reasonParams ?? {})
+		: reasons.shader_unconfirmed({});
 }

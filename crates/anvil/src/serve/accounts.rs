@@ -90,6 +90,29 @@ pub(super) struct LoginOperationSnapshot {
   pub authorization: Option<AuthorizationUpdate>,
   pub account: Option<AccountSummary>,
   pub error: Option<String>,
+  pub error_code: Option<String>,
+}
+
+// Preserve the typed failure through persistence and cancellation cleanup.
+struct LoginFailure {
+  code: &'static str,
+  message: String,
+}
+impl From<anvil_core::Error> for LoginFailure {
+  fn from(error: anvil_core::Error) -> Self {
+    Self {
+      code: error.code(),
+      message: error.to_string(),
+    }
+  }
+}
+impl LoginFailure {
+  fn cleanup(self, detail: impl std::fmt::Display) -> Self {
+    Self {
+      code: "account_cleanup_failed",
+      message: format!("{}; {detail}", self.message),
+    }
+  }
 }
 
 struct LoginOperation {
@@ -215,6 +238,7 @@ impl AccountState {
       authorization: None,
       account: None,
       error: None,
+      error_code: None,
     };
     let (snapshot_tx, snapshot_rx) = watch::channel(initial.clone());
     let cancel = anvil_core::CancellationToken::new();
@@ -271,7 +295,7 @@ impl AccountState {
             if !cancel.is_cancelled() {
               tracing::warn!(login_operation_id = id, error_code = error.code(), "Account authorization failed");
             }
-            error.to_string()
+            LoginFailure::from(error)
           }),
           event = events_rx.recv(), if events_open => match event {
             Some(event) => {
@@ -331,7 +355,10 @@ impl AccountState {
                 &context,
                 &service,
                 &profile,
-                "Microsoft sign-in cancelled".into(),
+                LoginFailure {
+                  code: "cancelled",
+                  message: "Microsoft sign-in cancelled".into(),
+                },
               )
               .await,
             )
@@ -344,12 +371,21 @@ impl AccountState {
             .await
             {
               Ok(Ok(_)) => Ok(profile),
-              Ok(Err(error)) => {
-                Err(cleanup_failed_login(&context, &service, &profile, error.to_string()).await)
-              }
-              Err(error) => {
-                Err(cleanup_failed_login(&context, &service, &profile, error.to_string()).await)
-              }
+              Ok(Err(error)) => Err(
+                cleanup_failed_login(&context, &service, &profile, LoginFailure::from(error)).await,
+              ),
+              Err(error) => Err(
+                cleanup_failed_login(
+                  &context,
+                  &service,
+                  &profile,
+                  LoginFailure {
+                    code: "worker",
+                    message: error.to_string(),
+                  },
+                )
+                .await,
+              ),
             }
           }
         }
@@ -371,12 +407,14 @@ impl AccountState {
           Err(error) if cancel.is_cancelled() => {
             tracing::info!(login_operation_id = id, "Account login cancelled; cleanup complete");
             snapshot.state = LoginState::Cancelled;
-            snapshot.error = Some(error);
+            snapshot.error_code = Some(error.code.into());
+            snapshot.error = Some(error.message);
           }
           Err(error) => {
             tracing::warn!(login_operation_id = id, stage = ?snapshot.stage, "Account login failed");
             snapshot.state = LoginState::Failed;
-            snapshot.error = Some(error);
+            snapshot.error_code = Some(error.code.into());
+            snapshot.error = Some(error.message);
           }
         }
       });
@@ -509,8 +547,8 @@ async fn cleanup_failed_login(
   context: &Context,
   service: &AccountService<MicrosoftAccountProvider, SystemCredentialStore>,
   profile: &AccountProfile,
-  reason: String,
-) -> String {
+  reason: LoginFailure,
+) -> LoginFailure {
   let data = context.paths.data.clone();
   let account_id = profile.id().to_owned();
   let existing = tokio::task::spawn_blocking(move || {
@@ -521,10 +559,14 @@ async fn cleanup_failed_login(
     Ok(Ok(true)) => reason,
     Ok(Ok(false)) => match service.logout(profile.id()).await {
       Ok(()) => reason,
-      Err(error) => format!("{reason}; credential cleanup failed: {error}"),
+      Err(error) => reason.cleanup(format!("credential cleanup failed: {error}")),
     },
-    Ok(Err(error)) => format!("{reason}; could not check saved account for cleanup: {error}"),
-    Err(error) => format!("{reason}; could not check saved account for cleanup: {error}"),
+    Ok(Err(error)) => reason.cleanup(format!(
+      "could not check saved account for cleanup: {error}"
+    )),
+    Err(error) => reason.cleanup(format!(
+      "could not check saved account for cleanup: {error}"
+    )),
   }
 }
 
@@ -538,3 +580,7 @@ fn summarize(entries: Vec<account_store::AccountEntry>) -> Vec<AccountSummary> {
     })
     .collect()
 }
+
+#[cfg(test)]
+#[path = "../../tests/support/account_errors.rs"]
+mod structured_error_tests;
