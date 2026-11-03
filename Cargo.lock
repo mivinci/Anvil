@@ -104,7 +104,7 @@ dependencies = [
 
 [[package]]
 name = "anvil"
-version = "26.0.0-alpha.3"
+version = "26.0.0-alpha.5"
 dependencies = [
  "anvil-core",
  "anvil-logging",
@@ -127,7 +127,7 @@ dependencies = [
 
 [[package]]
 name = "anvil-core"
-version = "26.0.0-alpha.3"
+version = "26.0.0-alpha.5"
 dependencies = [
  "base64 0.22.1",
  "directories",
@@ -155,7 +155,7 @@ dependencies = [
 
 [[package]]
 name = "anvil-logging"
-version = "26.0.0-alpha.3"
+version = "26.0.0-alpha.5"
 dependencies = [
  "directories",
  "rolling-file",
@@ -166,7 +166,7 @@ dependencies = [
 
 [[package]]
 name = "anvil-shell"
-version = "26.0.0-alpha.3"
+version = "26.0.0-alpha.5"
 dependencies = [
  "anvil-logging",
  "directories",
