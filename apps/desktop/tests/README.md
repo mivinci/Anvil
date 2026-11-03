@@ -26,6 +26,15 @@ node --experimental-strip-types apps/desktop/tests/mod-discovery.browser.mjs
 
 覆盖搜索、滚动追加/位置恢复、直接链接及历史、目标/来源切换、缺失/原版目标、来源未配置、900px 深色与宽窗口浅色，以及内存安装任务离页接续、提交结果未知后原计划重试和返回实例刷新。另用长说明和 20 个兼容版本验证底部安装栏始终可见、详情默认收起及正常状态隐藏重新生成入口。原生 WebView、真实平台下载及游戏内加载仍需独立验收。
 
+实例自定义头像的离线浏览器验收（先构建；需要已安装的 Playwright 与 Edge）：
+
+```sh
+npm run build --workspace @anvil/desktop
+ANVIL_PLAYWRIGHT_MODULE=/path/to/playwright-core node apps/desktop/tests/instance-avatar.browser.mjs
+```
+
+使用 loopback fixture 和假 Shell IPC，不连接真实 Runtime/账户。覆盖卡片默认图案、详情上传与 ETag 读取、刷新后恢复、8 MiB 超限不上传、409/400 失败保留旧图、设置恢复默认、读写失败回退，以及 620×420 窄窗下裁剪弹窗的键盘操作和无横向溢出；截图写入忽略目录 `.svelte-kit/instance-avatar-qa/`。原生 WebView、系统文件选择器和实际游戏忙碌锁仍需跨平台实测。
+
 账户头像验收使用本地账户资料和合成 PNG，拦截官方纹理 URL，不访问真实皮肤服务；覆盖头部/饰层显示、菜单与导航共用元数据请求，以及图片失败回退。Core 的 account_skin 测试验证公开资料解析、来源/身份校验和临时目录缓存恢复。
 
 启动验收覆盖禁用 JavaScript 时的静态透明提示、Runtime 尚未就绪时阻止业务请求、health 就绪后进入主页面，以及失败提示/显式重试。假 Shell 包含 isTauri 和窗口元数据，以进入实际桌面分支；原生窗口首帧与玻璃背板仍需桌面实测。

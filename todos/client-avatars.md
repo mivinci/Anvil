@@ -1,6 +1,6 @@
 # 实例自定义头像
 
-状态：第 1–5 项展示基础、Core 存储、Runtime 鉴权 API、通用裁剪组件与实例页面接入已本地实现，尚未完成浏览器/原生验收；已提交至 codex/instance-avatars 分支交接，尚未创建 PR。
+状态：第 1–5 项展示基础、Core 存储、Runtime 鉴权 API、通用裁剪组件与实例页面接入已本地实现；第 6 项离线 API/浏览器验收已通过，原生 WebView、系统文件选择器和真实游戏忙碌锁待维护者跨平台实测。已提交至 codex/instance-avatars 分支交接，尚未创建 PR。
 
 ## 产品与数据边界
 
@@ -66,9 +66,16 @@
 - 验证：runtime-request 3 项、裁剪 6 项通过；i18n guard、`svelte-check` 0 错误/0 警告、桌面生产构建通过；Runtime 头像回环测试继续通过。
 - 尚未在真实 WebView 中检查头像加载、裁剪交互、错误回退和窄窗布局；也未启动真实游戏验证忙碌锁。
 
+## 第 6 项离线验收
+
+- `instance-avatar.browser.mjs` 使用 loopback fixture 和假 Shell IPC，覆盖卡片默认图案、详情上传、刷新后 ETag 读取、设置恢复默认、8 MiB 超限被前端拒绝、409 busy/400 invalid 失败保留旧图、读失败回退默认，以及 620×420 窄窗裁剪弹窗键盘操作和无横向溢出。
+- 浏览器验收使用本机 Edge 和临时 Playwright 包；截图位于被忽略的 `apps/desktop/.svelte-kit/instance-avatar-qa/`。
+- Runtime 回环 API 测试覆盖鉴权、非法/超限请求、PNG/ETag/304、清除幂等和 8 MiB 路由上限。
+- 尚未验证原生 WebView 的文件选择器、macOS/Windows 实际窗口尺寸、真实游戏运行时的忙碌锁；这些由维护者跨平台实测，不以浏览器结果替代。
+
 ## 接续入口
 
-第 5 项已完成。下一步是第 6 项离线服务/API/浏览器、失败保留、键盘与窄窗验收；当前授权仅提交/推送交接分支，没有创建 PR、合并或发布授权。
+第 6 项离线部分已完成：Runtime/API/浏览器、失败保留、超限、读失败回退、键盘与窄窗均已验收；原生 WebView、系统文件选择器和真实游戏忙碌锁由维护者跨平台实测。当前授权仅提交/推送交接分支，没有创建 PR、合并或发布授权。
 
 - Core 实现：crates/anvil-core/src/client/avatar.rs；公开导出见 client.rs；对应测试 client_avatar.rs。头像上传与清除目前遵守实例忙锁，读取只取设置锁。
 - 展示组件：components/ui/avatar.svelte 为通用 fallback 容器；components/clients/instance-avatar.svelte 组合稳定图案；instance-avatar.ts 为纯图案函数。尚未在任何业务页面挂载，没有现成的选图/裁剪 UI。

@@ -211,6 +211,7 @@
 	<Dialog.Portal to=".app-window">
 		<Dialog.Overlay class="fixed inset-0 z-40 bg-black/25" />
 		<Dialog.Content class="fixed top-1/2 left-1/2 z-50 w-[min(420px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 rounded-xl bg-popover p-4 text-popover-foreground shadow-xl outline-none">
+			<div class="overflow-y-auto" style="max-height:calc(100dvh - 64px)">
 			<div class="flex items-start justify-between gap-3">
 				<div>
 					<Dialog.Title class="text-sm font-semibold">{messages.title}</Dialog.Title>
@@ -268,6 +269,7 @@
 						{#if confirming}<LoaderCircle size={13} class="animate-spin motion-reduce:animate-none" aria-hidden="true" />{:else}{messages.apply}{/if}
 					</button>
 				</div>
+			</div>
 			</div>
 		</Dialog.Content>
 	</Dialog.Portal>
