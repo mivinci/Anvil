@@ -45,7 +45,7 @@ export default {
 		"decodeFailed": "Could not read this image. Choose another one.",
 		"cropFailed": "Could not create the cropped image. Please retry."
 	},
-	"appearanceErrors": {"colors": "Could not save colors. These changes apply only to this window.", "read": "Could not read appearance settings on this device.", "mode": "Could not save the appearance mode. This change applies only to this window."},
+	"appearanceErrors": {"colors": "Could not save colors. These changes apply only to this window.", "read": "Could not read appearance settings on this device.", "mode": "Could not save the appearance mode. This change applies only to this window.", "scale": "Could not save the text size. This change applies only to this window."},
 	"connecting": "Connecting to Runtime…",
 	"preparing": "Preparing the interface…",
 	"runtimeUnavailable": "Could not connect to Runtime. Retry or view the logs.",

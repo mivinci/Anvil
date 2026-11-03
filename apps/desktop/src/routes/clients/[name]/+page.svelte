@@ -77,9 +77,9 @@
 			<div class="relative z-10 flex min-w-0 flex-1 items-start gap-3">
 				<ClientAvatarEditor id={detail.client.id} name={detail.client.name} class="size-16 shrink-0" />
 				<div class="min-w-0 flex-1">
-					<p class="mb-1 flex items-center gap-1.5 text-[12px] text-muted-foreground"><span class={`size-1.5 rounded-full ${operation && launchActive(operation) ? 'bg-primary' : 'bg-muted-foreground/50'}`}></span>{status}</p>
+					<p class="mb-1 flex items-center gap-1.5 text-xs text-muted-foreground"><span class={`size-1.5 rounded-full ${operation && launchActive(operation) ? 'bg-primary' : 'bg-muted-foreground/50'}`}></span>{status}</p>
 					<h1 id="client-overview-title" class="max-w-full break-all text-lg font-semibold tracking-tight">{detail.client.name}</h1>
-					<div class="mt-1.5 flex flex-wrap gap-1.5 text-[12px] text-muted-foreground"><span class="rounded-md bg-card/70 px-2 py-1">Minecraft {detail.client.versionId}</span><span class="rounded-md bg-card/70 px-2 py-1">{detail.client.loader ? `Fabric ${detail.client.loader.version}` : localeState.messages.instance.detail.vanilla}</span></div>
+					<div class="mt-1.5 flex flex-wrap gap-1.5 text-xs text-muted-foreground"><span class="rounded-md bg-card/70 px-2 py-1">Minecraft {detail.client.versionId}</span><span class="rounded-md bg-card/70 px-2 py-1">{detail.client.loader ? `Fabric ${detail.client.loader.version}` : localeState.messages.instance.detail.vanilla}</span></div>
 					<div class="mt-3"><ClientLaunchControls client={detail.client}>{#snippet trailing()}<ClientModpackExport client={detail.client!} />{/snippet}</ClientLaunchControls></div>
 				</div>
 			</div>
@@ -91,10 +91,10 @@
 					<span class="grid size-8 shrink-0 place-items-center rounded-lg bg-primary/8 text-primary"><item.icon size={17} strokeWidth={1.5} aria-hidden="true" /></span>
 					<div class="min-w-0 flex-1">
 						<div class="flex items-start justify-between gap-2">
-							<h2 class="truncate text-[13px] font-medium">{item.title}</h2>
+							<h2 class="truncate text-body font-medium">{item.title}</h2>
 							<ArrowUpRight size={13} class="mt-0.5 shrink-0 text-muted-foreground/50 transition-transform motion-safe:group-hover:-translate-y-0.5 motion-safe:group-hover:translate-x-0.5" aria-hidden="true" />
 						</div>
-						<p class="mt-1 truncate text-[12px] leading-4 text-muted-foreground" title={item.hint}>{item.hint}</p>
+						<p class="mt-1 truncate text-xs leading-4 text-muted-foreground" title={item.hint}>{item.hint}</p>
 					</div>
 				</a>
 			{/each}
@@ -102,11 +102,11 @@
 		<details class="group mt-5 border-t border-border pt-3">
 			<summary class="flex cursor-pointer list-none items-center justify-between rounded-md py-1 text-xs text-muted-foreground focus-visible:outline-2 focus-visible:outline-ring [&::-webkit-details-marker]:hidden">{localeState.messages.instance.detail.installationInfo}<ChevronDown size={14} class="transition-transform group-open:rotate-180 motion-reduce:transition-none" aria-hidden="true" /></summary>
 			<dl class="mt-2 grid grid-cols-2 gap-x-6 gap-y-3 rounded-lg bg-card p-3">
-				{#each fields as field (field.label)}<div class="min-w-0"><dt class="text-[12px] text-muted-foreground">{field.label}</dt><dd class="mt-1 select-text break-all text-xs">{field.value}</dd></div>{/each}
+				{#each fields as field (field.label)}<div class="min-w-0"><dt class="text-xs text-muted-foreground">{field.label}</dt><dd class="mt-1 select-text break-all text-xs">{field.value}</dd></div>{/each}
 			</dl>
-			<div class="mt-2 flex gap-3">{#each [{ label: localeState.messages.instance.detail.name, value: detail.client.name }, { label: localeState.messages.instance.detail.gameVersion, value: detail.client.versionId }] as item}<button type="button" disabled={copying} onclick={() => void copy(item.label, item.value)} class="inline-flex items-center gap-1 rounded px-1 py-1 text-[12px] text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring">{#if copied === item.label}<Check size={12} aria-hidden="true" />{:else}<Copy size={12} aria-hidden="true" />{/if}{localeState.messages.instance.copyLabel(item.label)}</button>{/each}</div>
+			<div class="mt-2 flex gap-3">{#each [{ label: localeState.messages.instance.detail.name, value: detail.client.name }, { label: localeState.messages.instance.detail.gameVersion, value: detail.client.versionId }] as item}<button type="button" disabled={copying} onclick={() => void copy(item.label, item.value)} class="inline-flex items-center gap-1 rounded px-1 py-1 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring">{#if copied === item.label}<Check size={12} aria-hidden="true" />{:else}<Copy size={12} aria-hidden="true" />{/if}{localeState.messages.instance.copyLabel(item.label)}</button>{/each}</div>
 		</details>
 	{/if}
-	{#if copied}<p role="status" class="mt-2 text-[12px] text-muted-foreground">{localeState.messages.instance.detail.copied}{copied}</p>{/if}
-	{#if copyError}<p role="alert" class="mt-2 text-[12px] text-destructive">{copyError}</p>{/if}
+	{#if copied}<p role="status" class="mt-2 text-xs text-muted-foreground">{localeState.messages.instance.detail.copied}{copied}</p>{/if}
+	{#if copyError}<p role="alert" class="mt-2 text-xs text-destructive">{copyError}</p>{/if}
 </section>

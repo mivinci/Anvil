@@ -39,17 +39,17 @@
 
 <div class="grid min-h-0 flex-1 grid-cols-[168px_minmax(0,1fr)] overflow-hidden lg:grid-cols-[184px_minmax(0,1fr)]">
 	<aside class="flex min-h-0 flex-col bg-secondary/30 px-2.5 py-4" aria-label={text.categoriesLabel}>
-		<h1 class="px-2 text-[13px] font-semibold tracking-tight">{text.title}</h1>
+		<h1 class="px-2 text-body font-semibold tracking-tight">{text.title}</h1>
 		<label class="mt-3 flex h-8 items-center gap-2 rounded-md bg-chrome-hover px-2.5 text-muted-foreground focus-within:ring-1 focus-within:ring-ring">
 			<Search size={13} class="shrink-0" aria-hidden="true" />
 			<input type="search" aria-label={text.searchLabel} placeholder={text.searchPlaceholder} value={query} oninput={(event) => search(event.currentTarget.value)} class="min-w-0 flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground" />
 		</label>
 		<nav class="mt-4 min-h-0 flex-1 space-y-0.5 overflow-y-auto overscroll-contain" aria-label={text.title}>
-			<p class="mb-2 px-2 text-[12px] font-medium text-muted-foreground">{text.applicationSettings}</p>
+			<p class="mb-2 px-2 text-xs font-medium text-muted-foreground">{text.applicationSettings}</p>
 			{#each matches as item}
 				{@const Icon = item.icon}
 				<SelectableRow selected={selected === item.id} density="comfortable" showCheck={false} aria-current={selected === item.id ? 'page' : undefined} onclick={() => selected = item.id} class={selected === item.id ? 'font-medium' : 'text-muted-foreground hover:text-foreground'}><Icon size={14} strokeWidth={1.7} aria-hidden="true" />{item.label}</SelectableRow>
-			{:else}<p class="px-2 py-3 text-[13px] leading-5 text-muted-foreground">{text.noMatches}</p>{/each}
+			{:else}<p class="px-2 py-3 text-body leading-5 text-muted-foreground">{text.noMatches}</p>{/each}
 		</nav>
 	</aside>
 	<section class="min-h-0 min-w-0 overflow-y-auto overscroll-contain" aria-labelledby="settings-title">
@@ -61,7 +61,7 @@
 			{:else if selected === 'about'}<AboutSettings />
 			{:else if selected === 'accounts'}<AccountSettings />
 			{:else}
-				<div class="rounded-xl bg-card p-4"><p class="text-[13px] font-medium">{text.unavailable}</p><p class="mt-2 text-[12px] leading-5 text-muted-foreground">{pending[selected as keyof typeof pending]}</p></div>
+				<div class="rounded-xl bg-card p-4"><p class="text-body font-medium">{text.unavailable}</p><p class="mt-2 text-xs leading-5 text-muted-foreground">{pending[selected as keyof typeof pending]}</p></div>
 			{/if}
 		</div>
 	</section>

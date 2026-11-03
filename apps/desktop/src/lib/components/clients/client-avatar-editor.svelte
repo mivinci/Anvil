@@ -120,11 +120,11 @@
 	</button>
 	<input bind:this={fileInput} type="file" accept="image/png,image/jpeg,image/webp" aria-label={messages.changeAvatar} class="hidden" onchange={selected} />
 	{#if showRestore && view.custom}
-		<button type="button" disabled={saving} onclick={restore} class="max-w-full text-left text-[12px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40">{messages.restoreAvatar}</button>
+		<button type="button" disabled={saving} onclick={restore} class="max-w-full text-left text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40">{messages.restoreAvatar}</button>
 	{/if}
-	{#if showStatus && error}<p role="alert" class="max-w-48 text-[12px] leading-4 text-destructive">{error}</p>{/if}
-	{#if showStatus && errorDetail}<details class="max-w-48 text-[12px] leading-4 text-muted-foreground"><summary>{localeState.messages.errors.technicalDetails}</summary><p class="mt-1 select-text break-all">{errorDetail}</p></details>{/if}
-	{#if showStatus && notice}<p role="status" class="max-w-48 text-[12px] leading-4 text-muted-foreground">{notice}</p>{/if}
+	{#if showStatus && error}<p role="alert" class="max-w-48 text-xs leading-4 text-destructive">{error}</p>{/if}
+	{#if showStatus && errorDetail}<details class="max-w-48 text-xs leading-4 text-muted-foreground"><summary>{localeState.messages.errors.technicalDetails}</summary><p class="mt-1 select-text break-all">{errorDetail}</p></details>{/if}
+	{#if showStatus && notice}<p role="status" class="max-w-48 text-xs leading-4 text-muted-foreground">{notice}</p>{/if}
 </div>
 
 {#if selectedFile}<ImageCropDialog file={selectedFile} onCancel={cancelCrop} onConfirm={save} />{/if}

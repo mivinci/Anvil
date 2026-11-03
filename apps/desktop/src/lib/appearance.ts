@@ -1,6 +1,7 @@
 import { defaultLocale, messages, type Locale } from './i18n/index.ts';
 import { createContext } from 'svelte';
 import type { AppearanceMode } from './components/appearance-menu.svelte';
+import type { UiScale } from './ui-scale.ts';
 
 export type ColorMode = 'light' | 'dark';
 export type Palette = { background: string; card: string; foreground: string; accent: string };
@@ -104,8 +105,10 @@ export interface AppearanceSettings {
 	readonly mode: AppearanceMode;
 	readonly colors: ThemePreferences;
 	readonly resolvedMode: ColorMode;
+	readonly uiScale: UiScale;
 	setMode: (mode: AppearanceMode) => void;
 	setTheme: (theme: ThemePreferences['theme']) => void;
+	setUiScale: (scale: UiScale) => void;
 	customizeTheme: () => void;
 	setColor: (mode: ColorMode, key: keyof Palette, value: string) => void;
 	resetColors: () => void;

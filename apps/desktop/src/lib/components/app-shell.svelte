@@ -13,19 +13,22 @@
 	import AccountProvider from './account-provider.svelte';
 	import AppNavigation from './app-navigation.svelte';
 	import { setAppearance as provideAppearance, defaultTheme, customThemeFrom, readTheme, themeStyle, isColor, type ColorMode, type Palette, type ThemePreferences } from '../appearance';
+	import { applyUiScale, readUiScale, uiScaleStorageKey, type UiScale } from '../ui-scale';
 	import { shell } from '../shell';
 	import type { AppearanceMode } from './appearance-menu.svelte';
 
 	let { children }: { children: Snippet } = $props();
 	let appearance = $state<AppearanceMode>('system');
 	let colors = $state(defaultTheme());
+	let uiScale = $state<UiScale>('default');
 	let systemDark = $state(false);
-	let saveError = $state<'colors' | 'read' | 'mode' | null>(null);
+	let saveError = $state<'colors' | 'read' | 'mode' | 'scale' | null>(null);
 	const resolvedMode = $derived(appearance === 'system' ? (systemDark ? 'dark' : 'light') : appearance);
 	provideAppearance({
 		get mode() { return appearance; }, get colors() { return colors; },
-		get resolvedMode() { return resolvedMode; }, get saveError() { return saveError ? localeState.messages.common.appearanceErrors[saveError] : null; },
-		setMode: setAppearance, setTheme, setColor,
+		get resolvedMode() { return resolvedMode; }, get uiScale() { return uiScale; },
+		get saveError() { return saveError ? localeState.messages.common.appearanceErrors[saveError] : null; },
+		setMode: setAppearance, setTheme, setUiScale, setColor,
 		customizeTheme: () => { colors = customThemeFrom(colors.theme === 'custom' ? colors.base : colors.theme); saveColors(); },
 		resetColors: () => { colors = { ...customThemeFrom(colors.base), theme: colors.theme }; saveColors(); },
 	});
@@ -49,10 +52,12 @@
 		try {
 			savedAppearance = window.localStorage.getItem('anvil.appearance');
 			colors = readTheme(window.localStorage.getItem('anvil.theme'));
+			uiScale = readUiScale(window.localStorage.getItem(uiScaleStorageKey));
 		} catch { saveError = 'read'; }
 		if (savedAppearance === 'system' || savedAppearance === 'light' || savedAppearance === 'dark') {
 			appearance = savedAppearance;
 		}
+		applyUiScale(uiScale);
 		syncNativeAppearance(appearance);
 		return () => media.removeEventListener('change', onSystemChange);
 	});
@@ -64,6 +69,13 @@
 		}).catch((error) => {
 			console.error('Failed to synchronize native window appearance:', error);
 		});
+	}
+
+	function setUiScale(scale: UiScale) {
+		uiScale = scale;
+		applyUiScale(scale);
+		try { window.localStorage.setItem(uiScaleStorageKey, scale); saveError = null; }
+		catch { saveError = 'scale'; }
 	}
 
 	function setAppearance(mode: AppearanceMode) {

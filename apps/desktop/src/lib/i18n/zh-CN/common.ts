@@ -43,7 +43,7 @@ export default {
 		"decodeFailed": "无法读取这张图片，请换一张重试。",
 		"cropFailed": "无法生成裁剪结果，请重试。"
 	},
-	"appearanceErrors": {"colors": "无法保存配色，本次修改仅在当前窗口生效。", "read": "无法读取本机外观设置。", "mode": "无法保存外观模式，本次修改仅在当前窗口生效。"},
+	"appearanceErrors": {"colors": "无法保存配色，本次修改仅在当前窗口生效。", "read": "无法读取本机外观设置。", "mode": "无法保存外观模式，本次修改仅在当前窗口生效。", "scale": "无法保存字号，本次修改仅在当前窗口生效。"},
 	"connecting": "正在连接 Runtime…",
 	"preparing": "正在准备界面…",
 	"runtimeUnavailable": "无法连接 Runtime，请重试或查看日志。",

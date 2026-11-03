@@ -28,9 +28,9 @@
 		<div class="relative flex min-w-0 items-center gap-2.5">
 			<ClientAvatar id={client.id} name={client.name} class="size-12" />
 			<div class="min-w-0 flex-1">
-				<h2 class="truncate text-[13px] font-medium" title={client.name}>{client.name}</h2>
-				<p class="mt-1 truncate text-[11px] text-muted-foreground" title={client.loader ? `Minecraft ${client.versionId} · Fabric ${client.loader.version}` : `Minecraft ${client.versionId}`}>{client.versionId}{client.loader ? ` · Fabric ${client.loader.version}` : localeState.messages.clients.flow.vanillaSuffix}</p>
-				{#if statusBadge}<p class={`mt-0.5 truncate text-[12px] ${badgeTone}`} title={label}>{statusBadge}</p>{/if}
+				<h2 class="truncate text-body font-medium" title={client.name}>{client.name}</h2>
+				<p class="mt-1 truncate text-caption text-muted-foreground" title={client.loader ? `Minecraft ${client.versionId} · Fabric ${client.loader.version}` : `Minecraft ${client.versionId}`}>{client.versionId}{client.loader ? ` · Fabric ${client.loader.version}` : localeState.messages.clients.flow.vanillaSuffix}</p>
+				{#if statusBadge}<p class={`mt-0.5 truncate text-xs ${badgeTone}`} title={label}>{statusBadge}</p>{/if}
 			</div>
 			<div class="relative z-20"><ClientLaunchControls {client} compact /></div>
 		</div>

@@ -90,6 +90,7 @@ const server = createServer(async (req, res) => {
 });
 await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
 const origin = `http://127.0.0.1:${server.address().port}`;
+const uiScale = process.env.ANVIL_TEST_UI_SCALE ?? 'default';
 
 let browser;
 let page;
@@ -98,9 +99,10 @@ try {
 	browser = await chromium.launch({ channel: process.env.ANVIL_BROWSER_CHANNEL ?? 'msedge', headless: true });
 	const context = await browser.newContext({ viewport: { width: 900, height: 680 }, locale: 'zh-CN' });
 	await context.route('**/*', route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
-	await context.addInitScript(({ origin }) => {
+	await context.addInitScript(({ origin, uiScale }) => {
 		localStorage.setItem('anvil.welcome', 'complete');
 		localStorage.setItem('anvil.locale', 'zh-CN');
+		localStorage.setItem('anvil.ui-scale', uiScale);
 		window.isTauri = true;
 		window.__TAURI_INTERNALS__ = { metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main' } }, invoke: async (command) => {
 			if (command === 'shell_get_runtime_connection') return { baseUrl: origin, token: 'fixture-token', apiVersion: '1.0.0' };
@@ -110,7 +112,7 @@ try {
 			if (command === 'shell_get_logging_status') return { directory: '/fixture/logs', fileLoggingAvailable: true };
 			return true;
 		} };
-	}, { origin });
+	}, { origin, uiScale });
 	page = await context.newPage();
 	page.setDefaultTimeout(15000);
 	errors = [];
@@ -121,6 +123,7 @@ try {
 	await page.screenshot({ path: path.join(output, 'clients-card.png') });
 	await card.click();
 	await page.getByRole('heading', { name: 'Fixture', exact: true }).waitFor();
+	assert.equal(await page.evaluate(() => document.documentElement.dataset.uiScale), uiScale);
 	assert.equal(avatar, null, 'initial fixture must start without a custom avatar');
 	assert.equal(await page.locator('img[src^="blob:"]').count(), 0);
 	const input = page.locator('input[type="file"][aria-label="更换实例头像"]');
