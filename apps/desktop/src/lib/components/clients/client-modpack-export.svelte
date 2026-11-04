@@ -17,7 +17,7 @@
 	let version = $state('1.0.0');
 	let selection = $state<ModpackExportSelection>({ mods: true, resourcePacks: true, shaderPacks: true, config: true, worlds: false, avatar: false });
 	const operation = $derived(launches.forClient(client.name));
-	const busy = $derived(exports.active || exports.starting || launches.pending.includes(client.name) || launchActive(operation) || installs.active || installs.starting || resources.active || resources.starting);
+	const busy = $derived(exports.active || exports.starting || launches.pending.includes(client.name) || launchActive(operation) || installs.active || installs.starting || resources.busyForClient(client.name));
 	const selected = $derived(Object.values(selection).some(Boolean));
 	const labels = $derived<{ key: keyof ModpackExportSelection; label: string }[]>([
 		{ key: 'mods', label: localeState.messages.instance.detail.mods },

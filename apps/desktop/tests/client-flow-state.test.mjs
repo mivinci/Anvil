@@ -30,6 +30,7 @@ export const getPlayStats = async () => ({ schemaVersion: 1, accounts: {} });
 export const clearPlayStats = async () => { statsClears++; throw new RuntimeRequestError('fixture uncertain clear detail', 500); };
 export const listResourceOperations = async () => [];
 export const startResourceInstall = async () => { resourceCalls++; throw new RuntimeRequestError('fixture resource conflict', 409, 'plan_expired'); };
+export const setResourceOperationPaused = async () => { throw Error('unexpected transfer change'); };
 export const cancelResourceOperation = async () => { throw Error('unexpected resource cancellation'); };
 export class RuntimeRequestError extends Error { constructor(message, status, code = null) { super(message); this.status = status; this.code = code; } }
 export const listInstalledClients = async () => [];
@@ -101,8 +102,12 @@ test('resource rejection and task phases translate without resubmitting or losin
 		assert.equal(state.intent, null);
 		assert.match(state.error, /plan expired/);
 		assert.equal(state.errorDetail, 'fixture resource conflict');
-		state.operation = { id: 12, name: '海岛生存', kind: 'shader', state: 'running', cancelRequested: false, progress: { stage: 'downloading' } };
+		state.operations = [{ id: 12, name: '海岛生存', kind: 'shader', state: 'running', cancelRequested: false, progress: { stage: 'downloading' } }];
 		assert.equal(state.label, 'Downloading and verifying shader files…');
+		assert.equal(state.canSubmit(13, '海岛生存'), false);
+		assert.equal(state.canSubmit(13, 'another'), true);
+		state.operations.push({ ...state.operations[0], id: 13, name: 'another', paused: true });
+		assert.equal(state.canSubmit(14, 'third'), false);
 		localeState.setLocale('zh-CN');
 		assert.match(state.error, /计划已过期/);
 		assert.equal(state.label, '正在下载并校验光影…');

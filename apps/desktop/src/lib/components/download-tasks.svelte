@@ -21,7 +21,10 @@
 	let open = $state(false);
 
 	const finishedClient = $derived(!!installs.operation && !installs.active && !installs.starting);
-	const finishedResource = $derived(!!resources.operation && !resources.active && !resources.starting);
+	const recentResource = $derived(resources.operations.findLast(task => task.state !== 'running') ?? null);
+	const visibleResourceTasks = $derived(recentResource ? [...resources.activeOperations, recentResource] : resources.activeOperations);
+	const finishedResource = $derived(!!recentResource);
+	const resourceStatusVisible = $derived(resources.starting || !!resources.error);
 	const finishedExport = $derived(!!exports.operation && !exports.active && !exports.starting);
 	const javaBudget = $derived(Math.max(0, 3 - Number(finishedClient) - Number(finishedResource) - Number(finishedExport)));
 	const visibleJavaTasks = $derived.by(() => {
@@ -58,10 +61,13 @@
 			if (operation) add(operation.progress.downloadedBytes, operation.progress.totalBytes, operation.progress.stage === 'downloading', operation.state === 'paused');
 			else indeterminate = true;
 		}
-		if (resources.active) {
-			const operation = resources.operation;
-			if (operation) add(operation.progress.downloadedBytes, operation.progress.totalBytes, operation.progress.stage === 'downloading', false);
-			else indeterminate = true;
+		const resourceTasks = resources.activeOperations;
+		for (const operation of resourceTasks) {
+			// Plan totals can contain the same shared file. Without per-file
+			// identities, show an indeterminate aggregate for multiple plans.
+			add(operation.progress.downloadedBytes, operation.progress.totalBytes,
+				resourceTasks.length === 1 && (operation.progress.stage === 'downloading' || !!operation.paused),
+				!!operation.paused && !operation.cancelRequested);
 		}
 		if (exports.active || exports.starting) indeterminate = true;
 		for (const task of activeJavaTasks) add(task.javaDownloadedBytes, task.javaTotalBytes, task.javaStage === 'downloading', false);
@@ -89,7 +95,7 @@
 	const activeIds = $derived.by(() => {
 		const ids = new Set<string>();
 		if (installs.active && installs.operation) ids.add(`install:${installs.operation.id}`);
-		if (resources.active && resources.operation) ids.add(`resource:${resources.operation.id}`);
+		for (const task of resources.activeOperations) ids.add(`resource:${task.id}`);
 		if (exports.active && exports.operation) ids.add(`export:${exports.operation.id}`);
 		for (const task of activeJavaTasks) ids.add(`java:${task.id}`);
 		return ids;
@@ -99,7 +105,7 @@
 		const [kind, raw] = id.split(':');
 		const value = Number(raw);
 		if (kind === 'install') return !!installs.operation && installs.operation.id === value && installs.operation.state === 'completed';
-		if (kind === 'resource') return !!resources.operation && resources.operation.id === value && resources.operation.state === 'completed';
+		if (kind === 'resource') return resources.byId(value)?.state === 'completed';
 		if (kind === 'export') return !!exports.operation && exports.operation.id === value && exports.operation.state === 'completed';
 		const task = launches.javaTasks.find(item => item.id === value);
 		return !!task && (task.javaStage === 'completed' || task.phase === 'running');
@@ -148,7 +154,10 @@
 		<h2 class="mb-3 text-sm font-semibold">{localeState.messages.common.tasks}</h2>
 		{#if installs.operation || installs.starting || installs.error}<ClientInstallProgress onNavigate={() => open = false} /><button type="button" onclick={async () => { open = false; await tick(); installs.detailsOpen = true; }} class="mt-1.5 w-full rounded-md py-1.5 text-xs text-muted-foreground hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring">{localeState.messages.common.taskDetails}</button>
 		{:else if !resources.operation && !resources.error && !resources.starting && !exports.active && !exports.starting && !exports.error && !exports.uncertain && launches.javaTasks.length === 0}<div class="flex flex-col items-center gap-3 py-6 text-chrome-muted"><Download size={24} strokeWidth={1.5} aria-hidden="true" /><p class="text-xs">{installs.syncing ? localeState.messages.common.readingTasks : localeState.messages.common.noTasks}</p></div>{/if}
-		{#if resources.operation || resources.error || resources.starting}<div class={installs.operation || installs.error ? 'mt-2.5 border-t border-border pt-2.5' : ''}><ResourceInstallProgress /></div>{/if}
+		{#if resourceStatusVisible}<div class={installs.operation || installs.error ? 'mt-2.5 border-t border-border pt-2.5' : ''}><ResourceInstallProgress /></div>{/if}
+		{#each visibleResourceTasks as operation, index (operation.id)}
+			<div class={index > 0 || installs.operation || installs.error || resourceStatusVisible ? 'mt-2.5 border-t border-border pt-2.5' : ''}><ResourceInstallProgress {operation} /></div>
+		{/each}
 		{#if exports.active || exports.starting || exports.error || exports.uncertain || exports.operation?.state === 'failed' || exports.operation?.state === 'cancelled'}<div class={installs.operation || installs.error || resources.operation || resources.starting || resources.error ? 'mt-2.5 border-t border-border pt-2.5' : ''}><ModpackExportProgress /></div>{/if}
 		{#each visibleJavaTasks as operation, index (operation.id)}
 			<div class={index > 0 || installs.operation || installs.starting || installs.error || resources.operation || resources.starting || resources.error ? 'mt-2.5 border-t border-border pt-2.5' : ''}><ClientJavaProgress {operation} /></div>

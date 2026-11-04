@@ -41,8 +41,9 @@
 	let pending = $state<ModrinthFile | null>(null);
 	let request: AbortController | null = null;
 	const resources = getResourceInstallState();
-	const operation = $derived(plan && resources.operation?.id === plan.planId ? resources.operation : null);
-	const busy = $derived(planning || resources.starting || resources.active);
+	const resourceBlocked = $derived(resources.atCapacity || resources.busyForClient(name));
+	const operation = $derived(resources.byId(plan?.planId) ?? null);
+	const busy = $derived(planning || resources.starting || resourceBlocked);
 	const percent = $derived(operation && operation.progress.totalBytes > 0 ? Math.min(100, Math.round(operation.progress.receivedBytes / operation.progress.totalBytes * 100)) : null);
 	const projectId = $derived(page.url.searchParams.get('project'));
 	const button = 'inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs text-muted-foreground hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40';
@@ -159,14 +160,13 @@
 		}
 	}
 	async function install() {
-		if (!plan || !resources.canSubmit(plan.planId)) return;
+		if (!plan || !resources.canSubmit(plan.planId, name)) return;
 		errorValue = null; errorDetail = null;
 		messageValue = null;
 		if (!(await resources.start(name, plan.planId))) { errorDetail = resources.errorDetail; errorValue = () => resources.error; }
 	}
 	async function cancelOperation() {
-		await resources.cancel();
-		if (resources.error) { errorDetail = resources.errorDetail; errorValue = () => resources.error; }
+		if (operation) await resources.cancel(operation.id);
 	}
 	function resetPending() {
 		abort();
@@ -233,7 +233,7 @@
 				<div class="mx-2.5 mt-3 flex items-center justify-between gap-3 border-b border-border/60 pb-2"><h3 class="text-body font-medium">{localeState.messages.mods.discovery.compatibleVersions}</h3><span class="text-xs text-muted-foreground">Minecraft {gameVersion} · Iris</span></div>
 				<div class="resource-list mt-1" aria-label={localeState.messages.mods.discovery.chooseVersion}>
 					{#each versions as file (file.id)}
-						<button type="button" aria-pressed={pending?.id === file.id} disabled={planning || resources.starting || resources.active} onclick={() => void choose(file)} class={`resource-row flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring disabled:opacity-40 ${pending?.id === file.id ? 'bg-chrome-selected' : 'hover:bg-chrome-hover'}`}>
+						<button type="button" aria-pressed={pending?.id === file.id} disabled={planning || resources.starting || resourceBlocked} onclick={() => void choose(file)} class={`resource-row flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring disabled:opacity-40 ${pending?.id === file.id ? 'bg-chrome-selected' : 'hover:bg-chrome-hover'}`}>
 							<span class="min-w-0 flex-1"><span class="block truncate text-xs font-medium" title={file.displayName}>{file.displayName}</span><span class="mt-1 block truncate text-xs text-muted-foreground" title={file.fileName}>{formatModUpdated(file.fileDate, localeState.current) ?? file.fileDate} · {releaseLabel(file.releaseType)} · {formatBytes(file.fileLength)}</span></span>
 							{#if pending?.id === file.id}<Check size={14} class="shrink-0 text-primary" aria-hidden="true" />{/if}
 						</button>
@@ -250,13 +250,14 @@
 					{#if planning}
 						<p role="status" class="flex items-center gap-2 text-muted-foreground"><LoaderCircle size={13} class="animate-spin motion-reduce:animate-none" aria-hidden="true" />{localeState.messages.mods.discovery.preparingDownload}</p>
 					{:else if operation?.state === 'running'}
-						<p role="status" class="flex items-center gap-2 text-muted-foreground">{#if operation.cancelRequested}{localeState.messages.mods.discovery.cancellingLong}{:else if operation.progress.stage === 'publishing'}{localeState.messages.mods.discovery.applyingShaders}{:else if operation.progress.stage === 'downloading'}{localeState.messages.mods.downloadingShaders(percent === null ? null : new Intl.NumberFormat(localeState.current, {style: 'percent'}).format(percent / 100))}{:else}{localeState.messages.mods.discovery.preparingShaders}{/if}</p>
+						<p role="status" class="flex items-center gap-2 text-muted-foreground">{#if operation.cancelRequested}{localeState.messages.mods.discovery.cancellingLong}{:else if operation.paused || operation.pauseRequested || resources.actions[operation.id]}{resources.labelFor(operation)}{:else if operation.progress.stage === 'publishing'}{localeState.messages.mods.discovery.applyingShaders}{:else if operation.progress.stage === 'downloading'}{localeState.messages.mods.downloadingShaders(percent === null ? null : new Intl.NumberFormat(localeState.current, {style: 'percent'}).format(percent / 100))}{:else}{localeState.messages.mods.discovery.preparingShaders}{/if}</p>
+						{#if resources.taskIssues[operation.id]}<p role="alert" class="mt-1 text-destructive">{localeState.messages.mods.discovery[resources.taskIssues[operation.id]!.key]}</p>{/if}
 						<div class="mt-1.5 h-1 overflow-hidden rounded-full bg-chrome-hover"><div class="h-full rounded-full bg-primary transition-[width] duration-300" style:width={`${percent ?? 0}%`}></div></div>
 					{:else if error}
 						<p role="alert" class="break-words text-destructive">{error}</p>
 					{:else if plan}
 						<p class="truncate" title={`${plan.projectName} · ${plan.versionName} · ${formatBytes(plan.fileSize)}`}><span class="text-muted-foreground">{localeState.messages.mods.discovery.installTo}</span> {name} <span class="text-muted-foreground">· {plan.projectName} · {plan.versionName} · {formatBytes(plan.fileSize)}</span></p>
-						{#if resources.active || resources.starting}<p class="mt-0.5 text-xs text-muted-foreground">{localeState.messages.mods.discovery.waitOtherTask}</p>{/if}
+						{#if resourceBlocked || resources.starting}<p class="mt-0.5 text-xs text-muted-foreground">{resources.atCapacity ? localeState.messages.errors.runtime.resource_slots_full : localeState.messages.mods.discovery.waitOtherTask}</p>{/if}
 					{:else}
 						<p class="truncate text-muted-foreground">{localeState.messages.mods.selectedShader(pending.displayName)}</p>
 					{/if}
@@ -265,13 +266,13 @@
 					<span class="text-xs text-muted-foreground">{localeState.messages.mods.discovery.pleaseWait}</span>
 				{:else if operation?.state === 'running'}
 					<button type="button" class={button} onclick={downloads}>{localeState.messages.mods.discovery.viewTasks}</button>
-					<button type="button" class={button} disabled={resources.cancelling || operation.cancelRequested} onclick={() => void cancelOperation()}>{resources.cancelling || operation.cancelRequested ? localeState.messages.mods.discovery.cancelling : localeState.messages.mods.discovery.cancel}</button>
+					<button type="button" class={button} disabled={!resources.canCancel(operation)} onclick={() => void cancelOperation()}>{resources.actions[operation.id] === 'cancel' || operation.cancelRequested ? localeState.messages.mods.discovery.cancelling : localeState.messages.mods.discovery.cancel}</button>
 				{:else if error}
 					<button type="button" class={button} onclick={resetPending}>{localeState.messages.mods.discovery.cancel}</button>
 					<button type="button" class={button} disabled={!pending || revision === null} onclick={() => pending && void choose(pending)}><RefreshCw size={13} aria-hidden="true" />{localeState.messages.mods.discovery.regeneratePlan}</button>
 				{:else if plan}
 					<button type="button" class={button} onclick={resetPending}>{localeState.messages.mods.discovery.cancel}</button>
-					<button type="button" disabled={!resources.canSubmit(plan.planId)} onclick={() => void install()} class="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40">{#if resources.starting}<LoaderCircle size={13} class="animate-spin motion-reduce:animate-none" aria-hidden="true" />{localeState.messages.mods.discovery.submitting}{:else}<Download size={13} aria-hidden="true" />{localeState.messages.mods.discovery.confirmDownload}{/if}</button>
+					<button type="button" disabled={!resources.canSubmit(plan.planId, name)} onclick={() => void install()} class="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40">{#if resources.starting}<LoaderCircle size={13} class="animate-spin motion-reduce:animate-none" aria-hidden="true" />{localeState.messages.mods.discovery.submitting}{:else}<Download size={13} aria-hidden="true" />{localeState.messages.mods.discovery.confirmDownload}{/if}</button>
 				{/if}
 			</div>
 		</section>

@@ -256,6 +256,11 @@ impl ModpackInstaller {
     cancel: &CancellationToken,
     progress: &watch::Sender<ImportProgress>,
   ) -> Result<ClientInstallResult> {
+    let data = self.context.paths.data.clone();
+    let operation = blocking(&self.context, cancel, move || {
+      crate::storage::resource_operation_lock(&data, false)
+    })
+    .await?;
     progress.send_replace(ImportProgress::default());
     check(cancel)?;
     let context = self.context.clone();
@@ -358,6 +363,7 @@ impl ModpackInstaller {
     let committed = installed.clone();
     let publish_progress = progress.clone();
     blocking(&self.context, cancel, move || {
+      let _operation = operation;
       publish_staged(
         staging,
         &data,

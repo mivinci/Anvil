@@ -15,6 +15,8 @@ mod shader_catalog;
 pub struct Modrinth {
   client: Client,
   next_request: Mutex<Instant>,
+  #[cfg(test)]
+  fixture: Option<BTreeMap<String, serde_json::Value>>,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ProjectKind {
@@ -360,9 +362,18 @@ impl Modrinth {
     Ok(Self {
       client,
       next_request: Mutex::new(Instant::now()),
+      #[cfg(test)]
+      fixture: None,
     })
   }
   async fn get<T: DeserializeOwned>(&self, path: &str, params: &[(&str, String)]) -> Result<T> {
+    #[cfg(test)]
+    if let Some(fixture) = &self.fixture {
+      let value = fixture
+        .get(path)
+        .ok_or_else(|| Error::Metadata(format!("unexpected fixture path: {path}")))?;
+      return Ok(serde_json::from_value(value.clone())?);
+    }
     let mut url =
       url::Url::parse(&format!("https://api.modrinth.com/v2/{path}")).expect("fixed URL");
     url
@@ -653,6 +664,28 @@ impl Modrinth {
     version: &str,
     existing: &BTreeMap<String, String>,
   ) -> Result<DependencyPreview> {
+    self
+      .preview_with_optional(game, project, version, existing, &[])
+      .await
+  }
+
+  pub async fn preview_with_optional(
+    &self,
+    game: &str,
+    project: &str,
+    version: &str,
+    existing: &BTreeMap<String, String>,
+    include_optional: &[String],
+  ) -> Result<DependencyPreview> {
+    let requested: BTreeSet<_> = include_optional.iter().cloned().collect();
+    if requested.len() != include_optional.len() || requested.len() > 8 {
+      return Err(Error::Invalid(
+        "select up to eight distinct optional dependencies".into(),
+      ));
+    }
+    for choice in &requested {
+      id(choice)?;
+    }
     query(game, 0)?;
     id(project)?;
     let first = self.version(version).await?;
@@ -684,21 +717,34 @@ impl Modrinth {
         if dep.dependency_type == "embedded" {
           continue;
         }
-        if dep.dependency_type == "optional" {
-          if let Some(p) = dep.project_id {
-            id(&p)?;
-            optional.insert(p);
-          } else if let Some(v) = dep.version_id {
-            optional.insert(self.version(&v).await?.project_id);
-          }
+        let explicitly_optional = dep.dependency_type == "optional";
+        let mut pinned_optional = None;
+        if explicitly_optional {
+          let candidate = if let Some(p) = &dep.project_id {
+            id(p)?;
+            p.clone()
+          } else if let Some(v) = &dep.version_id {
+            let resolved = self.version(v).await?;
+            let project = resolved.project_id.clone();
+            pinned_optional = Some(resolved);
+            project
+          } else {
+            continue;
+          };
+          optional.insert(candidate.clone());
           if optional.len() > 128 {
             return Err(Error::Metadata(
               "too many optional Modrinth dependencies".into(),
             ));
           }
-          continue;
+          if !requested.contains(&candidate) {
+            continue;
+          }
         }
-        if dep.dependency_type != "required" && dep.dependency_type != "incompatible" {
+        if !explicitly_optional
+          && dep.dependency_type != "required"
+          && dep.dependency_type != "incompatible"
+        {
           return Err(Error::Metadata("unknown Modrinth dependency type".into()));
         }
         if dep.dependency_type == "incompatible" {
@@ -728,7 +774,9 @@ impl Modrinth {
           }
           continue;
         }
-        let target = if let Some(v) = &dep.version_id {
+        let target = if let Some(version) = pinned_optional {
+          version
+        } else if let Some(v) = &dep.version_id {
           self.version(v).await?
         } else if let Some(p) = &dep.project_id {
           id(p)?;
@@ -771,9 +819,10 @@ impl Modrinth {
             "已安装的 Modrinth 依赖版本不符合要求，暂不自动替换。".into(),
           ));
         }
-        if required
-          .insert(target.project_id.clone(), target.id.clone())
-          .is_some()
+        if !explicitly_optional
+          && required
+            .insert(target.project_id.clone(), target.id.clone())
+            .is_some()
         {
           return Err(Error::Metadata("duplicate required dependency".into()));
         }
@@ -795,6 +844,12 @@ impl Modrinth {
         },
       );
     }
+    if !requested.is_subset(&optional) {
+      return Err(Error::Invalid(
+        "selected project is not an optional dependency of this plan".into(),
+      ));
+    }
+    optional.retain(|id| requested.contains(id) || !selected.contains_key(id));
     let items: Vec<_> = selected.into_values().collect();
     let warning_details: Vec<_> = [crate::resources::InstallWarningCode::FabricRequiredOnly]
       .into_iter()
@@ -941,3 +996,7 @@ mod shader_discovery_tests {
     );
   }
 }
+
+#[cfg(test)]
+#[path = "../tests/modrinth_optional.rs"]
+mod optional_tests;

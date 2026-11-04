@@ -212,6 +212,25 @@ async fn shader_api_auth_import_revision_and_removal() {
   assert_eq!(changed["revision"], 1);
   assert!(changed.get("environment").is_none());
   let hash = changed["packs"][0]["sha256"].as_str().unwrap();
+  let references = format!("/resources/objects/{hash}/references");
+  assert_eq!(
+    server
+      .request("GET", &references, b"", false, ORIGIN, None)
+      .await
+      .0,
+    401
+  );
+  let (status, body) = server
+    .request("GET", &references, b"", true, ORIGIN, None)
+    .await;
+  assert_eq!(status, 200, "{body}");
+  assert_eq!(
+    serde_json::from_str::<Value>(&body).unwrap(),
+    json!([{
+      "instanceId": "client-test", "instanceName": "test", "kind": "shader_pack",
+      "filename": "Light.zip", "enabled": null
+    }])
+  );
   let delete = format!("{path}/{hash}");
   assert_eq!(
     server
@@ -527,5 +546,133 @@ async fn shader_api_live_plan_background_download_and_import() {
   let packs: Value = serde_json::from_str(&body).unwrap();
   assert_eq!(packs["packs"].as_array().unwrap().len(), 1);
   assert_eq!(packs["revision"], 1);
+  server.shutdown().await;
+}
+
+#[tokio::test]
+async fn shader_api_replacement_preview_rejects_invalid_or_stale_versions_before_upstream() {
+  let _serial = TEST_SERVER.lock().await;
+  let root = tempfile::tempdir().unwrap();
+  fixture(root.path());
+  let record_path = root.path().join("instances/client-test/installed.json");
+  let mut record: Value = serde_json::from_slice(&std::fs::read(&record_path).unwrap()).unwrap();
+  record["loader"] = json!({"kind":"fabric","version":"0.16.10"});
+  std::fs::write(&record_path, serde_json::to_vec(&record).unwrap()).unwrap();
+  let server = Server::start(root.path()).await;
+
+  let modrinth = "/clients/test/modrinth/projects/rootproj/files/root0002/plan";
+  let curseforge = "/clients/test/curseforge/projects/1/files/12/plan";
+  for (path, old) in [
+    (modrinth, "bad"),
+    (modrinth, "root0002"),
+    (curseforge, "0"),
+    (curseforge, "12"),
+  ] {
+    let (status, body) = server
+      .request(
+        "POST",
+        &format!("{path}?replaceFrom={old}"),
+        b"",
+        true,
+        ORIGIN,
+        None,
+      )
+      .await;
+    assert_eq!(status, 400, "{body}");
+    assert_eq!(
+      serde_json::from_str::<Value>(&body).unwrap()["code"],
+      "invalid_argument"
+    );
+  }
+  let stale = format!("{modrinth}?replaceFrom=root0001&includeOptional=optproj1");
+  let (status, body) = server
+    .request("POST", &stale, b"", false, ORIGIN, None)
+    .await;
+  assert_eq!(status, 401, "{body}");
+  let (status, body) = server
+    .request("POST", &stale, b"", true, ORIGIN, None)
+    .await;
+  assert_eq!(status, 409, "{body}");
+  assert_eq!(
+    serde_json::from_str::<Value>(&body).unwrap()["code"],
+    "replacement_changed"
+  );
+  let (status, body) = server
+    .request("GET", "/resource-operations", b"", true, ORIGIN, None)
+    .await;
+  assert_eq!(status, 200, "{body}");
+  assert_eq!(serde_json::from_str::<Value>(&body).unwrap(), json!([]));
+  assert!(
+    !root
+      .path()
+      .join("instances/client-test/resources.json")
+      .exists()
+  );
+  server.shutdown().await;
+}
+
+#[tokio::test]
+async fn resource_cleanup_api_checks_auth_revision_and_active_operations() {
+  let _serial = TEST_SERVER.lock().await;
+  let root = tempfile::tempdir().unwrap();
+  fixture(root.path());
+  let server = Server::start(root.path()).await;
+  let path = "/resources/cleanup";
+
+  let (status, body) = server.request("GET", path, b"", true, ORIGIN, None).await;
+  assert_eq!(status, 200, "{body}");
+  let empty: Value = serde_json::from_str(&body).unwrap();
+  assert_eq!(empty["objects"], 0);
+
+  let shard = root.path().join("resources/objects/sha256/aa");
+  std::fs::create_dir_all(&shard).unwrap();
+  let object = shard.join("a".repeat(64));
+  std::fs::write(&object, b"orphan").unwrap();
+  let stale = json!({"revision": empty["revision"]}).to_string();
+  for (authorized, origin, expected) in [
+    (false, ORIGIN, 401),
+    (true, "https://untrusted.example", 403),
+    (true, ORIGIN, 409),
+  ] {
+    let (status, body) = server
+      .request_json("POST", path, stale.as_bytes(), authorized, origin)
+      .await;
+    assert_eq!(status, expected, "{body}");
+    assert!(object.exists());
+  }
+
+  let (status, body) = server.request("GET", path, b"", true, ORIGIN, None).await;
+  assert_eq!(status, 200, "{body}");
+  let preview: Value = serde_json::from_str(&body).unwrap();
+  assert_eq!(preview["objects"], 1);
+  assert_eq!(preview["bytes"], 6);
+  let confirmation = json!({"revision": preview["revision"]}).to_string();
+  let lock = std::fs::File::options()
+    .read(true)
+    .write(true)
+    .open(
+      root
+        .path()
+        .join("locks/client-cache-resource-operations.lock"),
+    )
+    .unwrap();
+  lock.try_lock_shared().unwrap();
+  let (status, body) = server
+    .request_json("POST", path, confirmation.as_bytes(), true, ORIGIN)
+    .await;
+  assert_eq!(status, 409, "{body}");
+  assert_eq!(
+    serde_json::from_str::<Value>(&body).unwrap()["code"],
+    "busy"
+  );
+  assert!(object.exists());
+  drop(lock);
+
+  let (status, body) = server
+    .request_json("POST", path, confirmation.as_bytes(), true, ORIGIN)
+    .await;
+  assert_eq!(status, 200, "{body}");
+  assert_eq!(serde_json::from_str::<Value>(&body).unwrap(), preview);
+  assert!(!object.exists());
   server.shutdown().await;
 }

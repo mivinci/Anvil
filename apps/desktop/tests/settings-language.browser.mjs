@@ -241,7 +241,7 @@ try {
 	await page.getByRole('button', { name: 'Expand installation details', exact: true }).click();
 	await page.getByText('1 file · 0 reused', { exact: true }).waitFor();
 	await page.getByText('1 optional dependency is not included.', { exact: true }).waitFor();
-	await page.getByText(/Only compatible Fabric JARs/).waitFor();
+	await page.getByText(/Installs compatible Fabric JARs/).waitFor();
 	assert.equal(planReads, 1);
 	assert.equal(submissions, 0);
 	await page.screenshot({ path: path.join(output, 'mod-plan-en.png') });

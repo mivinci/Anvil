@@ -337,6 +337,24 @@ export interface ClientResourceManifest {
 	resourcePacks?: ClientResourcePack[];
 	shaderPacks?: ClientShaderPack[];
 }
+export interface ResourceReference {
+	instanceId: string;
+	instanceName: string;
+	kind: 'mod' | 'resource_pack' | 'shader_pack';
+	filename: string;
+	enabled: boolean | null;
+}
+export const listResourceReferences = (sha256: string, signal: AbortSignal) =>
+	runtimeRequest<ResourceReference[]>(`/resources/objects/${encodeURIComponent(sha256)}/references`, { signal });
+export interface ResourceCleanupPreview {
+	revision: string;
+	objects: number;
+	bytes: number;
+}
+export const previewResourceCleanup = (signal: AbortSignal) =>
+	runtimeRequest<ResourceCleanupPreview>('/resources/cleanup', { signal, cache: 'no-store' });
+export const confirmResourceCleanup = (revision: string) =>
+	runtimeRequest<ResourceCleanupPreview>('/resources/cleanup', { method: 'POST', body: JSON.stringify({ revision }) });
 export const listClientResources = (name: string, signal: AbortSignal) =>
 	runtimeRequest<ClientResourceManifest>(`/clients/${encodeURIComponent(name)}/resources`, { signal, cache: 'no-store' });
 export const importClientMod = (name: string, file: File, revision: number, signal: AbortSignal) =>
@@ -416,8 +434,19 @@ export const listCurseForgeFiles = (name: string, project: number, index: number
 	runtimeRequest<CurseForgePage<CurseForgeFile>>(`/clients/${encodeURIComponent(name)}/curseforge/projects/${project}/files?${new URLSearchParams({ index: String(index), ...catalogQuery(options) })}`, { signal });
 
 
+export interface ModReplacementPreview {
+	projectId: string | number;
+	fromFileId: string | number;
+	toFileId: string | number;
+	fromFilename: string;
+	toFilename: string;
+	enabled: boolean;
+	dependents: string[];
+}
 export interface CurseForgeInstallPlan extends CurseForgePreview {
 	planId: number; expiresInMs: number; downloadBytes: number;
+	selectedOptionalProjects?: (string | number)[];
+	replacement?: ModReplacementPreview | null;
 	files: { projectId: number; fileId: number; projectName: string; filename: string; size: number; direct: boolean; reuse: boolean }[];
 }
 export type ModSource = 'modrinth' | 'curseforge';
@@ -465,22 +494,34 @@ export const createShaderInstallPlan = (name: string, project: string, version: 
 	runtimeRequest<ShaderInstallPlan>(`/clients/${encodeURIComponent(name)}/shader-plans`, { method: 'POST', body: JSON.stringify({ project, version, revision }), signal });
 export const listModrinthFiles = (name: string, project: string, index: number, signal: AbortSignal, options?: CatalogOptions) =>
 	runtimeRequest<CurseForgePage<ModrinthFile>>(`/clients/${encodeURIComponent(name)}/modrinth/projects/${encodeURIComponent(project)}/files?${new URLSearchParams({ index: String(index), ...catalogQuery(options) })}`, { signal });
-export const createModrinthInstallPlan = (name: string, project: string, file: string, signal: AbortSignal) =>
-	runtimeRequest<ModrinthInstallPlan>(`/clients/${encodeURIComponent(name)}/modrinth/projects/${encodeURIComponent(project)}/files/${encodeURIComponent(file)}/plan`, { method: 'POST', signal });
+function modPlanQuery(ids: readonly (string | number)[], replaceFrom?: string | number) {
+	const query = new URLSearchParams();
+	if (ids.length) query.set('includeOptional', ids.join(','));
+	if (replaceFrom !== undefined) query.set('replaceFrom', String(replaceFrom));
+	const encoded = query.toString();
+	return encoded ? `?${encoded}` : '';
+}
+export const createModrinthInstallPlan = (name: string, project: string, file: string, signal: AbortSignal, optional: readonly (string | number)[] = [], replaceFrom?: string | number) =>
+	runtimeRequest<ModrinthInstallPlan>(`/clients/${encodeURIComponent(name)}/modrinth/projects/${encodeURIComponent(project)}/files/${encodeURIComponent(file)}/plan${modPlanQuery(optional, replaceFrom)}`, { method: 'POST', signal });
 export interface ResourceInstallOperation {
 	id: number; name: string; kind: 'mod' | 'shader'; state: 'running' | 'completed' | 'failed' | 'cancelled'; cancelRequested: boolean;
+	pauseRequested?: boolean;
+	paused?: boolean;
 	progress: { stage: 'preparing' | 'downloading' | 'publishing' | 'completed'; completedFiles: number; totalFiles: number; downloadedBytes: number; totalBytes: number; receivedBytes: number };
 	revision: number | null; error: string | null;
 	errorCode?: string | null;
 }
-export const createCurseForgeInstallPlan = (name: string, project: number, file: number, signal: AbortSignal) =>
-	runtimeRequest<CurseForgeInstallPlan>(`/clients/${encodeURIComponent(name)}/curseforge/projects/${project}/files/${file}/plan`, { method: 'POST', signal });
+export const createCurseForgeInstallPlan = (name: string, project: number, file: number, signal: AbortSignal, optional: readonly (string | number)[] = [], replaceFrom?: string | number) =>
+	runtimeRequest<CurseForgeInstallPlan>(`/clients/${encodeURIComponent(name)}/curseforge/projects/${project}/files/${file}/plan${modPlanQuery(optional, replaceFrom)}`, { method: 'POST', signal });
 export const startResourceInstall = (name: string, plan: number, signal: AbortSignal) =>
 	runtimeRequest<ResourceInstallOperation>(`/clients/${encodeURIComponent(name)}/resource-plans/${plan}/install`, { method: 'POST', signal });
 export const listResourceOperations = (signal: AbortSignal) =>
 	runtimeRequest<ResourceInstallOperation[]>('/resource-operations', { signal });
 export const cancelResourceOperation = (id: number, signal: AbortSignal) =>
 	runtimeRequest<ResourceInstallOperation>(`/resource-operations/${id}`, { method: 'DELETE', signal });
+
+export const setResourceOperationPaused = (id: number, paused: boolean, signal: AbortSignal) =>
+	runtimeRequest<ResourceInstallOperation>(`/resource-operations/${id}/${paused ? 'pause' : 'resume'}`, { method: 'POST', signal });
 
 export interface ClientLaunch {
 	id: number; name: string; offlineTest: boolean; startedAt: number | null; javaDownloadStarted: boolean;

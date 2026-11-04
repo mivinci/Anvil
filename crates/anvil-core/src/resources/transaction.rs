@@ -233,6 +233,10 @@ pub(crate) fn sync_for_launch(
   transact(directory, data, &before, &manifest, cancel)
 }
 
+pub(super) fn has_pending_transaction(directory: &Path) -> Result<bool> {
+  Ok(exists(&directory.join(JOURNAL))? || exists(&directory.join(WORK))?)
+}
+
 pub(super) fn transact(
   directory: &Path,
   data: &Path,

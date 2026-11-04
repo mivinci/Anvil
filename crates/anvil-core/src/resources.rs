@@ -35,7 +35,7 @@ impl InstallWarningCode {
   pub fn warning(self) -> InstallWarning {
     let message = match self {
       Self::FabricRequiredOnly => {
-        "仅安装兼容的 Fabric 主 JAR 和必需依赖；不自动升级或替换已有项目。"
+        "安装兼容的 Fabric 主 JAR、必需依赖及明确选择的可选依赖；不自动升级或替换已有项目。"
       }
       Self::PlatformConstraintsIncomplete => {
         "平台标签不包含完整的模组版本约束与客户端侧要求；尚未与已导入的本地模组求解兼容性。"
@@ -65,10 +65,15 @@ pub use packs::{PackFormat, PackMetadata, ResourcePackEntry};
 mod modrinth;
 mod platform;
 pub use modrinth::{ModrinthInstallPlan, ModrinthOrigin, ModrinthPlanFile};
+mod gc;
+pub use gc::ResourceCleanupPreview;
+mod references;
+pub use references::{ResourceReference, ResourceReferenceKind};
 mod transfer;
 pub use platform::{
   ResourceInstallPlan, ResourceInstallProgress, ResourceInstallStage, ResourcePlanFile,
 };
+pub(crate) use transfer::ResourceTransfers;
 mod transaction;
 pub(crate) use transaction::sync_for_launch;
 use transaction::{read_layout, recover, transact};

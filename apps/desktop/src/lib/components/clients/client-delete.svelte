@@ -16,7 +16,7 @@
 	let mounted = false;
 	onMount(() => { mounted = true; return () => { mounted = false; }; });
 	const statusUnknown = $derived(launches.uncertain || installs.uncertain || resources.uncertain);
-	const inUse = $derived(launchActive(launches.forClient(name)) || ((installs.active || installs.starting) && installs.operation?.name.toLowerCase() === name.toLowerCase()) || ((resources.active || resources.starting) && resources.operation?.name.toLowerCase() === name.toLowerCase()));
+	const inUse = $derived(launchActive(launches.forClient(name)) || ((installs.active || installs.starting) && installs.operation?.name.toLowerCase() === name.toLowerCase()) || resources.busyForClient(name));
 	const blocked = $derived(disabled || statusUnknown || inUse || removal.busy || removal.uncertain);
 	const pendingHere = $derived(removal.name?.toLowerCase() === name.toLowerCase());
 	const secondary = 'h-8 rounded-lg px-3 text-xs text-muted-foreground hover:bg-chrome-hover focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40';

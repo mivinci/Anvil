@@ -147,6 +147,18 @@ pub(super) async fn serve(
       post(super::modpack_import::upload),
     )
     .route(
+      "/resources/cleanup",
+      get(super::client_resources::preview_resource_cleanup)
+        .post(super::client_resources::confirm_resource_cleanup)
+        .layer(axum::extract::DefaultBodyLimit::max(1024))
+        .layer(middleware::from_fn(limit_resource_requests)),
+    )
+    .route(
+      "/resources/objects/{sha256}/references",
+      get(super::client_resources::resource_references)
+        .layer(middleware::from_fn(limit_resource_requests)),
+    )
+    .route(
       "/resources/{source}/projects",
       get(super::resource_discovery::search),
     )
@@ -197,6 +209,14 @@ pub(super) async fn serve(
     .route(
       "/resource-operations",
       get(super::resource_operations::list),
+    )
+    .route(
+      "/resource-operations/{id}/pause",
+      post(super::resource_operations::pause),
+    )
+    .route(
+      "/resource-operations/{id}/resume",
+      post(super::resource_operations::resume),
     )
     .route(
       "/resource-operations/{id}",

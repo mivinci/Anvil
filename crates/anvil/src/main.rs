@@ -250,10 +250,10 @@ async fn main() -> ExitCode {
 /// The shell passes `ANVIL_HTTP_API_VERSION` and logging switches through the
 /// environment and the runtime credential on stdin. The logging guard is
 /// dropped only after the match so queued records flush before exit.
-async fn serve_command() -> ExitCode {
+async fn serve_command(data_dir: Option<PathBuf>) -> ExitCode {
   let console = std::env::var("ANVIL_LOG_STDERR").is_ok_and(|value| value == "1");
   let logging = anvil_logging::init(anvil_logging::Process::Runtime, console);
-  match serve::run_from_stdio_with_logging(Some(logging.status())).await {
+  match serve::run_from_stdio_with_logging(data_dir, Some(logging.status())).await {
     Ok(()) => {
       tracing::info!(target: "anvil::serve", "Runtime shutdown complete");
       ExitCode::SUCCESS
@@ -271,7 +271,7 @@ async fn serve_command() -> ExitCode {
 /// stdio bootstrap protocol instead of the command result envelope.
 async fn init_tracing_or_serve(cli: &Cli) -> ExitCode {
   if matches!(cli.command, Command::Serve) {
-    return serve_command().await;
+    return serve_command(cli.data_dir.clone()).await;
   }
   init_tracing();
   match run(cli).await {

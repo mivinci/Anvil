@@ -1511,7 +1511,7 @@ fn validate_metadata_identity(url: &Url, sha1: &str) -> Result<()> {
   Ok(())
 }
 
-fn validate_client_instance(instance: &ClientInstance) -> Result<()> {
+pub(crate) fn validate_client_instance(instance: &ClientInstance) -> Result<()> {
   let expected_id = client_instance_id(&instance.name)
     .map_err(|_| Error::Conflict("invalid client instance name in record".into()))?;
   if instance.schema_version != 1

@@ -1,7 +1,9 @@
 //! Local mod and resource-pack APIs; storage and layout rules remain in Core.
 use super::api::{ApiError, AppState};
 use anvil_core::client::ClientInstaller;
-use anvil_core::resources::{ResourceManager, ResourceManifest, ResourcePackEntry};
+use anvil_core::resources::{
+  ResourceCleanupPreview, ResourceManager, ResourceManifest, ResourcePackEntry,
+};
 use axum::{
   Json,
   body::{Body, Bytes},
@@ -67,6 +69,44 @@ pub(super) fn resource_error(error: anvil_core::Error) -> ApiError {
   );
   ApiError::new(status, error.code(), error.to_string())
 }
+pub(super) async fn resource_references(
+  State(state): State<AppState>,
+  RoutePath(sha256): RoutePath<String>,
+) -> Result<Json<Vec<anvil_core::resources::ResourceReference>>, ApiError> {
+  ResourceManager::new(state.runtime.context.clone())
+    .references(&sha256)
+    .await
+    .map(Json)
+    .map_err(resource_error)
+}
+
+pub(super) async fn preview_resource_cleanup(
+  State(state): State<AppState>,
+) -> Result<Json<ResourceCleanupPreview>, ApiError> {
+  ResourceManager::new(state.runtime.context.clone())
+    .preview_cleanup()
+    .await
+    .map(Json)
+    .map_err(resource_error)
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct ResourceCleanupConfirmation {
+  revision: String,
+}
+
+pub(super) async fn confirm_resource_cleanup(
+  State(state): State<AppState>,
+  Json(confirmation): Json<ResourceCleanupConfirmation>,
+) -> Result<Json<ResourceCleanupPreview>, ApiError> {
+  ResourceManager::new(state.runtime.context.clone())
+    .confirm_cleanup(&confirmation.revision)
+    .await
+    .map(Json)
+    .map_err(resource_error)
+}
+
 pub(super) async fn client_resources(
   State(state): State<AppState>,
   RoutePath(name): RoutePath<String>,

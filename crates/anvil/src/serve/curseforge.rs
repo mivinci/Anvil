@@ -214,6 +214,8 @@ pub(super) async fn preview(
 #[serde(rename_all = "camelCase")]
 pub(super) struct InstallPlanResponse {
   plan_id: u64,
+  selected_optional_projects: Vec<u32>,
+  replacement: Option<super::resource_operations::ReplacementPreview<u32>>,
   expires_in_ms: u64,
   revision: u64,
   game_version: String,
@@ -225,7 +227,26 @@ pub(super) struct InstallPlanResponse {
 pub(super) async fn create_plan(
   State(state): State<AppState>,
   Path((name, project, file)): Path<(String, u32, u32)>,
+  Query(selection): Query<super::resource_operations::PlanSelection>,
 ) -> Result<Json<InstallPlanResponse>, ApiError> {
+  let optional = selection.ids::<u32>()?;
+  let replace_from = selection
+    .replace_from
+    .as_deref()
+    .map(|id| {
+      id.parse::<u32>()
+        .ok()
+        .filter(|id| *id != 0 && *id != file)
+        .ok_or_else(|| {
+          ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "invalid_argument",
+            "请选择与当前版本不同的有效 CurseForge 版本。",
+          )
+        })
+    })
+    .transpose()?;
+
   let _slot = state.curseforge.slot()?;
   let provider = state.curseforge.provider()?;
   bounded(async {
@@ -235,21 +256,59 @@ pub(super) async fn create_plan(
       .list(&name)
       .await
       .map_err(super::api::resource_error)?;
+    if let Some(previous) = &replace_from
+      && !manifest.mods.iter().any(|entry| {
+        entry
+          .origin
+          .as_ref()
+          .is_some_and(|origin| origin.project_id == project && origin.file_id == *previous)
+      })
+    {
+      return Err(super::resource_operations::replacement_changed());
+    }
     let existing = manifest
       .mods
       .iter()
       .filter_map(|entry| entry.origin.as_ref().map(|o| (o.project_id, o.file_id)))
       .collect();
     let preview = provider
-      .preview_with_existing(&game_version, project, file, &existing)
+      .preview_with_optional(&game_version, project, file, &existing, &optional)
       .await
       .map_err(upstream)?;
     // Clone the bounded metadata once; URLs remain in Rust-only plan fields.
     let plan = manager
-      .plan_curseforge(&name, preview.clone(), manifest.revision)
+      .plan_curseforge_with_replacement(&name, preview.clone(), manifest.revision, replace_from)
       .await
       .map_err(super::api::resource_error)?;
+    let replacement = plan.replaced_entry().map(|entry| {
+      let origin = entry
+        .origin
+        .as_ref()
+        .expect("replacement has a matching origin");
+      let target = plan
+        .files()
+        .iter()
+        .find(|file| file.direct)
+        .expect("replacement has one selected project");
+      super::resource_operations::ReplacementPreview {
+        project_id: project,
+        from_file_id: origin.file_id,
+        to_file_id: file,
+        from_filename: entry.filename.clone(),
+        to_filename: target.filename.clone(),
+        enabled: entry.enabled,
+        dependents: manifest
+          .mods
+          .iter()
+          .filter_map(|entry| entry.origin.as_ref())
+          .filter(|entry| entry.required_projects.contains(&project))
+          .map(|entry| entry.project_name.clone())
+          .collect(),
+      }
+    });
     let response = InstallPlanResponse {
+      replacement,
+      selected_optional_projects: optional,
       revision: plan.revision(),
       download_bytes: plan.download_bytes(),
       files: plan.files().to_vec(),

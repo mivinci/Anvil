@@ -96,3 +96,43 @@ test('CurseForge numeric project and file identities use the same explicit confi
 	assert.deepEqual(h.starts, [{ name: 'first', id: 4 }]);
 	h.state.dispose();
 });
+
+test('changing optional dependencies replaces the plan and requires a matching response', async () => {
+	const requested: (string | number)[][] = [];
+	const h = harness({ read: async (_context, selected, _signal, optional) => {
+		requested.push([...optional]);
+		const result = plan(selected, requested.length);
+		result.optionalProjects = ['optional'];
+		result.selectedOptionalProjects = [...optional];
+		// A matching echo without the selected item must still fail.
+		if (requested.length === 3) {
+			result.items.push({ ...result.items[0]!, project: { ...result.items[0]!.project, id: 'optional' }, direct: false });
+		}
+		return result;
+	} });
+	await h.state.select(file());
+	assert.deepEqual(h.value.selectedOptional, []);
+	await h.state.setOptional('optional', true);
+	assert.equal(h.value.plan, null);
+	assert.equal(await h.state.confirm(), false);
+	await h.state.select(file());
+	assert.equal(await h.state.confirm(), true);
+	assert.deepEqual(requested, [[], ['optional'], ['optional']]);
+	assert.deepEqual(h.starts, [{ name: 'first', id: 3 }]);
+	h.state.dispose();
+});
+
+test('replacement requires a matching old and new version receipt before submission', async () => {
+	const replacement = {
+		projectId: context.project, fromFileId: 'previous', toFileId: 'versiona',
+		fromFilename: 'old.jar', toFilename: file().fileName, enabled: false, dependents: [],
+	};
+	for (const receipt of [null, { ...replacement, fromFileId: 'wrongold' }, { ...replacement, toFileId: 'wrongnew' }, replacement]) {
+		const h = harness({ read: async () => ({ ...plan(), replacement: receipt }) });
+		h.state.bind({ ...context, replaceFrom: 'previous' });
+		await h.state.select(file());
+		assert.equal(await h.state.confirm(), receipt === replacement);
+		assert.equal(h.starts.length, Number(receipt === replacement));
+		h.state.dispose();
+	}
+});

@@ -399,3 +399,146 @@ async fn shader_install_live_modrinth_plan_download_and_commit() {
   assert_eq!(environment.iris.unwrap().version, "1.8.7+mc1.21.1");
   assert_eq!(environment.sodium.unwrap().version, "0.6.9+mc1.21.1");
 }
+
+#[tokio::test]
+async fn explicit_modrinth_replacement_is_atomic_and_preserves_enabled_state() {
+  let (_root, manager, directory) = fixture();
+  fabric(&directory);
+  let old = jar("fixture", json!({}));
+  let new = jar("fixture", json!({"java": ">=21"}));
+  let first = cached(&manager, "rootproj", "root0001", "Old.jar", &old, true);
+  let before = install(&manager, vec![first]).await.unwrap();
+  let target = cached(&manager, "rootproj", "root0002", "New.jar", &new, true);
+  assert!(
+    manager
+      .plan_modrinth("test", preview(vec![target.clone()]), before.revision)
+      .await
+      .is_err()
+  );
+  assert!(
+    manager
+      .plan_modrinth_with_replacement(
+        "test",
+        preview(vec![target.clone()]),
+        before.revision,
+        Some("stale001"),
+      )
+      .await
+      .is_err()
+  );
+  let plan = manager
+    .plan_modrinth_with_replacement(
+      "test",
+      preview(vec![target.clone()]),
+      before.revision,
+      Some("root0001"),
+    )
+    .await
+    .unwrap();
+  assert_eq!(plan.replaced_entry().unwrap().filename, "Old.jar");
+  assert_eq!(manager.list("test").await.unwrap(), before);
+
+  let old_path = directory.join("game/mods/Old.jar");
+  let new_path = directory.join("game/mods/New.jar");
+  fs::write(&new_path, b"external file").unwrap();
+  assert!(
+    manager
+      .install_modrinth(plan.clone(), CancellationToken::new(), progress(&plan))
+      .await
+      .is_err()
+  );
+  assert_eq!(manager.list("test").await.unwrap(), before);
+  assert_eq!(fs::read(&old_path).unwrap(), old);
+  assert_eq!(fs::read(&new_path).unwrap(), b"external file");
+  fs::remove_file(&new_path).unwrap();
+
+  let after = manager
+    .install_modrinth(plan.clone(), CancellationToken::new(), progress(&plan))
+    .await
+    .unwrap();
+  assert_eq!(after.mods.len(), 1);
+  assert_eq!(after.revision, before.revision + 1);
+  assert!(!old_path.exists());
+  assert_eq!(fs::read(&new_path).unwrap(), new);
+  assert!(object_path(&manager.context.paths.data, &before.mods[0].sha256).is_file());
+
+  let disabled = manager
+    .change(
+      "test",
+      after.mods[0].sha256.clone(),
+      after.revision,
+      Some(false),
+    )
+    .await
+    .unwrap();
+  assert!(
+    manager
+      .install_modrinth(plan.clone(), CancellationToken::new(), progress(&plan))
+      .await
+      .is_err()
+  );
+  assert_eq!(manager.list("test").await.unwrap(), disabled);
+  let previous = cached(&manager, "rootproj", "root0001", "Old.jar", &old, true);
+  let plan = manager
+    .plan_modrinth_with_replacement(
+      "test",
+      preview(vec![previous]),
+      disabled.revision,
+      Some("root0002"),
+    )
+    .await
+    .unwrap();
+  let after = manager
+    .install_modrinth(plan.clone(), CancellationToken::new(), progress(&plan))
+    .await
+    .unwrap();
+  assert!(!after.mods[0].enabled);
+  assert!(!old_path.exists() && !new_path.exists());
+}
+
+#[tokio::test]
+async fn replacement_rejects_installed_dependents_pinned_to_old_version() {
+  let (_root, manager, directory) = fixture();
+  fabric(&directory);
+  let first = cached(
+    &manager,
+    "rootproj",
+    "root0001",
+    "Root.jar",
+    &jar("root", json!({})),
+    false,
+  );
+  let mut dependent = cached(
+    &manager,
+    "depprj01",
+    "depfile1",
+    "Dependent.jar",
+    &jar("dependent", json!({})),
+    true,
+  );
+  dependent
+    .required
+    .insert("rootproj".into(), "root0001".into());
+  let before = install(&manager, vec![dependent, first]).await.unwrap();
+  let target = cached(
+    &manager,
+    "rootproj",
+    "root0002",
+    "Root.jar",
+    &jar("root", json!({"java": ">=21"})),
+    true,
+  );
+  let error = manager
+    .plan_modrinth_with_replacement(
+      "test",
+      preview(vec![target]),
+      before.revision,
+      Some("root0001"),
+    )
+    .await
+    .err()
+    .expect("existing dependent pins the original version");
+  assert_eq!(error.code(), "conflict");
+  assert!(error.to_string().contains("depprj01"));
+  assert_eq!(manager.list("test").await.unwrap(), before);
+}
