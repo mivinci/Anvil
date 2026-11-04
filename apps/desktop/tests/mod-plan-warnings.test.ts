@@ -5,10 +5,10 @@ import { modPlanWarnings } from '../src/lib/mod-plan-warnings.ts';
 test('routine notices are translated and folded by stable code, independent of source wording', () => {
 	const values = [{ code: 'fabric_required_only', message: 'upstream wording changed' }, { code: 'read_only_preview', message: 'anything' }];
 	const en = modPlanWarnings(['legacy wording'], values, 'en');
-	assert.match(en.details[0]!, /Only compatible Fabric/);
+	assert.match(en.details[0]!, /Installs compatible Fabric/);
 	assert.deepEqual(en.important, []);
 	assert.deepEqual(en.technical, []);
-	assert.match(modPlanWarnings([], values, 'zh-CN').details[0]!, /仅安装兼容/);
+	assert.match(modPlanWarnings([], values, 'zh-CN').details[0]!, /安装兼容/);
 });
 test('unknown and legacy notices stay visible without matching or hiding Chinese prefixes', () => {
 	const raw = ['这是只读依赖预览，upstream changed', '需要检查已有配置冲突。'];

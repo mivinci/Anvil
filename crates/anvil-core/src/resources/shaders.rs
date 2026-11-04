@@ -93,6 +93,7 @@ impl ResourceManager {
     cancel: CancellationToken,
     progress: watch::Sender<ResourceInstallProgress>,
   ) -> Result<ResourceManifest> {
+    let _operation = self.lock_resource_operation().await?;
     let download = super::transfer::DownloadFile {
       filename: plan.file_name.clone(),
       size: plan.file_size,
@@ -105,6 +106,9 @@ impl ResourceManager {
       return Err(Error::Cancelled);
     }
     progress.send_modify(|value| value.stage = ResourceInstallStage::Publishing);
+    if cancel.is_cancelled() {
+      return Err(Error::Cancelled);
+    }
     let bytes = std::fs::read(object_path(&self.context.paths.data, &sha256))?;
     let manifest = self
       .import_shader_pack(&plan.name, plan.file_name, bytes, plan.revision)

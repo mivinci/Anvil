@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { Download, Gamepad2, Info, Palette, Search, Settings2, UserRound } from '@lucide/svelte';
+	import { Download, Gamepad2, HardDrive, Info, Palette, Search, Settings2, UserRound } from '@lucide/svelte';
 	import { localeState } from '#lib/locale.svelte.ts';
 	import SelectableRow from '#lib/components/ui/selectable-row.svelte';
 	import type { Snippet } from 'svelte';
@@ -13,6 +13,7 @@
 		{ id: 'appearance', label: text.appearance, icon: Palette, keywords: text.appearanceKeywords },
 		{ id: 'game', label: text.game, icon: Gamepad2, keywords: text.gameKeywords },
 		{ id: 'downloads', label: text.downloads, icon: Download, keywords: text.downloadsKeywords },
+		{ id: 'storage', label: text.storage, icon: HardDrive, keywords: text.storageKeywords },
 		{ id: 'accounts', label: text.accounts, icon: UserRound, keywords: text.accountsKeywords },
 		{ id: 'about', label: text.about, icon: Info, keywords: text.aboutKeywords },
 	] as const);

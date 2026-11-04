@@ -20,6 +20,8 @@ pub struct CurseForge {
   client: Client,
   key: Option<HeaderValue>,
   cache: Mutex<VecDeque<(String, Instant, Vec<u8>)>>,
+  #[cfg(test)]
+  fixture: Option<BTreeMap<String, serde_json::Value>>,
 }
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -152,6 +154,8 @@ impl CurseForge {
       client,
       key,
       cache: Mutex::new(VecDeque::new()),
+      #[cfg(test)]
+      fixture: None,
     })
   }
   pub fn configured(&self) -> bool {
@@ -166,6 +170,13 @@ impl CurseForge {
     query: &[(&str, String)],
     force: bool,
   ) -> Result<T> {
+    #[cfg(test)]
+    if let Some(fixture) = &self.fixture {
+      let value = fixture
+        .get(path)
+        .ok_or_else(|| Error::Metadata(format!("unexpected fixture path: {path}")))?;
+      return Ok(serde_json::from_value(value.clone())?);
+    }
     let key = self
       .key
       .as_ref()
@@ -326,6 +337,28 @@ impl CurseForge {
     file: u32,
     existing: &BTreeMap<u32, u32>,
   ) -> Result<DependencyPreview> {
+    self
+      .preview_with_optional(game, project, file, existing, &[])
+      .await
+  }
+
+  pub async fn preview_with_optional(
+    &self,
+    game: &str,
+    project: u32,
+    file: u32,
+    existing: &BTreeMap<u32, u32>,
+    include_optional: &[u32],
+  ) -> Result<DependencyPreview> {
+    let requested: HashSet<_> = include_optional.iter().copied().collect();
+    if requested.len() != include_optional.len() || requested.len() > 8 {
+      return Err(Error::Invalid(
+        "select up to eight distinct optional dependencies".into(),
+      ));
+    }
+    for &choice in &requested {
+      validate_id(choice)?;
+    }
     validate_query(game, 0)?;
     validate_id(project)?;
     validate_id(file)?;
@@ -361,8 +394,16 @@ impl CurseForge {
       }
       for dep in &file.dependencies {
         validate_id(dep.mod_id)?;
+        if dep.relation_type == 2 {
+          optional.insert(dep.mod_id);
+          if optional.len() > 128 {
+            return Err(Error::Metadata(
+              "too many optional CurseForge dependencies".into(),
+            ));
+          }
+        }
         match dep.relation_type {
-          3 => {
+          relation if relation == 3 || (relation == 2 && requested.contains(&dep.mod_id)) => {
             if scheduled.insert(dep.mod_id) {
               if scheduled.len() > MAX_NODES {
                 return Err(Error::Conflict(
@@ -402,10 +443,7 @@ impl CurseForge {
               queue.push_back((dep.mod_id, candidate, false));
             }
           }
-          2 => {
-            optional.insert(dep.mod_id);
-          }
-          1 | 4 | 5 => {}
+          1 | 2 | 4 | 5 => {}
           6 => {
             return Err(Error::Conflict(
               "依赖含尚未支持的 Include 关系，需要手动处理。".into(),
@@ -449,9 +487,14 @@ impl CurseForge {
         ));
       }
     }
+    if !requested.is_subset(&optional) {
+      return Err(Error::Invalid(
+        "selected project is not an optional dependency of this plan".into(),
+      ));
+    }
     let mut optional_projects: Vec<_> = optional
       .into_iter()
-      .filter(|id| !selected.contains_key(id))
+      .filter(|id| requested.contains(id) || !selected.contains_key(id))
       .collect();
     optional_projects.sort_unstable();
     let mut items: Vec<_> = selected.into_values().collect();
@@ -616,3 +659,7 @@ fn next<T>(page: &UpstreamPage<T>, index: u32) -> Result<Option<u32>> {
       .then_some(end),
   )
 }
+
+#[cfg(test)]
+#[path = "../tests/curseforge_optional.rs"]
+mod optional_tests;

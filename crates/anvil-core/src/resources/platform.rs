@@ -33,6 +33,7 @@ pub struct ResourceInstallPlan {
   game: String,
   loader: ClientLoader,
   before: ResourceManifest,
+  replacement: Option<usize>,
   files: Vec<Planned>,
   summary: Vec<ResourcePlanFile>,
 }
@@ -42,6 +43,9 @@ impl ResourceInstallPlan {
   }
   pub fn name(&self) -> &str {
     &self.name
+  }
+  pub fn replaced_entry(&self) -> Option<&ResourceEntry> {
+    self.replacement.map(|index| &self.before.mods[index])
   }
   pub fn revision(&self) -> u64 {
     self.before.revision
@@ -238,7 +242,12 @@ fn checked_plan_state(directory: &Path, plan: &ResourceInstallPlan) -> Result<()
   }
   Ok(())
 }
-fn merge(manifest: &mut ResourceManifest, file: &Planned, sha256: String) -> Result<()> {
+fn merge(
+  manifest: &mut ResourceManifest,
+  file: &Planned,
+  sha256: String,
+  enabled: bool,
+) -> Result<()> {
   if let Some(entry) = manifest.mods.iter_mut().find(|entry| {
     entry
       .origin
@@ -276,7 +285,7 @@ fn merge(manifest: &mut ResourceManifest, file: &Planned, sha256: String) -> Res
     sha256,
     filename: file.file.file_name.clone(),
     size: file.file.file_length,
-    enabled: true,
+    enabled,
   });
   Ok(())
 }
@@ -286,6 +295,19 @@ impl ResourceManager {
     name: &str,
     preview: DependencyPreview,
     revision: u64,
+  ) -> Result<ResourceInstallPlan> {
+    self
+      .plan_curseforge_with_replacement(name, preview, revision, None)
+      .await
+  }
+
+  /// Replace only the directly selected project, with an explicit expected old version.
+  pub async fn plan_curseforge_with_replacement(
+    &self,
+    name: &str,
+    preview: DependencyPreview,
+    revision: u64,
+    replace_from: Option<u32>,
   ) -> Result<ResourceInstallPlan> {
     if preview.items.is_empty() || preview.items.len() > 32 {
       return Err(Error::Invalid("invalid resource plan size".into()));
@@ -299,7 +321,40 @@ impl ResourceManager {
         let record = installed(directory)?;
         let before = read_manifest(directory)?;
         check_revision(&before, revision)?;
+        let replacement = replace_from
+          .as_ref()
+          .map(|old_version| {
+            let mut roots = preview.items.iter().filter(|item| item.direct);
+            let root = roots
+              .next()
+              .filter(|_| roots.next().is_none())
+              .ok_or_else(|| Error::Invalid("replacement needs one selected project".into()))?;
+            if root.file.id == *old_version {
+              return Err(Error::Invalid(
+                "replacement must select a different version".into(),
+              ));
+            }
+            before
+              .mods
+              .iter()
+              .position(|entry| {
+                entry.origin.as_ref().is_some_and(|origin| {
+                  origin.project_id == root.project.id && origin.file_id == *old_version
+                })
+              })
+              .ok_or_else(|| {
+                Error::Conflict(
+                  "the installed version changed or belongs to another project".into(),
+                )
+              })
+          })
+          .transpose()?;
+        let replacement_enabled = replacement.map(|index| before.mods[index].enabled);
+
         let mut after = before.clone();
+        if let Some(index) = replacement {
+          after.mods.remove(index);
+        }
         after.schema_version = 5;
         let mut files = Vec::new();
         let mut summary = Vec::new();
@@ -364,7 +419,12 @@ impl ResourceManager {
                 format!("curseforge:{}", file.file.id).as_bytes(),
               ))
             });
-          merge(&mut after, &file, sha256)?;
+          merge(
+            &mut after,
+            &file,
+            sha256,
+            !file.origin.direct || replacement_enabled.unwrap_or(true),
+          )?;
           summary.push(ResourcePlanFile {
             project_id: file.origin.project_id,
             file_id: file.origin.file_id,
@@ -384,6 +444,7 @@ impl ResourceManager {
             .loader
             .ok_or_else(|| Error::Conflict("Fabric loader is missing".into()))?,
           before,
+          replacement,
           files,
           summary,
         })
@@ -397,6 +458,7 @@ impl ResourceManager {
     cancel: CancellationToken,
     progress: watch::Sender<ResourceInstallProgress>,
   ) -> Result<ResourceManifest> {
+    let _operation = self.lock_resource_operation().await?;
     let check = plan.clone();
     self
       .access(&plan.name, move |directory, _, _| {
@@ -438,10 +500,18 @@ impl ResourceManager {
           return Err(Error::Cancelled);
         }
         let mut after = plan.before.clone();
+        let replacement_enabled = plan
+          .replacement
+          .map(|index| after.mods.remove(index).enabled);
         after.schema_version = 5;
         for (file, sha256) in plan.files.iter().zip(objects) {
           verify_object(&object_path(data, &sha256), &sha256, file.file.file_length)?;
-          merge(&mut after, file, sha256)?;
+          merge(
+            &mut after,
+            file,
+            sha256,
+            !file.origin.direct || replacement_enabled.unwrap_or(true),
+          )?;
         }
         validate_manifest(&after)?;
         commit_cancel(directory, data, &mut after, fabric, &cancel)?;
@@ -450,3 +520,7 @@ impl ResourceManager {
       .await
   }
 }
+
+#[cfg(test)]
+#[path = "../../tests/curseforge_replacement.rs"]
+mod tests;

@@ -2,7 +2,60 @@
 use super::*;
 use crate::{CancellationToken, curseforge::ModFile};
 use q2q_http::{Checksum, DownloadRequest};
+use std::{
+  collections::HashMap,
+  sync::{Arc, Mutex, Weak},
+};
 use tokio::sync::watch;
+
+type TransferResult = std::result::Result<String, Arc<Error>>;
+
+#[derive(Default)]
+pub(crate) struct ResourceTransfers {
+  entries: Mutex<HashMap<(PathBuf, String), Weak<SharedTransfer>>>,
+}
+
+struct SharedTransfer {
+  size: u64,
+  consumers: Mutex<usize>,
+  cancel: CancellationToken,
+  progress: watch::Receiver<ResourceInstallProgress>,
+  result: watch::Receiver<Option<TransferResult>>,
+}
+
+struct Consumer {
+  transfer: Arc<SharedTransfer>,
+  attached: bool,
+}
+impl Consumer {
+  fn detach(&mut self) -> bool {
+    if !std::mem::take(&mut self.attached) {
+      return false;
+    }
+    let mut consumers = self
+      .transfer
+      .consumers
+      .lock()
+      .unwrap_or_else(std::sync::PoisonError::into_inner);
+    *consumers -= 1;
+    if *consumers == 0 {
+      self.transfer.cancel.cancel();
+      return true;
+    }
+    false
+  }
+}
+impl Drop for Consumer {
+  fn drop(&mut self) {
+    self.detach();
+  }
+}
+
+enum Admission {
+  Attached(Consumer),
+  Draining(watch::Receiver<Option<TransferResult>>),
+}
+
 #[derive(Clone)]
 pub(super) struct DownloadFile {
   pub filename: String,
@@ -57,6 +110,10 @@ fn index_path(data: &Path, sha1: &str) -> PathBuf {
 }
 pub(super) fn lookup(data: &Path, file: &DownloadFile) -> Result<Option<(String, u64)>> {
   file.validate()?;
+  lookup_validated(data, file)
+}
+
+fn lookup_validated(data: &Path, file: &DownloadFile) -> Result<Option<(String, u64)>> {
   let sha1 = &file.sha1;
   let path = index_path(data, sha1);
   match fs::symlink_metadata(&path) {
@@ -112,7 +169,7 @@ fn verify_upstream(bytes: &[u8], sha1: &str) -> Result<()> {
   Ok(())
 }
 impl ResourceManager {
-  async fn blocking<T: Send + 'static>(
+  pub(super) async fn blocking<T: Send + 'static>(
     &self,
     action: impl FnOnce() -> Result<T> + Send + 'static,
   ) -> Result<T> {
@@ -136,6 +193,138 @@ impl ResourceManager {
     progress: &watch::Sender<ResourceInstallProgress>,
   ) -> Result<String> {
     file.validate()?;
+    self.prepare_validated_shared(file, cancel, progress).await
+  }
+
+  async fn prepare_validated_shared(
+    &self,
+    file: &DownloadFile,
+    cancel: &CancellationToken,
+    progress: &watch::Sender<ResourceInstallProgress>,
+  ) -> Result<String> {
+    let base = progress.borrow().clone();
+    let mut consumer = loop {
+      crate::error::check_cancel(cancel)?;
+      match self.join_transfer(file)? {
+        Admission::Attached(consumer) => break consumer,
+        Admission::Draining(mut previous) => {
+          tokio::select! {
+            biased;
+            _ = cancel.cancelled() => return Err(Error::Cancelled),
+            _ = previous.wait_for(Option::is_some) => {}
+          }
+        }
+      }
+    };
+    let mut updates = consumer.transfer.progress.clone();
+    let mut result = consumer.transfer.result.clone();
+    let mut watching_progress = true;
+    loop {
+      if cancel.is_cancelled() {
+        if consumer.detach() {
+          let _ = result.wait_for(Option::is_some).await;
+        }
+        return Err(Error::Cancelled);
+      }
+      let latest = updates.borrow_and_update().clone();
+      if matches!(latest.stage, ResourceInstallStage::Downloading) {
+        progress.send_modify(|value| {
+          value.stage = latest.stage;
+          value.received_bytes = base.received_bytes.saturating_add(latest.received_bytes);
+          value.downloaded_bytes = base
+            .downloaded_bytes
+            .saturating_add(latest.downloaded_bytes);
+        });
+      }
+      if let Some(outcome) = result.borrow_and_update().clone() {
+        return outcome.map_err(Error::SharedResource);
+      }
+      tokio::select! {
+        biased;
+        _ = cancel.cancelled() => {}
+        changed = result.changed() => {
+          if changed.is_err() {
+            return Err(Error::Conflict("shared resource transfer ended without a result".into()));
+          }
+        }
+        changed = updates.changed(), if watching_progress => { watching_progress = changed.is_ok(); }
+      }
+    }
+  }
+
+  fn join_transfer(&self, file: &DownloadFile) -> Result<Admission> {
+    let key = (self.context.paths.data.clone(), file.sha1.clone());
+    let mut entries = self
+      .context
+      .resource_transfers
+      .entries
+      .lock()
+      .unwrap_or_else(std::sync::PoisonError::into_inner);
+    entries.retain(|_, entry| entry.strong_count() > 0);
+    if let Some(transfer) = entries.get(&key).and_then(Weak::upgrade) {
+      let mut consumers = transfer
+        .consumers
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+      if *consumers > 0 {
+        if transfer.size != file.size {
+          return Err(Error::Conflict(
+            "shared resource identity has conflicting sizes".into(),
+          ));
+        }
+        *consumers += 1;
+        drop(consumers);
+        return Ok(Admission::Attached(Consumer {
+          transfer,
+          attached: true,
+        }));
+      }
+      if transfer.result.borrow().is_none() && transfer.result.has_changed().is_ok() {
+        return Ok(Admission::Draining(transfer.result.clone()));
+      }
+    }
+    let (progress_tx, progress) = watch::channel(ResourceInstallProgress {
+      stage: ResourceInstallStage::Preparing,
+      completed_files: 0,
+      total_files: 1,
+      downloaded_bytes: 0,
+      total_bytes: file.size,
+      received_bytes: 0,
+    });
+    let (result_tx, result) = watch::channel(None);
+    let transfer = Arc::new(SharedTransfer {
+      size: file.size,
+      consumers: Mutex::new(1),
+      cancel: CancellationToken::new(),
+      progress,
+      result,
+    });
+    entries.insert(key, Arc::downgrade(&transfer));
+    let manager = self.clone();
+    let file = file.clone();
+    let worker = transfer.clone();
+    tokio::spawn(async move {
+      let token = worker.cancel.clone();
+      let outcome =
+        tokio::spawn(async move { manager.download_shared(&file, &token, &progress_tx).await })
+          .await
+          .map_err(Error::from)
+          .and_then(|result| result);
+      result_tx.send_replace(Some(outcome.map_err(Arc::new)));
+    });
+    Ok(Admission::Attached(Consumer {
+      transfer,
+      attached: true,
+    }))
+  }
+
+  async fn download_shared(
+    &self,
+    file: &DownloadFile,
+    cancel: &CancellationToken,
+    progress: &watch::Sender<ResourceInstallProgress>,
+  ) -> Result<String> {
+    let _operation = self.lock_resource_operation().await?;
     let sha1 = file.sha1.clone();
     let _memory = self
       .context
@@ -151,7 +340,7 @@ impl ResourceManager {
     if let Some((hash, _)) = self
       .blocking(move || {
         let _store = storage::client_cache_lock(&data, "resources-store")?;
-        lookup(&data, &spec)
+        lookup_validated(&data, &spec)
       })
       .await?
     {

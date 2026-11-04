@@ -43,6 +43,8 @@ pub enum Error {
   AccountRequired,
   #[error("Minecraft account operation failed: {0}")]
   Authentication(String),
+  #[error(transparent)]
+  SharedResource(std::sync::Arc<Error>),
   #[error("operation cancelled")]
   Cancelled,
   #[error(transparent)]
@@ -74,6 +76,7 @@ impl Error {
       Self::ClientExit(_) => "client_exit",
       Self::AccountRequired => "account_required",
       Self::Authentication(_) => "authentication_failed",
+      Self::SharedResource(error) => error.code(),
       Self::Cancelled | Self::Http(q2q_http::Error::Cancelled) => "cancelled",
       Self::Http(q2q_http::Error::Busy) => "busy",
       Self::Http(q2q_http::Error::Integrity) => "integrity",

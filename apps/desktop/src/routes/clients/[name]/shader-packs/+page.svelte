@@ -20,7 +20,7 @@
 	let trackedTask: number | null = null;
 	const name = $derived(page.params.name ?? '');
 	const running = $derived(launchActive(launches.forClient(name)));
-	const installing = $derived((resources.active && resources.operation?.name.toLowerCase() === name.toLowerCase()) || (resources.starting && resources.intent?.name.toLowerCase() === name.toLowerCase()));
+	const installing = $derived(resources.busyForClient(name));
 	const locked = $derived(packs.busy || packs.blocked || running || installing || installerOpen);
 	const modsHref = $derived(resolve('/clients/[name]/mods', { name }));
 	const environmentMods = $derived([{ label: 'Iris', mod: packs.environment?.iris }, { label: 'Sodium', mod: packs.environment?.sodium }]);
@@ -35,9 +35,9 @@
 		return () => packs.dispose();
 	});
 	$effect(() => {
-		const task = resources.operation, target = name;
+		const task = resources.forClient(name);
 		untrack(() => {
-			if (!task || task.name.toLowerCase() !== target.toLowerCase()) return;
+			if (!task) return;
 			if (task.state === 'running') trackedTask = task.id;
 			else if (trackedTask === task.id) { trackedTask = null; packs.queueRefresh(); }
 		});

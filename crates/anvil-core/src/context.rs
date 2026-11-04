@@ -43,6 +43,7 @@ pub struct Context {
   pub paths: Paths,
   pub(crate) http: Downloader,
   pub(crate) blocking: Arc<Semaphore>,
+  pub(crate) resource_transfers: Arc<crate::resources::ResourceTransfers>,
   cache_locks: Arc<Mutex<HashMap<String, Weak<Mutex<()>>>>>,
 }
 
@@ -57,6 +58,7 @@ impl Context {
         .max_disk_tasks(2)
         .build()?,
       blocking: Arc::new(Semaphore::new(2)),
+      resource_transfers: Arc::default(),
       cache_locks: Arc::new(Mutex::new(HashMap::new())),
     })
   }

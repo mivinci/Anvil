@@ -19,7 +19,8 @@ projects[0].summary += ' A longer description to exercise scrolling in a small v
 const client = name => ({ id: `client-${name}`, name, versionId: '26.3', loader: name === 'vanilla' ? null : { kind: 'fabric', version: '0.18.0' }, versionType: 'release', javaMajor: 25, os: 'windows', architecture: 'x86_64', fileCount: 10 });
 const file = { id: 'versiona', modId: 'abcdefgh', displayName: 'Fabric API 1.0', fileName: 'fabric-api.jar', fileLength: 100, fileDate: '2026-10-24T00:00:00Z', releaseType: 1, sha1: 'a'.repeat(40) };
 const catalog = { stale: false, freshForMs: 300000, revision: 1, refreshError: null };
-let operation = null, submissions = 0, creations = 0, manifestReads = 0, planId = 7, loseReply = false, hideOperation = false;
+let parallelOperation = null;
+let operation = null, submissions = 0, creations = 0, manifestReads = 0, planId = 6, loseReply = false, hideOperation = false;
 const requests = [];
 let gameLaunch = null, nextGamePhase = 'running', homeEmpty = false, homeReadError = false;
 const deletedClients = new Set();
@@ -50,19 +51,55 @@ function api(url, method) {
 		}
 		return name === 'missing' || deletedClients.has(name) ? { status: 404, error: 'not found' } : client(name);
 	}
-	if (p.endsWith('/resources')) { manifestReads++; return { schemaVersion: 5, resourcePacks: [], shaderPacks: [], revision: operation?.state === 'completed' ? 1 : 0, appliedRevision: 1, mods: operation?.state === 'completed' ? [{ filename: 'fabric-api.jar', sha256: 'a'.repeat(64), size: 100, enabled: true, source: 'modrinth', modrinthOrigin: { projectName: 'Installed fixture', direct: true } }] : [] }; }
+	if (p === `/resources/objects/${'a'.repeat(64)}/references`) return [
+		{ instanceId: 'client-first', instanceName: 'first', kind: 'mod', filename: 'fabric-api.jar', enabled: true },
+		{ instanceId: 'client-second', instanceName: 'second', kind: 'mod', filename: 'fixture-disabled.jar', enabled: false },
+	];
+	if (p.endsWith('/resources')) { manifestReads++; return { schemaVersion: 5, resourcePacks: [], shaderPacks: [], revision: operation?.state === 'completed' ? 1 : 0, appliedRevision: 1, mods: operation?.state === 'completed' ? [{ filename: 'fabric-api.jar', sha256: 'a'.repeat(64), size: 100, enabled: true, source: 'modrinth', modrinthOrigin: { projectId: 'abcdefgh', versionId: 'versiona', projectName: 'Installed fixture', direct: true, requiredVersions: {}, incompatibleVersions: {} } }] : [] }; }
 	if (p === '/resources/curseforge/configuration') return { configured: false, issue: 'Offline fixture: API Key 未配置' };
 	if (p === '/resources/modrinth/projects') { const index = Number(url.searchParams.get('index') ?? 0); return { ...catalog, items: projects.slice(index, index + 20), nextIndex: index === 0 ? 20 : null }; }
+	if (p === '/resources/modrinth/projects/optional') return { ...catalog, project: { ...projects[0], id: 'optional', name: 'Optional fixture' } };
 	if (/^\/resources\/modrinth\/projects\//.test(p)) return { ...catalog, project: projects.find(item => item.id === p.split('/').at(-1)) ?? projects[0] };
 	if (p.endsWith('/files')) return { ...catalog, items: [file, ...Array.from({ length: 19 }, (_, i) => ({ ...file, id: `vers${String(i).padStart(4, '0')}`, displayName: `Fabric API 1.${i + 1}` }))], nextIndex: null };
-	if (p.endsWith('/plan')) return { planId, expiresInMs: 600000, gameVersion: '26.3', revision: 0, totalBytes: 100, downloadBytes: 100, items: [{ project: projects[0], file, direct: true }], files: [{ projectId: 'abcdefgh', fileId: 'versiona', projectName: 'Fabric API', filename: file.fileName, size: 100, direct: true, reuse: false }], optionalProjects: ['optional'], warnings: [] };
+	if (p.endsWith('/plan')) {
+		if (url.searchParams.get('replaceFrom') === 'versiona') {
+			const target = { ...file, id: p.split('/').at(-2), displayName: 'Fabric API 1.1', fileName: 'fabric-api-next.jar' };
+			return { planId: 71, expiresInMs: 600000, revision: 1, gameVersion: '26.3', totalBytes: 100, downloadBytes: 100,
+				items: [{ project: projects[0], file: target, direct: true }],
+				files: [{ projectId: 'abcdefgh', fileId: target.id, projectName: 'Fabric API', filename: target.fileName, size: 100, direct: true, reuse: false }],
+				optionalProjects: [], selectedOptionalProjects: [], warnings: [],
+				replacement: { projectId: 'abcdefgh', fromFileId: 'versiona', toFileId: target.id, fromFilename: 'fabric-api.jar', toFilename: target.fileName, enabled: true, dependents: [] } };
+		}
+		const selected = url.searchParams.get('includeOptional') === 'optional';
+		const optionalProject = { ...projects[0], id: 'optional', name: 'Optional fixture' };
+		const optionalFile = { ...file, id: 'optfile1', modId: 'optional', fileName: 'optional.jar' };
+		const items = [{ project: projects[0], file, direct: true }];
+		const files = [{ projectId: 'abcdefgh', fileId: 'versiona', projectName: 'Fabric API', filename: file.fileName, size: 100, direct: true, reuse: false }];
+		if (selected) {
+			items.push({ project: optionalProject, file: optionalFile, direct: false });
+			files.push({ projectId: 'optional', fileId: 'optfile1', projectName: 'Optional fixture', filename: optionalFile.fileName, size: 100, direct: false, reuse: false });
+		}
+		return { planId: selected ? 7 : planId, expiresInMs: 600000, gameVersion: '26.3', revision: 0, totalBytes: files.length * 100, downloadBytes: files.length * 100, items, files, optionalProjects: ['optional'], selectedOptionalProjects: selected ? ['optional'] : [], warnings: [] };
+	}
 	if (p.endsWith('/install')) {
 		submissions++; const id = Number(p.split('/').at(-2));
-		if (operation?.id !== id) { creations++; operation = { id, name: p.split('/')[2], state: 'running', cancelRequested: false, progress: { stage: 'downloading', completedFiles: 0, totalFiles: 1, downloadedBytes: 0, totalBytes: 100, receivedBytes: 0 }, revision: null, error: null }; }
+		if (operation?.id !== id) { creations++; operation = { id, name: p.split('/')[2], state: 'running', cancelRequested: false, pauseRequested: false, paused: false, progress: { stage: 'downloading', completedFiles: 0, totalFiles: 1, downloadedBytes: 0, totalBytes: 100, receivedBytes: 0 }, revision: null, error: null }; }
 		if (loseReply) { loseReply = false; return { status: 500, error: 'fixture response lost' }; }
 		return operation;
 	}
-	if (p === '/resource-operations') return operation && !hideOperation ? [operation] : [];
+	if (p === `/resource-operations/${operation?.id}/pause` && method === 'POST') {
+		operation = { ...operation, pauseRequested: true };
+		return operation;
+	}
+	if (p === `/resource-operations/${operation?.id}/resume` && method === 'POST') {
+		operation = { ...operation, paused: false };
+		return operation;
+	}
+	if (p === `/resource-operations/${parallelOperation?.id}` && method === 'DELETE') {
+		parallelOperation = { ...parallelOperation, state: 'cancelled' };
+		return parallelOperation;
+	}
+	if (p === '/resource-operations') return [!hideOperation && operation, parallelOperation].filter(Boolean);
 	if (p === '/account-operations/active') return { operation: null };
 	return [];
 }
@@ -220,20 +257,76 @@ try {
 	await page.getByRole('region', { name: t.mods.discovery.modDetails, exact: true }).evaluate(element => { element.scrollTop = 0; });
 	assert.equal(await page.getByRole('button', { name: t.mods.discovery.confirmInstall, exact: true }).isVisible(), true);
 	assert.equal(await page.getByRole('button', { name: t.mods.discovery.regenerate, exact: true }).count(), 0);
-	assert.equal(await page.getByText(t.mods.optionalExcluded(1), { exact: true }).count(), 0);
+	assert.equal(await page.getByText(t.mods.discovery.optionalSelection, { exact: true }).count(), 0);
 	await page.getByRole('button', { name: t.mods.discovery.expandDetails, exact: true }).click();
-	await page.getByText(t.mods.optionalExcluded(1), { exact: true }).waitFor();
+	await page.getByText(t.mods.discovery.optionalSelection, { exact: true }).waitFor();
+	const optionalChoice = installBar.getByRole('checkbox', { name: 'Optional fixture', exact: true });
+	await optionalChoice.waitFor();
+	assert.equal(await optionalChoice.isChecked(), false);
+	await optionalChoice.check();
+	await installBar.getByText(t.mods.discovery.optionalIncluded, { exact: true }).waitFor();
+	assert.equal(await optionalChoice.isChecked(), true);
+	assert.ok(requests.some(value => value.includes('/plan?includeOptional=optional')));
+
 	await page.getByRole('button', { name: t.mods.discovery.collapseDetails, exact: true }).click();
 	console.log('PASS: long detail and version list keep the compact install bar visible; details start folded');
 	await page.screenshot({ path: path.join(artifact, '900-dark.png') });
 	assert.equal(await page.evaluate(() => document.querySelector('main').scrollWidth <= document.querySelector('main').clientWidth), true);
 	await page.getByRole('button', { name: t.mods.discovery.confirmInstall, exact: true }).click();
 	await page.getByText(t.mods.discovery.submitted, { exact: true }).waitFor();
+	await page.locator('[data-download-tasks-trigger]').click();
+	parallelOperation = { ...operation, id: 70, name: 'second' };
+	const resourceTask = name => page.getByRole('region', { name: `${t.mods.taskLabel(t.mods.discovery.resourceMod)} · ${name}`, exact: true });
+	const firstTask = resourceTask('first');
+	const secondTask = resourceTask('second');
+	const pauseDownload = firstTask.getByRole('button', { name: t.clients.flow.pauseDownload, exact: true });
+	const resumeDownload = firstTask.getByRole('button', { name: t.clients.flow.resumeDownload, exact: true });
+	await secondTask.waitFor();
+	await pauseDownload.click();
+	const pausing = firstTask.getByRole('button', { name: t.clients.flow.pausing, exact: true });
+	await pausing.waitFor();
+	assert.equal(await pausing.isDisabled(), true);
+	assert.equal(await resumeDownload.count(), 0);
+	operation = { ...operation, pauseRequested: false, paused: true };
+	await resumeDownload.waitFor();
+	assert.equal(await secondTask.getByRole('button', { name: t.clients.flow.pauseDownload, exact: true }).isVisible(), true);
+	await secondTask.getByRole('button', { name: t.mods.discovery.cancelInstall, exact: true }).click();
+	await secondTask.getByText(t.mods.resourceStatus(t.mods.discovery.resourceMod, 'cancelled'), { exact: true }).waitFor();
+	await resumeDownload.click();
+	await pauseDownload.waitFor();
+	assert.equal(requests.filter(value => value === 'POST /resource-operations/7/pause').length, 1);
+	assert.equal(requests.filter(value => value === 'POST /resource-operations/7/resume').length, 1);
+	assert.deepEqual(requests.filter(value => value.startsWith('DELETE /resource-operations/')), ['DELETE /resource-operations/70']);
+	parallelOperation = null;
+	await page.keyboard.press('Escape');
+	console.log('PASS: parallel resource rows isolate pause, resume and cancel by task ID');
+
 	await page.getByRole('button', { name: t.nav.clients, exact: true }).click();
 	await page.getByRole('link', { name: t.clients.manageInstance('first'), exact: true }).click();
 	await page.getByRole('navigation', { name: t.instance.detail.navigation }).getByRole('link', { name: t.nav.mods, exact: true }).click();
 	operation = { ...operation, state: 'completed', revision: 1, progress: { ...operation.progress, stage: 'completed', downloadedBytes: 100, completedFiles: 1 } };
 	await page.getByText('Installed fixture', { exact: true }).waitFor();
+	await page.getByRole('button', { name: `${t.mods.discovery.replaceVersion} · fabric-api.jar`, exact: true }).click();
+	const replacement = page.getByRole('region', { name: t.mods.discovery.replaceVersion, exact: true });
+	const nextVersion = replacement.getByRole('button', { name: /Fabric API 1\.1(?:\s|$)/ });
+	await nextVersion.waitFor();
+	assert.equal(await replacement.getByRole('button', { name: /Fabric API 1\.0(?:\s|$)/ }).count(), 0);
+	await nextVersion.click();
+	await replacement.getByRole('button', { name: t.mods.discovery.confirmReplacement, exact: true }).waitFor();
+	await replacement.getByText('fabric-api.jar', { exact: true }).waitFor();
+	await replacement.getByText('fabric-api-next.jar', { exact: true }).waitFor();
+	assert.ok(requests.some(value => value.includes('/files/vers0000/plan?replaceFrom=versiona')));
+	await replacement.getByRole('button', { name: t.common.close, exact: true }).click();
+	console.log('PASS: installed mod replacement previews both files without submitting');
+	await page.getByRole('button', { name: t.instance.detail.viewIdentity, exact: true }).click();
+	await page.getByRole('button', { name: t.mods.discovery.findReferences, exact: true }).click();
+	await page.getByText('fixture-disabled.jar', { exact: true }).waitFor();
+	const disabledReference = page.getByRole('listitem').filter({ hasText: 'fixture-disabled.jar' });
+	assert.match(await disabledReference.innerText(), new RegExp(t.instance.detail.disabled));
+	await page.keyboard.press('Escape');
+	console.log('PASS: mod identity shows references in other instances, including disabled mods');
+
+
 	assert.equal(submissions, 1); assert.ok(manifestReads > 0);
 	console.log('PASS: fixture install survives navigation and updates instance list');
 	await page.goto(`${origin}/mods?instance=missing`);

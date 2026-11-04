@@ -43,6 +43,7 @@ pub struct ModrinthInstallPlan {
   game: String,
   loader: ClientLoader,
   before: ResourceManifest,
+  replacement: Option<usize>,
   files: Vec<Planned>,
   summary: Vec<ModrinthPlanFile>,
   shader_support: bool,
@@ -50,6 +51,9 @@ pub struct ModrinthInstallPlan {
 impl ModrinthInstallPlan {
   pub fn name(&self) -> &str {
     &self.name
+  }
+  pub fn replaced_entry(&self) -> Option<&ResourceEntry> {
+    self.replacement.map(|index| &self.before.mods[index])
   }
   pub fn revision(&self) -> u64 {
     self.before.revision
@@ -188,7 +192,12 @@ fn check(directory: &Path, plan: &ModrinthInstallPlan) -> Result<()> {
   }
   Ok(())
 }
-fn merge(manifest: &mut ResourceManifest, file: &Planned, hash: String) -> Result<()> {
+fn merge(
+  manifest: &mut ResourceManifest,
+  file: &Planned,
+  hash: String,
+  enabled: bool,
+) -> Result<()> {
   if let Some(entry) = manifest.mods.iter_mut().find(|e| {
     e.modrinth_origin
       .as_ref()
@@ -227,7 +236,7 @@ fn merge(manifest: &mut ResourceManifest, file: &Planned, hash: String) -> Resul
     sha256: hash,
     filename: file.file.filename.clone(),
     size: file.file.size,
-    enabled: true,
+    enabled,
   });
   Ok(())
 }
@@ -238,12 +247,26 @@ impl ResourceManager {
     preview: DependencyPreview,
     revision: u64,
   ) -> Result<ModrinthInstallPlan> {
+    self
+      .plan_modrinth_with_replacement(name, preview, revision, None)
+      .await
+  }
+
+  /// Replace only the directly selected project, with an explicit expected old version.
+  pub async fn plan_modrinth_with_replacement(
+    &self,
+    name: &str,
+    preview: DependencyPreview,
+    revision: u64,
+    replace_from: Option<&str>,
+  ) -> Result<ModrinthInstallPlan> {
     if preview.items.is_empty()
       || preview.items.len() > 32
       || preview.items.iter().filter(|i| i.direct).count() != 1
     {
       return Err(Error::Invalid("invalid Modrinth plan size".into()));
     }
+    let replace_from = replace_from.map(str::to_owned);
     let name = name.to_ascii_lowercase();
     self
       .access(&name.clone(), move |directory, data, fabric| {
@@ -253,11 +276,41 @@ impl ResourceManager {
         let r = record(directory)?;
         let before = read_manifest(directory)?;
         check_revision(&before, revision)?;
+        let replacement = replace_from
+          .as_ref()
+          .map(|old_version| {
+            let mut roots = preview.items.iter().filter(|item| item.direct);
+            let root = roots
+              .next()
+              .filter(|_| roots.next().is_none())
+              .ok_or_else(|| Error::Invalid("replacement needs one selected project".into()))?;
+            if root.file.id == *old_version {
+              return Err(Error::Invalid(
+                "replacement must select a different version".into(),
+              ));
+            }
+            before
+              .mods
+              .iter()
+              .position(|entry| {
+                entry.modrinth_origin.as_ref().is_some_and(|origin| {
+                  origin.project_id == root.project.id && origin.version_id == *old_version
+                })
+              })
+              .ok_or_else(|| {
+                Error::Conflict(
+                  "the installed version changed or belongs to another project".into(),
+                )
+              })
+          })
+          .transpose()?;
+        let replacement_enabled = replacement.map(|index| before.mods[index].enabled);
+
         let shader_support = preview
           .items
           .iter()
           .any(|item| item.direct && item.project.id == IRIS_PROJECT_ID);
-        if shader_support {
+        if shader_support && replacement.is_none() {
           let environment =
             super::shader_environment::inspect_environment(directory, data, &before, &r, true);
           if environment.status != ShaderEnvironmentStatus::MissingIris {
@@ -282,6 +335,9 @@ impl ResourceManager {
           }
         }
         let mut after = before.clone();
+        if let Some(index) = replacement {
+          after.mods.remove(index);
+        }
         after.schema_version = 5;
         let mut files = Vec::new();
         let mut summary = Vec::new();
@@ -331,7 +387,12 @@ impl ResourceManager {
                 format!("modrinth:{}", file.origin.version_id).as_bytes(),
               ))
             });
-          merge(&mut after, &file, hash)?;
+          merge(
+            &mut after,
+            &file,
+            hash,
+            !file.origin.direct || replacement_enabled.unwrap_or(true),
+          )?;
           summary.push(ModrinthPlanFile {
             project_id: file.origin.project_id.clone(),
             file_id: file.origin.version_id.clone(),
@@ -351,7 +412,8 @@ impl ResourceManager {
             .loader
             .ok_or_else(|| Error::Conflict("Fabric loader is missing".into()))?,
           before,
-          shader_support,
+          replacement,
+          shader_support: shader_support && replacement_enabled.unwrap_or(true),
           files,
           summary,
         })
@@ -364,6 +426,7 @@ impl ResourceManager {
     cancel: CancellationToken,
     progress: watch::Sender<ResourceInstallProgress>,
   ) -> Result<ResourceManifest> {
+    let _operation = self.lock_resource_operation().await?;
     let initial = plan.clone();
     self
       .access(&plan.name, move |directory, _, _| {
@@ -397,10 +460,18 @@ impl ResourceManager {
           return Err(Error::Cancelled);
         }
         let mut after = plan.before.clone();
+        let replacement_enabled = plan
+          .replacement
+          .map(|index| after.mods.remove(index).enabled);
         after.schema_version = 5;
         for (file, hash) in plan.files.iter().zip(objects) {
           verify_object(&object_path(data, &hash), &hash, file.file.size)?;
-          merge(&mut after, file, hash)?;
+          merge(
+            &mut after,
+            file,
+            hash,
+            !file.origin.direct || replacement_enabled.unwrap_or(true),
+          )?;
         }
         validate_manifest(&after)?;
         if plan.shader_support {

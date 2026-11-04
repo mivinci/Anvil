@@ -127,6 +127,8 @@ pub(super) async fn files(
 #[serde(rename_all = "camelCase")]
 pub(super) struct InstallPlanResponse {
   plan_id: u64,
+  selected_optional_projects: Vec<String>,
+  replacement: Option<super::resource_operations::ReplacementPreview<String>>,
   expires_in_ms: u64,
   revision: u64,
   game_version: String,
@@ -138,7 +140,20 @@ pub(super) struct InstallPlanResponse {
 pub(super) async fn create_plan(
   State(state): State<AppState>,
   Path((name, project, file)): Path<(String, String, String)>,
+  Query(selection): Query<super::resource_operations::PlanSelection>,
 ) -> Result<Json<InstallPlanResponse>, ApiError> {
+  let optional = selection.ids::<String>()?;
+  let replace_from = selection.replace_from;
+  if replace_from.as_ref().is_some_and(|id| {
+    id.len() != 8 || !id.bytes().all(|byte| byte.is_ascii_alphanumeric()) || id == &file
+  }) {
+    return Err(ApiError::new(
+      StatusCode::BAD_REQUEST,
+      "invalid_argument",
+      "请选择与当前版本不同的有效 Modrinth 版本。",
+    ));
+  }
+
   let _slot = state.modrinth.slot()?;
   let provider = state.modrinth.provider()?;
   tokio::time::timeout(std::time::Duration::from_secs(50), async {
@@ -148,6 +163,16 @@ pub(super) async fn create_plan(
       .list(&name)
       .await
       .map_err(super::api::resource_error)?;
+    if let Some(previous) = &replace_from
+      && !manifest.mods.iter().any(|entry| {
+        entry
+          .modrinth_origin
+          .as_ref()
+          .is_some_and(|origin| origin.project_id == project && &origin.version_id == previous)
+      })
+    {
+      return Err(super::resource_operations::replacement_changed());
+    }
     let existing = manifest
       .mods
       .iter()
@@ -158,14 +183,47 @@ pub(super) async fn create_plan(
       })
       .collect();
     let preview = provider
-      .preview(&game_version, &project, &file, &existing)
+      .preview_with_optional(&game_version, &project, &file, &existing, &optional)
       .await
       .map_err(super::api::resource_error)?;
     let plan = manager
-      .plan_modrinth(&name, preview.clone(), manifest.revision)
+      .plan_modrinth_with_replacement(
+        &name,
+        preview.clone(),
+        manifest.revision,
+        replace_from.as_deref(),
+      )
       .await
       .map_err(super::api::resource_error)?;
+    let replacement = plan.replaced_entry().map(|entry| {
+      let origin = entry
+        .modrinth_origin
+        .as_ref()
+        .expect("replacement has a matching origin");
+      let target = plan
+        .files()
+        .iter()
+        .find(|file| file.direct)
+        .expect("replacement has one selected project");
+      super::resource_operations::ReplacementPreview {
+        project_id: project.clone(),
+        from_file_id: origin.version_id.clone(),
+        to_file_id: file.clone(),
+        from_filename: entry.filename.clone(),
+        to_filename: target.filename.clone(),
+        enabled: entry.enabled,
+        dependents: manifest
+          .mods
+          .iter()
+          .filter_map(|entry| entry.modrinth_origin.as_ref())
+          .filter(|entry| entry.required_versions.contains_key(&project))
+          .map(|entry| entry.project_name.clone())
+          .collect(),
+      }
+    });
     Ok(Json(InstallPlanResponse {
+      replacement,
+      selected_optional_projects: optional,
       revision: plan.revision(),
       files: plan.files().to_vec(),
       download_bytes: plan.download_bytes(),

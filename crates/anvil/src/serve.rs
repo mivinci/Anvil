@@ -40,6 +40,7 @@ mod self_update;
 pub(crate) const HTTP_API_VERSION: &str = "1.0.0";
 
 pub(crate) async fn run_from_stdio_with_logging(
+  data_dir: Option<std::path::PathBuf>,
   logging: Option<anvil_logging::LoggingStatus>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
   tracing::info!("Runtime startup started");
@@ -65,7 +66,7 @@ pub(crate) async fn run_from_stdio_with_logging(
     return Err(io::Error::new(io::ErrorKind::InvalidInput, "invalid Runtime credential").into());
   }
 
-  let context = Context::new(Paths::discover(None)?)?;
+  let context = Context::new(Paths::discover(data_dir)?)?;
   let runtime = Arc::new(operations::RuntimeState::new(context.clone()));
   let accounts = Arc::new(accounts::AccountState::new(context.clone()));
   let mut app_state = api::AppState::new(runtime, accounts, api_version.clone(), token.to_owned());

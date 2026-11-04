@@ -30,7 +30,15 @@ pub(crate) fn server_cache_lock(data: &Path, sha1: &str) -> Result<Arc<File>> {
   lock_named(data, "server-cache", sha1)
 }
 
+pub(crate) fn resource_operation_lock(data: &Path, exclusive: bool) -> Result<Arc<File>> {
+  lock_named_mode(data, "client-cache", "resource-operations", exclusive)
+}
+
 fn lock_named(data: &Path, namespace: &str, id: &str) -> Result<Arc<File>> {
+  lock_named_mode(data, namespace, id, true)
+}
+
+fn lock_named_mode(data: &Path, namespace: &str, id: &str, exclusive: bool) -> Result<Arc<File>> {
   if namespace.is_empty()
     || !namespace
       .bytes()
@@ -50,7 +58,12 @@ fn lock_named(data: &Path, namespace: &str, id: &str) -> Result<Arc<File>> {
     .create(true)
     .truncate(false)
     .open(dir.join(format!("{namespace}-{id}.lock")))?;
-  file.try_lock().map_err(|e| match e {
+  let lock = if exclusive {
+    file.try_lock()
+  } else {
+    file.try_lock_shared()
+  };
+  lock.map_err(|e| match e {
     std::fs::TryLockError::WouldBlock => Error::Busy(id.into()),
     std::fs::TryLockError::Error(e) => Error::Io(e),
   })?;
