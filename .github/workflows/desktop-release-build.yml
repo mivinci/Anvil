@@ -164,12 +164,17 @@ jobs:
           else
             npm run desktop:build
           fi
-      - name: Verify macOS App signature
+      - name: Verify macOS App identity and signature
         if: runner.os == 'macOS'
         shell: bash
         run: |
           set -euo pipefail
           app="target/release/bundle/macos/Anvil.app"
+          bundle_identifier="$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$app/Contents/Info.plist")"
+          if [[ "$bundle_identifier" != "app.q2q.anvil" ]]; then
+            echo "Unexpected macOS bundle identifier: $bundle_identifier" >&2
+            exit 1
+          fi
           codesign --verify --deep --strict --verbose=2 "$app"
           codesign --display --verbose=4 "$app"
           if [[ -n "${ANVIL_MACOS_SIGNING_IDENTITY:-}" ]]; then

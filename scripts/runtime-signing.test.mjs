@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 import { signRuntime, signingConfiguration } from './lib/runtime-signing.mjs';
 
 const identity = 'AB'.repeat(20);
@@ -35,4 +36,19 @@ test('configured signing errors fail the build without an ad-hoc fallback', { sk
 		ANVIL_MACOS_SIGNING_IDENTITY: identity
 	}, () => { count++; return { status: 1 }; }));
 	assert.equal(count, 1);
+});
+
+test('macOS release configuration preserves the application bundle identity', () => {
+	const config = (name) => JSON.parse(readFileSync(new URL(`../apps/shell/src-tauri/${name}`, import.meta.url), 'utf8'));
+	const base = config('tauri.conf.json');
+	const macos = config('tauri.macos.conf.json');
+	const development = config('tauri.dev.conf.json');
+	for (const configuration of [base, macos, development]) {
+		assert.ok(Object.hasOwn(configuration, 'identifier'), 'Missing required config field: identifier');
+		assert.match(configuration.identifier, /^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/);
+	}
+	assert.equal(macos.identifier, 'app.q2q.anvil');
+	assert.equal(macos.identifier, base.identifier);
+	assert.equal({ ...base, ...macos }.identifier, 'app.q2q.anvil');
+	assert.equal({ ...base, ...macos, ...development }.identifier, 'app.q2q.anvil.dev');
 });
