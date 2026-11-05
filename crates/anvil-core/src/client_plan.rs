@@ -340,30 +340,39 @@ fn plan_libraries(
     let legacy_natives = object.get("natives");
     let mut has_selected_artifact = false;
 
-    if let Some(classifier) = parts.get(3).copied() {
-      if let Some(native) = parse_native_classifier(classifier, parts[1])? {
-        has_selected_artifact = true;
-        if native.os == target.os {
-          let family = parts[..3].join(":");
-          native_families.insert(family.clone());
-          if native.matches(target) {
-            let artifact = get_download_artifact(downloads, "artifact", coordinate)?;
-            insert_library(
-              &mut libraries,
-              &mut library_paths,
-              ClientLibrary {
-                coordinate: coordinate.to_owned(),
-                artifact,
-                kind: ClientLibraryKind::NativeClasspath,
-              },
-            )?;
-            selected_native_families.insert(family);
-          }
+    let native = parts
+      .get(3)
+      .map(|classifier| parse_native_classifier(classifier, parts[1]))
+      .transpose()?
+      .flatten();
+    if native.is_none()
+      && parts
+        .get(3)
+        .is_some_and(|classifier| classifier.starts_with("natives-"))
+    {
+      return Err(Error::Unsupported(format!(
+        "client library classifier {}",
+        parts[3]
+      )));
+    }
+    if let Some(native) = native {
+      has_selected_artifact = true;
+      if native.os == target.os {
+        let family = parts[..3].join(":");
+        native_families.insert(family.clone());
+        if native.matches(target) {
+          let artifact = get_download_artifact(downloads, "artifact", coordinate)?;
+          insert_library(
+            &mut libraries,
+            &mut library_paths,
+            ClientLibrary {
+              coordinate: coordinate.to_owned(),
+              artifact,
+              kind: ClientLibraryKind::NativeClasspath,
+            },
+          )?;
+          selected_native_families.insert(family);
         }
-      } else {
-        return Err(Error::Unsupported(format!(
-          "client library classifier {classifier}"
-        )));
       }
     } else if let Some(downloads) = downloads
       && downloads.contains_key("artifact")
