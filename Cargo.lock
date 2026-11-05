@@ -126,6 +126,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "anvil-agent"
+version = "26.0.0-alpha.5"
+
+[[package]]
 name = "anvil-core"
 version = "26.0.0-alpha.5"
 dependencies = [
