@@ -30,6 +30,16 @@ if (process.env.ANVIL_BUNDLE_CREDENTIALS === '1') {
 }
 run('cargo', cargoArgs);
 
+const metadata = spawnSync('cargo', ['metadata', '--locked', '--no-deps', '--format-version', '1'], {
+	cwd: repositoryRoot,
+	encoding: 'utf8'
+});
+if (metadata.error || metadata.status !== 0) {
+	throw new Error('Could not read the bundled Runtime version from Cargo metadata');
+}
+const runtime = JSON.parse(metadata.stdout).packages.find((pkg) => pkg.name === 'anvil');
+if (!runtime) throw new Error('Cargo metadata did not include the anvil Runtime package');
+
 const binaryName = process.platform === 'win32' || target.includes('windows') ? 'anvil.exe' : 'anvil';
 const cargoTargetDirectory = path.resolve(repositoryRoot, process.env.CARGO_TARGET_DIR ?? 'target');
 const sidecarPath = path.join(cargoTargetDirectory, target, 'release', binaryName);
@@ -54,6 +64,8 @@ await chmod(
 );
 signRuntime(path.join(baselineDirectory, manifest.sidecar_entry), target);
 await writeFile(path.join(baselineDirectory, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+
+await writeFile(path.join(baselineDirectory, 'runtime-version.txt'), `${runtime.version}\n`);
 
 console.log(`Packaged ${manifest.app_id} ${manifest.version} for ${target} at ${baselineDirectory}`);
 

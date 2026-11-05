@@ -57,7 +57,7 @@ Runtime 在客户端启动进入 `running` 时开始记录会话，游戏退出�
 ## Runtime 自更新
 
 - 安装包内的基线 App 版本高于活动版本时，Shell 在启动阶段先发布基线并标记为 pending，再由现有健康确认/回滚流程激活；同版本或更旧基线不覆盖活动版本。
-- Shell 保持通用：启动时优先读取 `<app>/sidecar-store/current.json`（schema 1：`version`/`sidecar_entry`/`http_api_version`），校验失败或启动失败即回退包内种子，并把失败版本写入 `blocked.json`。Shell 不了解 Anvil 版本策略或下载渠道。
+- Shell 保持通用：新 App 包的 `runtime-version.txt` 记录内置 Runtime 的独立版本。启动时比较内置版本与有效覆盖版，较新者优先，同版本优先内置。旧包没有版本文件时沿用覆盖版优先。覆盖版读取自 `<app>/sidecar-store/current.json`（schema 1：`version`/`sidecar_entry`/`http_api_version`），覆盖版校验失败时使用包内种子，启动失败时尝试另一候选，并把启动失败的覆盖版本写入 `blocked.json`。Shell 不了解 Anvil 版本策略或下载渠道。
 - App manifest 为 schema 2，新增 `http_api_compatibility`（VersionReq）：种子声明的 `http_api_version` 和 override 声明的版本都必须落在范围内。`serve` 侧以编译期常量校验 `ANVIL_HTTP_API_VERSION` 相等，握手不再只是回显。
 - Shell 给 sidecar 传 `ANVIL_SIDECAR_STORE_DIR` 与 `ANVIL_HTTP_API_COMPAT`；`serve` 的自更新器在编译期注入索引 URL 与 Ed25519 公钥（`ANVIL_RUNTIME_UPDATE_MANIFEST_URL`/`ANVIL_RUNTIME_UPDATE_PUBLIC_KEY`，缺失即禁用），24 小时限频拉取签名 `runtime-index.json`，按版本、API 范围、拉黑列表过滤，下载裸二进制经 sha256 与 `--version`/`--serve-api-version` 门禁后发布到 `versions/<ver>/` 并原子写 `current.json`，下次启动生效。
 - 校验强度与 Shell 的 App 更新通道对齐：Ed25519 签名索引 + HTTPS + 签名载荷钉死的 SHA-256。密钥经 `cargo run -p anvil --example gen_update_key` 生成，私钥存仓库 secret `ANVIL_RUNTIME_SIGNING_KEY`，公钥存仓库变量并在 release 构建时注入。

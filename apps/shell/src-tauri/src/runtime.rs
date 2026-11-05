@@ -58,13 +58,13 @@ struct SidecarCandidate {
   path: PathBuf,
   args: Vec<String>,
   api_version: String,
-  /// Present only for overrides; the sidecar package version for blocking.
   version: Option<String>,
+  is_override: bool,
 }
 
 #[derive(Debug)]
 struct ActiveSidecars {
-  /// Preferred first; the packaged seed is always last.
+  /// Preferred candidate first, with a compatible fallback when available.
   candidates: Vec<SidecarCandidate>,
   environment: Option<SidecarEnvironment>,
 }
@@ -212,11 +212,11 @@ impl RuntimeSupervisor {
 
     let mut last_failure = None;
     for candidate in active.candidates {
-      let origin = candidate
-        .version
-        .as_deref()
-        .map(|version| format!("override {version}"))
-        .unwrap_or_else(|| "packaged seed".to_owned());
+      let origin = if candidate.is_override {
+        "override"
+      } else {
+        "packaged seed"
+      };
       let runtime_version = candidate
         .version
         .as_deref()
@@ -229,12 +229,13 @@ impl RuntimeSupervisor {
         active.environment.as_ref(),
       ) {
         Ok(()) => {
-          tracing::info!(origin, "Runtime startup succeeded");
+          tracing::info!(origin, runtime_version, "Runtime startup succeeded");
           return;
         }
         Err(failure) => {
-          if let (Some(version), Some(environment)) =
-            (&candidate.version, active.environment.as_ref())
+          if candidate.is_override
+            && let (Some(version), Some(environment)) =
+              (&candidate.version, active.environment.as_ref())
           {
             block_override_version(environment, version);
           }
@@ -597,7 +598,16 @@ fn active_sidecars(storage: &AppStorage) -> Result<ActiveSidecars, RuntimeFailur
       .map_err(|_| RuntimeFailure::SidecarMissing)?,
     api_version: manifest.http_api_version.clone(),
     args: manifest.sidecar_args.clone(),
-    version: None,
+    version: version
+      .directory_path()
+      .ok()
+      .and_then(|directory| {
+        crate::bundled_app::read_entry(&directory, "runtime-version.txt", 128).ok()
+      })
+      .and_then(|bytes| String::from_utf8(bytes).ok())
+      .and_then(|value| semver::Version::parse(value.trim()).ok())
+      .map(|version| version.to_string()),
+    is_override: false,
   };
   if !is_executable(&packaged.path) {
     return Err(RuntimeFailure::SidecarNotExecutable);
@@ -611,7 +621,26 @@ fn active_sidecars(storage: &AppStorage) -> Result<ActiveSidecars, RuntimeFailur
       tracing::warn!(failure = ?failure, "Ignoring an invalid sidecar override pointer");
     }
   }
-  candidates.push(packaged);
+  let packaged_first = packaged.version.as_deref().is_some_and(|seed| {
+    let Some(override_version) = candidates
+      .first()
+      .and_then(|candidate| candidate.version.as_deref())
+    else {
+      return false;
+    };
+    match (
+      semver::Version::parse(seed),
+      semver::Version::parse(override_version),
+    ) {
+      (Ok(seed), Ok(override_version)) => seed.cmp_precedence(&override_version).is_ge(),
+      _ => false,
+    }
+  });
+  if packaged_first {
+    candidates.insert(0, packaged);
+  } else {
+    candidates.push(packaged);
+  }
   Ok(ActiveSidecars {
     candidates,
     environment: Some(environment),
@@ -672,6 +701,7 @@ fn resolve_override(
     api_version: pointer.http_api_version,
     args: manifest.sidecar_args.clone(),
     version: Some(pointer.version),
+    is_override: true,
   }))
 }
 
@@ -1042,6 +1072,31 @@ mod tests {
   #[cfg(unix)]
   fn pointer_path(fixture: &OverrideFixture) -> PathBuf {
     fixture.store_dir.join(OVERRIDE_POINTER_ENTRY)
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn prefers_the_newer_runtime_without_comparing_desktop_versions() {
+    let fixture = override_fixture();
+    let store = fixture.storage.app(env!("ANVIL_DEFAULT_APP_ID")).unwrap();
+    let active = store.resolve_active().unwrap().unwrap();
+    fs::write(
+      active.directory_path().unwrap().join("runtime-version.txt"),
+      "26.0.0-alpha.6\n",
+    )
+    .unwrap();
+
+    for (override_version, expect_override) in [
+      ("26.0.0-alpha.3", false),
+      ("26.0.0-alpha.6", false),
+      ("26.0.0-alpha.7", true),
+    ] {
+      write_override(&fixture, override_version, "1.0.0", "#!/bin/sh\nexit 0\n");
+      let candidates = active_sidecars(&fixture.storage).unwrap().candidates;
+      assert_eq!(candidates.len(), 2);
+      assert_eq!(candidates[0].is_override, expect_override);
+      assert_eq!(candidates[1].is_override, !expect_override);
+    }
   }
 
   #[cfg(unix)]
