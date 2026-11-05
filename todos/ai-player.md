@@ -156,4 +156,4 @@ AI 玩家能理解其他玩家的请求，一起行动，并根据真实进展�
 
 ## 续接位置
 
-本轮工作先保存到 `codex/ai-player-executor`，未创建 PR。第 1 项已完成，下一次从第 2 项的版本与工具链兼容性检查开始，不重复扩大二维实验。现有实验命令与结果保存在 `experiments/README.md` 和 `experiments/evaluation/README.md`，生成数据及模型输出不随 Git 推送。契约与旧执行器尚未整合，真实接入尚未验证。
+本轮工作先保存到 `codex/ai-player`，未创建 PR。第 1 项已完成，下一次从第 2 项的版本与工具链兼容性检查开始，不重复扩大二维实验。现有实验命令与结果保存在 `experiments/README.md` 和 `experiments/evaluation/README.md`，生成数据及模型输出不随 Git 推送。契约与旧执行器尚未整合，真实接入尚未验证。
