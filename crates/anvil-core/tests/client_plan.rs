@@ -377,3 +377,46 @@ fn unsafe_paths_invalid_asset_hashes_and_legacy_asset_layouts_are_rejected() {
     Err(Error::Unsupported(_))
   ));
 }
+
+#[test]
+fn ordinary_classified_libraries_are_kept_on_the_classpath() {
+  let mut version = official_version();
+  let coordinate = "org.lwjgl:lwjgl:3.4.1:unsafe";
+  version.libraries.push(library(
+    coordinate,
+    serde_json::json!([{"action": "allow"}]),
+    "org/lwjgl/lwjgl/3.4.1/lwjgl-3.4.1-unsafe.jar",
+  ));
+  for architecture in [ClientArchitecture::Aarch64, ClientArchitecture::X86_64] {
+    let plan = plan_client(
+      &version,
+      OFFICIAL_ASSET_INDEX,
+      target(ClientOs::MacOs, architecture),
+    )
+    .unwrap();
+    let dependency = plan
+      .libraries
+      .iter()
+      .find(|entry| entry.coordinate == coordinate)
+      .unwrap();
+    assert_eq!(dependency.kind, ClientLibraryKind::Classpath);
+  }
+}
+
+#[test]
+fn unknown_native_classifiers_are_still_rejected() {
+  let mut version = official_version();
+  version.libraries.push(library(
+    "org.lwjgl:lwjgl:3.4.1:natives-unknown",
+    serde_json::json!([{"action": "allow"}]),
+    "org/lwjgl/lwjgl/3.4.1/lwjgl-3.4.1-natives-unknown.jar",
+  ));
+  assert!(matches!(
+    plan_client(
+      &version,
+      OFFICIAL_ASSET_INDEX,
+      target(ClientOs::MacOs, ClientArchitecture::Aarch64)
+    ),
+    Err(Error::Unsupported(_))
+  ));
+}
